@@ -14,6 +14,7 @@ pub mod genesis_config_presets;
 mod tests;
 
 extern crate alloc;
+use alloc::vec::Vec;
 use polkadot_sdk::*;
 
 use sp_runtime::{
