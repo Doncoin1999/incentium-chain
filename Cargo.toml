@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = [
+    "primitives/ipm-economics",
+    "pallets/ipm-emission",
+    "pallets/subnet-registry",
+    "pallets/weights",
+    "pallets/work-verify",
+    "pallets/ipm-consensus",
+    "runtime",
+    "node",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/<to-be-decided>/ipm-chain"
