@@ -1,0 +1,70 @@
+[package]
+name = "ipm-runtime"
+description = "IPM (Intelligence Protocol Mechanism) runtime: Aura/Grandpa solochain with the IPM pallets."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.7", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["derive", "serde"] }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
+polkadot-sdk = { version = "2610.0.0", default-features = false, features = [
+    "experimental",
+    "frame-executive",
+    "frame-metadata-hash-extension",
+    "frame-support",
+    "frame-system",
+    "frame-system-rpc-runtime-api",
+    "pallet-aura",
+    "pallet-balances",
+    "pallet-grandpa",
+    "pallet-sudo",
+    "pallet-timestamp",
+    "pallet-transaction-payment",
+    "pallet-transaction-payment-rpc-runtime-api",
+    "sp-api",
+    "sp-block-builder",
+    "sp-consensus-aura",
+    "sp-consensus-grandpa",
+    "sp-core",
+    "sp-genesis-builder",
+    "sp-inherents",
+    "sp-io",
+    "sp-keyring",
+    "sp-offchain",
+    "sp-runtime",
+    "sp-session",
+    "sp-storage",
+    "sp-transaction-pool",
+    "sp-version",
+] }
+ipm-economics = { path = "../primitives/ipm-economics", default-features = false }
+pallet-ipm-emission = { path = "../pallets/ipm-emission", default-features = false }
+pallet-subnet-registry = { path = "../pallets/subnet-registry", default-features = false }
+pallet-weights = { path = "../pallets/weights", default-features = false }
+pallet-work-verify = { path = "../pallets/work-verify", default-features = false }
+pallet-ipm-consensus = { path = "../pallets/ipm-consensus", default-features = false }
+
+[build-dependencies]
+substrate-wasm-builder = { version = "35.0.0", optional = true }
+
+[features]
+default = ["std"]
+std = [
+    "codec/std",
+    "scale-info/std",
+    "serde_json/std",
+    "polkadot-sdk/std",
+    "ipm-economics/std",
+    "pallet-ipm-emission/std",
+    "pallet-subnet-registry/std",
+    "pallet-weights/std",
+    "pallet-work-verify/std",
+    "pallet-ipm-consensus/std",
+    "substrate-wasm-builder",
+]
+metadata-hash = ["substrate-wasm-builder/metadata-hash"]
+# Devnet/CI only: 10-block epochs so a full commit-reveal-settle cycle takes minutes.
+fast-epochs = []
