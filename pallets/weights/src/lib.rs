@@ -96,25 +96,36 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Commit a hash of this epoch's weights. A later commit in the same epoch replaces it.
+        ///
+        /// The first commit a registered neuron makes in an epoch is free, so honest validators
+        /// pay no fee for taking part in consensus; replacing a commit in the same epoch pays the
+        /// normal fee, so the call cannot be spammed for free.
         #[pallet::call_index(0)]
         #[pallet::weight(T::DbWeight::get().reads_writes(2, 1))]
-        pub fn commit_weights(origin: OriginFor<T>, netuid: NetUid, hash: H256) -> DispatchResult {
+        pub fn commit_weights(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            hash: H256,
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             ensure!(
                 NeuronUid::<T>::contains_key(netuid, &who),
                 Error::<T>::NotRegistered
             );
             let epoch = Self::current_epoch();
+            let first_in_epoch =
+                !matches!(Commits::<T>::get(netuid, &who), Some((_, e)) if e == epoch);
             Commits::<T>::insert(netuid, &who, (hash, epoch));
             Self::deposit_event(Event::WeightsCommitted {
                 netuid,
                 validator: who,
                 epoch,
             });
-            Ok(())
+            Ok(if first_in_epoch { Pays::No } else { Pays::Yes }.into())
         }
 
-        /// Reveal in the epoch after the commit.
+        /// Reveal in the epoch after the commit. A successful reveal is free: it can only happen
+        /// once per commit.
         #[pallet::call_index(1)]
         #[pallet::weight(T::DbWeight::get().reads_writes(2, 2))]
         pub fn reveal_weights(
@@ -123,7 +134,7 @@ pub mod pallet {
             uids: Vec<Uid>,
             weights: Vec<u16>,
             salt: [u8; 32],
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             let (hash, epoch) = Commits::<T>::get(netuid, &who).ok_or(Error::<T>::NoCommit)?;
             ensure!(
@@ -147,7 +158,7 @@ pub mod pallet {
                 validator: who,
                 epoch,
             });
-            Ok(())
+            Ok(Pays::No.into())
         }
     }
 

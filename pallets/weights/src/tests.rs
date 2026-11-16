@@ -86,3 +86,23 @@ fn commit_hash_test_vector() {
         "cd1d13b27f1aa27e8b3635619fdd1181413a77f391b43b65abacd699d1296b92"
     );
 }
+
+#[test]
+fn first_commit_and_reveal_are_free_repeat_commit_pays() {
+    use polkadot_sdk::frame_support::dispatch::Pays;
+    new_test_ext().execute_with(|| {
+        setup();
+        let (uids, w) = (vec![1u16], vec![1u16]);
+        let h = Weights::commit_hash(0, &uids, &w, &SALT);
+        let first = Weights::commit_weights(RuntimeOrigin::signed(1), 0, h).unwrap();
+        assert_eq!(first.pays_fee, Pays::No);
+        let again = Weights::commit_weights(RuntimeOrigin::signed(1), 0, h).unwrap();
+        assert_eq!(again.pays_fee, Pays::Yes);
+        System::set_block_number(10);
+        let reveal = Weights::reveal_weights(RuntimeOrigin::signed(1), 0, uids, w, SALT).unwrap();
+        assert_eq!(reveal.pays_fee, Pays::No);
+        // a commit in the next epoch is free again
+        let next = Weights::commit_weights(RuntimeOrigin::signed(1), 0, h).unwrap();
+        assert_eq!(next.pays_fee, Pays::No);
+    });
+}
