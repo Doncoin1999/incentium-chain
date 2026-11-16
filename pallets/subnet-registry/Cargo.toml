@@ -1,0 +1,19 @@
+[package]
+name = "pallet-subnet-registry"
+description = "Incentium subnets and neurons: SN0 at genesis, deposit-priced subnet registration from Phase 2, neuron registration with burned fee."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "3.7", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["derive"] }
+polkadot-sdk = { version = "2610.0.0", default-features = false, features = ["frame-support", "frame-system", "sp-runtime"] }
+ict-economics = { path = "../../primitives/ict-economics", default-features = false }
+
+[dev-dependencies]
+polkadot-sdk = { version = "2610.0.0", features = ["frame-support", "frame-system", "sp-runtime", "sp-io", "sp-core", "pallet-balances", "std"] }
+
+[features]
+default = ["std"]
+std = ["codec/std", "scale-info/std", "polkadot-sdk/std", "ict-economics/std"]

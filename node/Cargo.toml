@@ -1,0 +1,57 @@
+[package]
+name = "incentium-node"
+description = "Incentium reference node."
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "incentium-node"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+futures = { version = "0.3", features = ["thread-pool"] }
+jsonrpsee = { version = "0.24", features = ["server"] }
+polkadot-sdk = { version = "2610.0.0", features = [
+    "std",
+    "sc-basic-authorship",
+    "sc-cli",
+    "sc-client-api",
+    "sc-consensus",
+    "sc-consensus-aura",
+    "sc-consensus-grandpa",
+    "sc-executor",
+    "sc-network",
+    "sc-offchain",
+    "sc-service",
+    "sc-telemetry",
+    "sc-transaction-pool",
+    "sc-transaction-pool-api",
+    "sp-consensus-aura",
+    "sp-core",
+    "sp-genesis-builder",
+    "sp-api",
+    "sp-block-builder",
+    "sp-blockchain",
+    "sp-inherents",
+    "sp-io",
+    "sp-keyring",
+    "sp-runtime",
+    "sp-timestamp",
+    "frame-metadata-hash-extension",
+    "frame-system",
+    "pallet-transaction-payment",
+    "pallet-transaction-payment-rpc",
+    "substrate-frame-rpc-system",
+] }
+incentium-runtime = { path = "../runtime" }
+
+[build-dependencies]
+substrate-build-script-utils = "11.0.3"
+
+[features]
+default = []
+fast-epochs = ["incentium-runtime/fast-epochs"]

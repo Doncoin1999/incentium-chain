@@ -1,0 +1,12 @@
+[package]
+name = "ict-economics"
+description = "Pure, no_std economic rules of the Incentium protocol (issuance, AMM, buyback, allocation)."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+
+[features]
+default = ["std"]
+std = []

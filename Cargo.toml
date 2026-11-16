@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "primitives/ict-economics",
+    "pallets/ict-emission",
+    "pallets/subnet-registry",
+    "pallets/weights",
+    "pallets/work-verify",
+    "pallets/ict-consensus",
+    "runtime",
+    "node",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
