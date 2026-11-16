@@ -212,3 +212,24 @@ fn bootstrap_period_operator_runs_everything_then_opens() {
         assert_eq!(free(m1), locked(m1));
     });
 }
+
+#[test]
+fn ordinary_fees_are_a_fraction_of_an_ict() {
+    use frame_support::dispatch::GetDispatchInfo;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        let call = RuntimeCall::Balances(pallet_balances::Call::transfer_keep_alive {
+            dest: acc(K::Bob).into(),
+            value: UNIT,
+        });
+        let fee = pallet_transaction_payment::Pallet::<Runtime>::compute_fee(
+            150,
+            &call.get_dispatch_info(),
+            0,
+        );
+        assert!(fee > 0, "fee must not be zero");
+        assert!(
+            fee < UNIT / 100,
+            "transfer fee {fee} should be below 0.01 ICT"
+        );
+    });
+}

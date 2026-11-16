@@ -107,11 +107,25 @@ parameter_types! {
     pub FeeMultiplier: Multiplier = Multiplier::one();
 }
 
+/// One ICT has 9 decimals, so the template's 1-to-1 mapping of weight (picoseconds) to the
+/// smallest unit made a simple call cost around 0.1–1 ICT. Dividing by `FEE_DIVISOR` puts an
+/// ordinary transfer at roughly a thousandth of an ICT; the first weight commit per epoch and
+/// every successful reveal are free anyway (see `pallet-weights`).
+pub const FEE_DIVISOR: Balance = 100;
+
+pub struct IctWeightToFee;
+impl frame_support::weights::WeightToFee for IctWeightToFee {
+    type Balance = Balance;
+    fn weight_to_fee(weight: &Weight) -> Self::Balance {
+        (weight.ref_time() as Balance) / FEE_DIVISOR
+    }
+}
+
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type OnChargeTransaction = FungibleAdapter<Balances, ()>;
     type OperationalFeeMultiplier = ConstU8<5>;
-    type WeightToFee = IdentityFee<Balance>;
+    type WeightToFee = IctWeightToFee;
     type LengthToFee = IdentityFee<Balance>;
     type FeeMultiplierUpdate = ConstFeeMultiplier<FeeMultiplier>;
     type WeightInfo = pallet_transaction_payment::weights::SubstrateWeight<Runtime>;
