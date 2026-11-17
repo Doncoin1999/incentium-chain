@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incentium: machine intelligence, checked and paid for</title>
+<link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
+<meta name="description" content="Incentium is an open network where AI work is produced, spot-checked against a reference model and paid for in ICT. The testnet is live.">
+<style>
+  :root {
+    --slate: #1c2230;
+    --panel: #242b3a;
+    --line: #39425a;
+    --text: #e9ecf2;
+    --muted: #97a1b4;
+    --lamp: #e8a33d;
+    --lamp-dim: #5a4a33;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--slate); color: var(--text); }
+  body { margin: 0; font: 17px/1.6 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  a:hover { color: var(--lamp); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .col { max-width: 40em; }
+
+  header.top { display: flex; justify-content: space-between; align-items: baseline; padding: 28px 0; }
+  .mark { font: 600 22px/1 var(--serif); letter-spacing: .01em; text-decoration: none; }
+  nav a { margin-left: 22px; font-size: 15px; color: var(--muted); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+
+  .hero { padding: 56px 0 24px; }
+  h1 { font: 500 clamp(40px, 6.4vw, 72px)/1.04 var(--serif); letter-spacing: -.015em; margin: 0 0 24px; max-width: 13em; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 34em; margin: 0; }
+
+  /* The epoch track: one lamp per block of the current 72-minute epoch. */
+  .epoch { margin: 64px 0 8px; }
+  .track { display: grid; grid-template-columns: repeat(120, 1fr); gap: 3px; }
+  .track i { height: 22px; background: var(--lamp-dim); border-radius: 1px; }
+  .track i.on { background: var(--lamp); }
+  .track i.now { background: var(--text); }
+  .epoch-read { display: flex; flex-wrap: wrap; gap: 8px 32px; margin-top: 14px; color: var(--muted); font-size: 15px; }
+  .epoch-read b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  section { padding: 72px 0 0; }
+  h2 { font: 500 34px/1.15 var(--serif); margin: 0 0 18px; }
+  h3 { font: 600 18px/1.3 var(--sans); margin: 0 0 6px; }
+  p { margin: 0 0 16px; }
+
+  .cmd { display: flex; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 22px 0 14px; max-width: 52em; }
+  .cmd code { flex: 1; padding: 16px 18px; font: 14.5px/1.5 var(--mono); overflow-x: auto; white-space: nowrap; }
+  .cmd button { border: 0; border-left: 1px solid var(--line); background: none; color: var(--text); font: 600 14px var(--sans); padding: 0 20px; cursor: pointer; }
+  .cmd button:hover { color: var(--lamp); }
+  .note { color: var(--muted); font-size: 15px; }
+
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  ol.steps li { counter-increment: s; border-top: 2px solid var(--line); padding-top: 14px; }
+  ol.steps li::before { content: counter(s); display: block; font: 500 28px/1 var(--serif); color: var(--lamp); margin-bottom: 10px; }
+  ol.steps p { color: var(--muted); font-size: 15.5px; }
+
+  table.net { border-collapse: collapse; width: 100%; max-width: 52em; margin-top: 18px; font-size: 16px; }
+  table.net th, table.net td { text-align: left; padding: 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.net th { font-weight: 400; color: var(--muted); width: 13em; padding-right: 16px; }
+  table.net code { font: 14.5px var(--mono); }
+
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 48px; margin-top: 24px; max-width: 60em; }
+  .rules p { color: var(--muted); font-size: 15.5px; }
+
+  ol.phases { list-style: none; padding: 0; margin: 24px 0 0; max-width: 52em; }
+  ol.phases li { display: grid; grid-template-columns: 9em 1fr; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+  ol.phases .when { font: 500 20px/1.3 var(--serif); }
+  ol.phases p { color: var(--muted); margin: 0; }
+  ol.phases li.live .when { color: var(--lamp); }
+
+  footer { margin-top: 96px; padding: 32px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14.5px; }
+  footer p { max-width: 52em; }
+
+  @media (max-width: 760px) {
+    nav { display: none; }
+    .track { grid-template-columns: repeat(60, 1fr); }
+    ol.steps, .rules { grid-template-columns: 1fr; }
+    ol.phases li { grid-template-columns: 1fr; gap: 4px; }
+    table.net th { width: 9em; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .track i.now { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .35; } }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="mark" href="/">Incentium</a>
+    <nav aria-label="Main">
+      <a href="#mine">Mine</a>
+      <a href="#network">Network</a>
+      <a href="#launch">Launch rules</a>
+      <a href="https://github.com/Doncoin1999/incentium-chain">Code</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="hero">
+      <h1>Machine intelligence, checked and paid for.</h1>
+      <p class="lede">Incentium is an open network where anyone can run an AI model, answer requests, and earn ICT for answers that pass verification. Validators re-run a sample of every miner's work on a reference model; only work that matches is paid.</p>
+
+      <div class="epoch" aria-live="polite">
+        <div class="track" id="track" role="img" aria-label="Progress of the current testnet epoch"></div>
+        <div class="epoch-read" id="read">
+          <span>Connecting to the testnet</span>
+        </div>
+      </div>
+    </div>
+
+    <section id="mine">
+      <h2>Mine on the testnet</h2>
+      <div class="col">
+        <p>One command on a Linux computer with 4 GB of RAM installs the model, creates your miner key and registers it. You need no ICT, no open port and no GPU.</p>
+      </div>
+      <div class="cmd">
+        <code id="install">curl -sSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-miner.sh | bash</code>
+        <button type="button" id="copy">Copy</button>
+      </div>
+      <p class="note">Your key is saved in <code>~/.incentium-miner/miner-key.json</code>. Back it up: whoever has it controls the miner's rewards. Test ICT has no value.</p>
+    </section>
+
+    <section id="how">
+      <h2>How a reward is earned</h2>
+      <ol class="steps">
+        <li><h3>Tasks go out</h3><p>Each epoch, validators publish prompts. Your miner fetches them and answers with the network's reference model.</p></li>
+        <li><h3>Answers are signed</h3><p>Every answer is signed with your miner key, so nobody can answer in your name.</p></li>
+        <li><h3>A sample is re-run</h3><p>Validators re-run a share of the answers and compare the model's probabilities. A miner running a different model is reported and stops being paid.</p></li>
+        <li><h3>The epoch settles</h3><p>Validators commit their scores, reveal them one epoch later, and the chain pays out: 60% to miners, 30% to validators, 10% to the fund.</p></li>
+      </ol>
+    </section>
+
+    <section id="network">
+      <h2>Testnet</h2>
+      <table class="net">
+        <tr><th>Explorer</th><td><a href="https://explorer.incentium.org">explorer.incentium.org</a></td></tr>
+        <tr><th>Faucet</th><td><a href="https://faucet.incentium.org">faucet.incentium.org</a>, 10 test ICT a day</td></tr>
+        <tr><th>RPC</th><td><code>wss://rpc.incentium.org</code></td></tr>
+        <tr><th>Wallets</th><td>Talisman, SubWallet or Polkadot.js: add a network with the RPC above</td></tr>
+        <tr><th>Coin</th><td>ICT, 9 decimals, 21,000,000 maximum supply</td></tr>
+        <tr><th>Addresses</th><td>Standard Substrate addresses, starting with <code>5</code></td></tr>
+        <tr><th>Blocks and epochs</th><td>A block every 12 seconds, 1 ICT per block; an epoch is 360 blocks, 72 minutes</td></tr>
+        <tr><th>Reference model</th><td>Tier 0: Qwen3.5-2B, 4-bit, runs on an ordinary CPU</td></tr>
+      </table>
+    </section>
+
+    <section id="launch">
+      <h2>Launch rules, in the open</h2>
+      <div class="col">
+        <p>There is no investor or team allocation, no company and no token sale. Every ICT is issued by the protocol, apart from 100 ICT at genesis for the launch operator's transaction fees, which counts toward the cap.</p>
+      </div>
+      <div class="rules">
+        <div><h3>The first 90 days</h3><p>The launch operator registers the first miners and validators, without fees. On the testnet, anyone who runs the installer is registered for free through the operator.</p></div>
+        <div><h3>Launch rewards are locked</h3><p>Everything earned in the first 90 days goes to an on-chain vault: locked for two months after day 90, then released at 10% every two months.</p></div>
+        <div><h3>At the end of day 90</h3><p>The chain itself removes the operator's sudo key and opens two disclosed bounties from the fund: 25,000 ICT for marketing and up to 50,000 ICT for an exchange listing.</p></div>
+        <div><h3>After that</h3><p>Every change and every payment from the fund needs an on-chain vote by ICT holders. ICT still locked in the launch vault cannot vote.</p></div>
+      </div>
+    </section>
+
+    <section id="roadmap">
+      <h2>Three phases</h2>
+      <ol class="phases">
+        <li class="live"><span class="when">Phase 1</span><p>One subnet, one standard task: serving a fixed open model. Rewards follow verified work. The testnet runs this today.</p></li>
+        <li><span class="when">Phase 2</span><p>Anyone can open a subnet with its own task and its own Alpha token, bought back with at least half of the subnet's issuance. Opens when the whitepaper's criteria are met: at least six months of operation, 250 miners, 16 independent validators, an external audit and an on-chain vote.</p></li>
+        <li><span class="when">Phase 3</span><p>Issuance follows measured use: locked value, user revenue and fees, with caps that make manipulation cost more than it pays.</p></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>
+    <p>Incentium is open-source software, published and run by no company or foundation. This page is not an offer to sell or a solicitation to buy anything, and test ICT has no value. <a href="https://github.com/Doncoin1999/incentium-chain">Source code</a></p>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const EPOCH = 360, TICKS = 120, PER = EPOCH / TICKS, BLOCK_S = 12;
+  const track = document.getElementById("track"), read = document.getElementById("read");
+  for (let i = 0; i < TICKS; i++) track.appendChild(document.createElement("i"));
+  const ticks = track.children;
+
+  function show(n) {
+    const into = n % EPOCH, epoch = Math.floor(n / EPOCH);
+    const lit = Math.floor(into / PER);
+    for (let i = 0; i < TICKS; i++) ticks[i].className = i < lit ? "on" : i === lit ? "now" : "";
+    const left = Math.round(((EPOCH - into) * BLOCK_S) / 60);
+    read.innerHTML =
+      `<span>Testnet block <b>${n.toLocaleString("en")}</b></span>` +
+      `<span>Epoch <b>${epoch}</b>, block <b>${into}</b> of ${EPOCH}</span>` +
+      `<span>Next settlement in about <b>${left} min</b></span>`;
+  }
+
+  function connect() {
+    let ws;
+    try { ws = new WebSocket("wss://rpc.incentium.org"); } catch (e) { return fail(); }
+    ws.onopen = () => ws.send(JSON.stringify({ id: 1, jsonrpc: "2.0", method: "chain_subscribeNewHeads", params: [] }));
+    ws.onmessage = (m) => {
+      const d = JSON.parse(m.data);
+      const head = d.params && d.params.result;
+      if (head && head.number) show(parseInt(head.number, 16));
+    };
+    ws.onerror = fail;
+    ws.onclose = () => setTimeout(connect, 10000);
+  }
+  function fail() {
+    read.innerHTML = "<span>The testnet cannot be reached right now. This page tries again every 10 seconds.</span>";
+  }
+  connect();
+
+  document.getElementById("copy").addEventListener("click", async (e) => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("install").textContent);
+      e.target.textContent = "Copied";
+      setTimeout(() => (e.target.textContent = "Copy"), 1800);
+    } catch (_) {
+      e.target.textContent = "Select and copy";
+    }
+  });
+})();
+</script>
+</body>
+</html>
