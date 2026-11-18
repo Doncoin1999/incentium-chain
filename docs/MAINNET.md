@@ -20,6 +20,11 @@ Both: Ubuntu, user `administrator`, repo cloned to `~/incentium-chain`, the norm
 4. Copy `incentium-mainnet-raw.json` to B and compare the sha256 printed on both servers.
 5. Go live: `bash scripts/mainnet-start.sh b`, then `bash scripts/mainnet-start.sh a`. Block 1 starts
    the 90-day launch period; finality starts once both servers run.
-6. Then: Caddy for the public RPC, explorer, watchdog, SN0 (validator, operator miner).
+6. Before launch, on A: `bash scripts/mainnet-sn0.sh prepare` (Python, llama.cpp, the tier-0 model and
+   the `incentium-qwen` reference-model service). Open TCP 8100 on A for the task server.
+7. After launch: Caddy for `rpc.incentium.org` and the explorer on A; then on A
+   `bash scripts/mainnet-sn0.sh start` (registers and stakes the operator's validator and miner, locks the
+   tier-0 model hash, starts the validator); then on the miner machine copy `miner.json` from A and run
+   `bash scripts/mainnet-miner.sh`. Then the watchdog.
 
 Never run the same authority key on two machines at the same time.
