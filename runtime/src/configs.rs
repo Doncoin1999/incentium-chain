@@ -23,7 +23,7 @@ use sp_version::RuntimeVersion;
 use super::{
     AccountId, Aura, Balance, Balances, Block, BlockNumber, Consensus, Hash, Nonce, PalletInfo,
     Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin,
-    RuntimeTask, System, EPOCH_LENGTH, EXISTENTIAL_DEPOSIT, SLOT_DURATION, UNIT, VERSION,
+    RuntimeTask, System, Timestamp, EPOCH_LENGTH, EXISTENTIAL_DEPOSIT, SLOT_DURATION, UNIT, VERSION,
 };
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -254,4 +254,33 @@ impl pallet_ict_consensus::Config for Runtime {
     type LaunchStep = LaunchStep;
     type LaunchStepPpm = LaunchStepPpm;
     type LaunchImmediatePpm = LaunchImmediatePpm;
+}
+
+parameter_types! {
+    pub const SwapBlocksPerDay: u32 = super::DAYS;
+    /// 5 USDC (6 decimals): smallest fill.
+    pub const SwapMinFillUsdc: u128 = 5_000_000;
+    /// Fills in steps of 0.01 ICT.
+    pub const SwapQtyStep: Balance = UNIT / 100;
+    pub const SwapMaxOpenReservations: u8 = 3;
+    pub const SwapOrderTtlMax: u64 = 24 * 3600;
+    /// 1 h for the taker to lock + 12 h for the maker to confirm + 6 h claim margin.
+    pub const SwapReservationTtl: u64 = 19 * 3600;
+    pub const SwapLockTtlMax: u64 = 12 * 3600;
+}
+
+/// ICT <-> USDC atomic swaps with Base (Incentium Swap Technical Specification v0.1).
+impl pallet_ict_swap::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = ();
+    type RuntimeHoldReason = RuntimeHoldReason;
+    type Currency = Balances;
+    type UnixTime = Timestamp;
+    type BlocksPerDay = SwapBlocksPerDay;
+    type MinFillUsdc = SwapMinFillUsdc;
+    type QtyStep = SwapQtyStep;
+    type MaxOpenReservations = SwapMaxOpenReservations;
+    type OrderTtlMax = SwapOrderTtlMax;
+    type ReservationTtl = SwapReservationTtl;
+    type LockTtlMax = SwapLockTtlMax;
 }
