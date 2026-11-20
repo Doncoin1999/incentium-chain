@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incentium Explorer</title>
+<meta name="description" content="Blocks, accounts, rewards and the launch vault on the Incentium chain.">
+<link rel="icon" type="image/svg+xml" href="https://incentium.org/brand/incentium-logo-white-on-black.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#/">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="5.5" r="2.6" fill="#e9ecf2"/><path d="M10 10h8v1.4c-1.6.1-1.8 1.2-1.8 2.3v8.1c0 1.2.4 2 2.4 2.1V25H9.6v-1.1c2-.1 2.4-.9 2.4-2.1v-8.1c0-1.1-.2-2.2-2-2.3z" fill="#e9ecf2"/><path d="M3 19c3 3 19 0 22-8" fill="none" stroke="#e8a33d" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <b>Incentium</b><span>Explorer</span>
+    </a>
+    <nav class="main" aria-label="Main">
+      <a href="#/" data-nav="overview">Overview</a>
+      <a href="#/accounts" data-nav="accounts">Accounts</a>
+      <a href="#/launch" data-nav="launch">Launch period</a>
+      <a href="https://governance.incentium.org">Governance</a>
+    </nav>
+    <form class="search" id="search" role="search">
+      <label for="q" class="sr">Search</label>
+      <input id="q" name="q" autocomplete="off" spellcheck="false" placeholder="Search address (5…), block number or hash">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <div id="wallet-slot"></div>
+  </div>
+</header>
+<main class="wrap" id="app" tabindex="-1"><p class="muted">Loading…</p></main>
+<footer>
+  <div class="wrap">
+    <span>Open source · reads public chain data only · never asks you to sign</span>
+    <span><a href="https://incentium.org">incentium.org</a> · <a href="https://governance.incentium.org">governance</a> · <a href="/api/stats">API</a></span>
+  </div>
+</footer>
+<script src="/app.js"></script>
+</body>
+</html>
