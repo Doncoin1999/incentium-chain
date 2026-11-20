@@ -53,15 +53,26 @@ function baseR() {
 const baseNow = async () => (await baseR().getBlock("latest")).timestamp;
 const swapRead = () => new E.Contract(cfg.contract, ABI, baseR());
 
+// Several wallets may inject window.ethereum (Talisman, TAO wallet, MetaMask). Use EIP-6963 to find MetaMask itself.
+const evmWallets = [];
+window.addEventListener("eip6963:announceProvider", (e) => { if (!evmWallets.some((w) => w.info.uuid === e.detail.info.uuid)) evmWallets.push(e.detail); });
+window.dispatchEvent(new Event("eip6963:requestProvider"));
+function evmProvider() {
+  const mm = evmWallets.find((w) => w.info.rdns === "io.metamask") || evmWallets.find((w) => /metamask/i.test(w.info.name));
+  if (mm) return mm.provider;
+  if (window.ethereum) return window.ethereum;
+  throw new Error("No Ethereum wallet found. Install MetaMask.");
+}
+
 async function baseSigner() {
-  if (!window.ethereum) throw new Error("No Ethereum wallet found. Install MetaMask or use Talisman's Ethereum account.");
-  const bp = new E.BrowserProvider(window.ethereum);
-  const net = await bp.getNetwork();
-  if (Number(net.chainId) !== Number(cfg.base_chain_id)) {
-    try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x" + Number(cfg.base_chain_id).toString(16) }] }); }
-    catch { throw new Error("Switch your wallet to Base and try again."); }
+  const eth = evmProvider();
+  await eth.request({ method: "eth_requestAccounts" });          // connect first, then the network can be switched
+  const want = "0x" + Number(cfg.base_chain_id).toString(16);
+  if ((await eth.request({ method: "eth_chainId" })).toLowerCase() !== want) {
+    try { await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: want }] }); }
+    catch (e) { throw new Error(`Switch MetaMask to ${Number(cfg.base_chain_id) === 84532 ? "Base Sepolia" : "Base"} and try again. (${e.message || e})`); }
   }
-  const signer = await (new E.BrowserProvider(window.ethereum)).getSigner();
+  const signer = await new E.BrowserProvider(eth).getSigner();
   state.base = { address: (await signer.getAddress()).toLowerCase() };
   renderWallets();
   return signer;
