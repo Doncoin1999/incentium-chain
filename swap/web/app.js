@@ -70,12 +70,30 @@ async function baseSigner() {
 async function connectInc() {
   const ext = await P.web3Enable("Incentium Swap");
   if (!ext.length) throw new Error("No Polkadot wallet found. Install Talisman, SubWallet or Polkadot.js.");
-  const accs = (await P.web3Accounts()).filter((a) => a.type !== "ethereum");
+  // Several wallets may inject (Talisman, a TAO wallet, ...): prefer Talisman, then let the user pick the account.
+  const names = ext.map((e) => e.name);
+  const pick = names.includes("talisman") ? ["talisman"] : names;
+  const accs = (await P.web3Accounts({ extensions: pick })).filter((a) => a.type !== "ethereum");
   if (!accs.length) throw new Error("Your wallet shared no Polkadot (5…) accounts with this site.");
-  state.incAll = accs.map((a) => ({ address: P.encodeAddress(P.decodeAddress(a.address), 42), name: a.meta.name || "" }));
-  state.inc = state.incAll[0];
+  state.incAll = accs.map((a) => ({ address: P.encodeAddress(P.decodeAddress(a.address), 42), name: a.meta.name || "", source: a.meta.source }));
+  state.inc = state.incAll.length === 1 ? state.incAll[0] : await chooseAccount(state.incAll);
   renderWallets();
   return state.inc;
+}
+
+function chooseAccount(list) {
+  return new Promise((resolve, reject) => {
+    dlg.innerHTML = `<h2 style="margin-top:0">Choose your Incentium account</h2>
+      <div class="stack">${list.map((a, i) => `<button class="btn" data-pick="${i}" style="text-align:left">${esc(a.name || "Account")} · <span class="mono">${esc(short(a.address))}</span> <span class="muted">(${esc(a.source)})</span></button>`).join("")}
+      <button class="btn" data-pick="-1">Cancel</button></div>`;
+    dlg.onclick = (e) => {
+      const b = e.target.closest("[data-pick]"); if (!b) return;
+      dlg.onclick = null; dlg.close();
+      const i = Number(b.dataset.pick);
+      i < 0 ? reject(new Error("No account chosen.")) : resolve(list[i]);
+    };
+    dlg.showModal();
+  });
 }
 
 function sendInc(tx, from) {
