@@ -209,8 +209,18 @@ class Base:
         safe = self.safe_block()
         if nxt > safe:
             return 0
-        end = min(safe, nxt + step - 1)
-        logs = self.w3.eth.get_logs({"address": self.c.address, "fromBlock": nxt, "toBlock": end})
+        # Public RPCs cap eth_getLogs ranges (sepolia.base.org answers 413); shrink the window until it fits.
+        step = min(step, getattr(self, "log_step", step))
+        while True:
+            end = min(safe, nxt + step - 1)
+            try:
+                logs = self.w3.eth.get_logs({"address": self.c.address, "fromBlock": nxt, "toBlock": end})
+                break
+            except Exception:
+                if step <= 10:
+                    raise
+                step = max(10, step // 4)
+                self.log_step = step
         for lg in sorted(logs, key=lambda x: (x["blockNumber"], x["logIndex"])):
             self.apply_log(con, lg)
         store.set_meta(con, "base_next", end + 1)
