@@ -58,7 +58,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("incentium"),
     impl_name: alloc::borrow::Cow::Borrowed("incentium-reference"),
     authoring_version: 1,
-    spec_version: 8,
+    spec_version: 7,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -167,9 +167,6 @@ mod runtime {
     pub type WorkVerify = pallet_work_verify;
     #[runtime::pallet_index(14)]
     pub type Consensus = pallet_ict_consensus;
-    /// ICT <-> USDC atomic swaps with Base (Incentium Swap spec v0.1).
-    #[runtime::pallet_index(15)]
-    pub type Swap = pallet_ict_swap;
 
     // Governance and the development fund (governance.rs).
     #[runtime::pallet_index(20)]
