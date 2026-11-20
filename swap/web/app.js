@@ -82,6 +82,7 @@ async function connectInc() {
   const ext = await P.web3Enable("Incentium Swap");
   if (!ext.length) throw new Error("No Polkadot wallet found. Install Talisman, SubWallet or Polkadot.js.");
   // Several wallets may inject (Talisman, a TAO wallet, ...): prefer Talisman, then let the user pick the account.
+  state.exts = ext;
   const names = ext.map((e) => e.name);
   const pick = names.includes("talisman") ? ["talisman"] : names;
   const accs = (await P.web3Accounts({ extensions: pick })).filter((a) => a.type !== "ethereum");
@@ -110,7 +111,9 @@ function chooseAccount(list) {
 function sendInc(tx, from) {
   return new Promise(async (resolve, reject) => {
     try {
-      const injector = await P.web3FromAddress(from);
+      // Sign with the extension the account came from; web3FromAddress would ask every wallet (and can hang on one that was dismissed).
+      const own = (state.exts || []).find((e) => e.name === state.inc?.source);
+      const injector = own || await P.web3FromAddress(from);
       const unsub = await tx.signAndSend(from, { signer: injector.signer }, ({ status, dispatchError }) => {
         if (dispatchError) {
           let msg = dispatchError.toString();
