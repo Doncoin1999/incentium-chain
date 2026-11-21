@@ -65,7 +65,9 @@ def test_http_page_and_drip_behind_proxy(tmp_path):
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     url = f"http://127.0.0.1:{srv.server_address[1]}"
     try:
-        assert b"Incentium faucet" in urllib.request.urlopen(url + "/").read()
+        html = urllib.request.urlopen(url + "/").read()
+        assert b"<title>Faucet \xc2\xb7 Incentium</title>" in html
+        assert b'class="ic-top"' in html and b'href="https://incentium.org/"' in html   # shared top bar
 
         def post(address, xff):
             req = urllib.request.Request(url + "/drip", data=json.dumps({"address": address}).encode(),

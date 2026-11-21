@@ -3,24 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Incentium: machine intelligence, checked and paid for</title>
+<title>Incentium — to inspire action, awaken ambition, and drive meaningful progress</title>
 <link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
 <meta name="description" content="Incentium is an open network where AI work is produced, spot-checked against a reference model and paid for in ICT. The testnet is live.">
+<meta property="og:title" content="Incentium">
+<meta property="og:description" content="Incentium — to inspire action, awaken ambition, and drive meaningful progress.">
+<meta property="og:image" content="https://incentium.org/brand/incentium-logo-white-on-black-1024.png">
 <style>
   :root {
-    --slate: #1c2230;
-    --panel: #242b3a;
-    --line: #39425a;
-    --text: #e9ecf2;
-    --muted: #97a1b4;
-    --lamp: #e8a33d;
-    --lamp-dim: #5a4a33;
+    --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4;
+    --lamp: #e8a33d; --lamp-dim: #5a4a33;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html { background: var(--slate); color: var(--text); }
+  html { background: var(--slate); color: var(--text); scroll-behavior: smooth; }
   body { margin: 0; font: 17px/1.6 var(--sans); }
   a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
   a:hover { color: var(--lamp); }
@@ -28,17 +26,43 @@
   .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
   .col { max-width: 40em; }
 
-  header.top { display: flex; justify-content: space-between; align-items: baseline; padding: 28px 0; }
-  .mark { font: 600 22px/1 var(--serif); letter-spacing: .01em; text-decoration: none; }
-  nav a { margin-left: 22px; font-size: 15px; color: var(--muted); text-decoration: none; }
-  nav a:hover { color: var(--text); }
+  /* ------------------------------------------------------------ hero */
+  .hero { position: relative; min-height: calc(100svh - 56px); display: grid; place-items: center; overflow: hidden;
+    background: radial-gradient(ellipse 60% 50% at 50% 42%, #2a2620 0%, #1f2330 45%, var(--slate) 75%); }
+  #field { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hero-in { position: relative; text-align: center; padding: 48px 24px 96px; max-width: 980px; }
+  .logo { width: clamp(150px, 22vw, 230px); height: auto; overflow: visible; display: block; margin: 0 auto 36px; }
+  .logo .dot { transform-box: fill-box; transform-origin: center; }
+  .logo .stem { transform-box: fill-box; transform-origin: 50% 100%; }
+  h1.motto { margin: 0; font: 500 clamp(30px, 4.6vw, 54px)/1.22 var(--serif); letter-spacing: -.01em; }
+  h1.motto .name { display: block; font-size: 1.5em; letter-spacing: .01em; margin-bottom: .15em; }
+  h1.motto .w { display: inline-block; white-space: pre; }
+  .hero .lede { color: var(--muted); font-size: 19px; max-width: 36em; margin: 30px auto 0; }
+  .cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 8px; font-weight: 600; text-decoration: none; border: 1px solid var(--line); }
+  .btn.main { background: var(--lamp); color: #1b1b1b; border-color: var(--lamp); }
+  .btn.main:hover { background: #f0b456; color: #1b1b1b; }
+  .btn:not(.main):hover { border-color: var(--lamp); }
+  .down { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); color: var(--muted); text-decoration: none; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; }
 
-  .hero { padding: 56px 0 24px; }
-  h1 { font: 500 clamp(40px, 6.4vw, 72px)/1.04 var(--serif); letter-spacing: -.015em; margin: 0 0 24px; max-width: 13em; }
-  .lede { font-size: 20px; color: var(--muted); max-width: 34em; margin: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .logo .dot { animation: drop .9s cubic-bezier(.2,.9,.3,1.2) .2s both; }
+    .logo .stem { animation: rise .8s cubic-bezier(.3,.8,.3,1) .55s both; }
+    .logo #sweep { animation: sweep 1.1s cubic-bezier(.6,.1,.3,1) 1.15s both; }
+    .logo { animation: glow 6s ease-in-out 2.6s infinite; }
+    h1.motto .name { animation: fadeup .9s ease 1.9s both; }
+    h1.motto .w { animation: word .7s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(2.5s + var(--i) * .2s); }
+    .hero .lede, .cta, .down { animation: fadeup 1s ease both; animation-delay: var(--after, 5s); }
+    @keyframes drop { from { opacity: 0; transform: translateY(-120px) scale(.6); } to { opacity: 1; transform: none; } }
+    @keyframes rise { from { opacity: 0; transform: scaleY(0); } to { opacity: 1; transform: none; } }
+    @keyframes sweep { from { width: 0; } to { width: 520px; } }
+    @keyframes glow { 0%, 100% { filter: drop-shadow(0 0 0 rgba(232,163,61,0)); } 50% { filter: drop-shadow(0 0 26px rgba(232,163,61,.45)); } }
+    @keyframes word { from { opacity: 0; transform: translateY(.45em); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+    @keyframes fadeup { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  }
 
-  /* The epoch track: one lamp per block of the current 72-minute epoch. */
-  .epoch { margin: 64px 0 8px; }
+  /* ------------------------------------------------------------ live epoch */
+  .epoch { padding: 64px 0 0; }
   .track { display: grid; grid-template-columns: repeat(120, 1fr); gap: 3px; }
   .track i { height: 22px; background: var(--lamp-dim); border-radius: 1px; }
   .track i.on { background: var(--lamp); }
@@ -50,12 +74,15 @@
   h2 { font: 500 34px/1.15 var(--serif); margin: 0 0 18px; }
   h3 { font: 600 18px/1.3 var(--sans); margin: 0 0 6px; }
   p { margin: 0 0 16px; }
-
-  .cmd { display: flex; align-items: stretch; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; margin: 22px 0 14px; max-width: 52em; }
-  .cmd code { flex: 1; padding: 16px 18px; font: 14.5px/1.5 var(--mono); overflow-x: auto; white-space: nowrap; }
-  .cmd button { border: 0; border-left: 1px solid var(--line); background: none; color: var(--text); font: 600 14px var(--sans); padding: 0 20px; cursor: pointer; }
-  .cmd button:hover { color: var(--lamp); }
   .note { color: var(--muted); font-size: 15px; }
+
+  /* ------------------------------------------------------------ take part */
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; }
+  .card { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; text-decoration: none; transition: border-color .2s, transform .2s; }
+  .card:hover { border-color: var(--lamp); transform: translateY(-2px); color: var(--text); }
+  .card .k { font: 500 24px/1.2 var(--serif); margin-bottom: 6px; }
+  .card p { color: var(--muted); font-size: 15px; margin: 0 0 14px; flex: 1; }
+  .card .go { color: var(--lamp); font-size: 14px; font-weight: 600; }
 
   ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 28px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
   ol.steps li { counter-increment: s; border-top: 2px solid var(--line); padding-top: 14px; }
@@ -75,14 +102,12 @@
   ol.phases .when { font: 500 20px/1.3 var(--serif); }
   ol.phases p { color: var(--muted); margin: 0; }
   ol.phases li.live .when { color: var(--lamp); }
+  main { padding-bottom: 96px; }
 
-  footer { margin-top: 96px; padding: 32px 0 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14.5px; }
-  footer p { max-width: 52em; }
-
+  @media (max-width: 860px) { .cards { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 760px) {
-    nav { display: none; }
     .track { grid-template-columns: repeat(60, 1fr); }
-    ol.steps, .rules { grid-template-columns: 1fr; }
+    ol.steps, .rules, .cards { grid-template-columns: 1fr; }
     ol.phases li { grid-template-columns: 1fr; gap: 4px; }
     table.net th { width: 9em; }
   }
@@ -92,41 +117,85 @@
   }
 </style>
 </head>
-<body>
-<div class="wrap">
-  <header class="top">
-    <a class="mark" href="/">Incentium</a>
-    <nav aria-label="Main">
-      <a href="#mine">Mine</a>
-      <a href="#network">Network</a>
-      <a href="#launch">Launch rules</a>
+<body data-site="home">
+<!-- ic:topbar -->
+<style>
+/* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
+.ic-brand img { width: 30px; height: 28px; display: block; }
+.ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
+.ic-brand:hover span { color: #e8a33d; }
+.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.ic-nav::-webkit-scrollbar { display: none; }
+.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
+.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
+body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
+body[data-site="home"] .ic-nav a[data-site="home"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
+@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+</style>
+<header class="ic-top">
+  <div class="ic-in">
+    <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
+      <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
+    </a>
+    <nav class="ic-nav" aria-label="Incentium">
+      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
+      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
       <a href="https://github.com/Doncoin1999/incentium-chain">Code</a>
     </nav>
-  </header>
+  </div>
+</header>
+<!-- /ic:topbar -->
 
-  <main>
-    <div class="hero">
-      <h1>Machine intelligence, checked and paid for.</h1>
-      <p class="lede">Incentium is an open network where anyone can run an AI model, answer requests, and earn ICT for answers that pass verification. Validators re-run a sample of every miner's work on a reference model; only work that matches is paid.</p>
+<div class="hero">
+  <canvas id="field" aria-hidden="true"></canvas>
+  <div class="hero-in">
+    <svg class="logo" viewBox="40 60 432 404" role="img" aria-label="Incentium logo">
+      <defs>
+        <mask id="cut"><rect x="0" y="0" width="512" height="512" fill="#fff"/><path d="M100.1,295.7 L95.5,298.6 L91.5,301.6 L87.9,304.6 L84.5,307.7 L81.3,310.8 L78.4,313.9 L75.8,317.0 L73.4,320.1 L71.3,323.2 L69.5,326.3 L67.9,329.3 L66.6,332.3 L65.5,335.2 L64.7,338.2 L64.2,341.0 L64.0,343.8 L64.0,346.6 L64.3,349.2 L64.9,351.9 L65.8,354.4 L66.9,356.8 L68.3,359.2 L70.0,361.5 L71.9,363.7 L74.1,365.8 L76.6,367.8 L79.3,369.6 L82.3,371.4 L85.5,373.1 L89.0,374.6 L92.7,376.0 L96.6,377.3 L100.8,378.5 L105.2,379.6 L109.9,380.5 L114.7,381.3 L119.8,381.9 L125.0,382.4 L130.5,382.8 L136.1,383.0 L141.9,383.1 L147.9,383.0 L154.0,382.8 L160.3,382.5 L166.7,382.0 L173.2,381.4 L179.9,380.6 L186.7,379.6 L193.6,378.6 L200.6,377.4 L207.6,376.0 L214.8,374.5 L222.0,372.9 L229.2,371.1 L236.5,369.2 L243.9,367.2 L251.2,365.0 L258.6,362.7 L265.9,360.3 L273.2,357.8 L280.6,355.1 L287.8,352.4 L295.1,349.5 L302.3,346.5 L309.4,343.4 L316.4,340.3 L323.4,337.0 L330.3,333.7 L337.0,330.2 L343.7,326.7 L350.2,323.2 L356.6,319.5 L362.8,315.8 L368.9,312.1 L374.9,308.3 L380.6,304.5 L386.2,300.6 L391.7,296.7 L396.9,292.8 L401.9,288.9 L406.7,284.9 L411.4,281.0 L415.8,277.0 L419.9,273.1 L423.9,269.2 L427.6,265.3 L431.1,261.4 L434.3,257.6 L437.3,253.8 L440.1,250.0 L442.6,246.4 L444.8,242.7 L446.8,239.2 L448.6,235.7 L450.0,232.3 L451.3,228.9 L452.2,225.7 L452.9,222.5 L453.3,219.5 L453.5,216.5 L453.4,213.7 L453.1,210.9 L452.5,208.3 L451.6,205.8 L450.5,203.5 L449.1,201.2 L447.5,199.1 L445.7,197.1 L443.6,195.3 L441.2,193.6 L438.7,192.1 L435.9,190.7 L432.8,189.5 L429.6,188.4 L426.1,187.5 L422.4,186.8 L418.6,186.3 L414.5,185.9 L410.1,185.8 L405.4,186.2 L405.4,186.2 L408.4,187.8 L411.5,189.1 L414.4,190.5 L417.0,191.8 L419.5,193.2 L421.8,194.6 L423.9,196.1 L425.7,197.7 L427.3,199.3 L428.7,201.0 L429.8,202.7 L430.8,204.5 L431.5,206.3 L432.0,208.2 L432.2,210.1 L432.2,212.1 L432.0,214.1 L431.6,216.2 L430.9,218.3 L430.1,220.5 L429.0,222.7 L427.7,225.0 L426.1,227.3 L424.4,229.6 L422.5,231.9 L420.3,234.3 L418.0,236.7 L415.5,239.2 L412.7,241.7 L409.8,244.2 L406.7,246.7 L403.4,249.2 L400.0,251.8 L396.4,254.4 L392.6,256.9 L388.6,259.5 L384.5,262.1 L380.3,264.8 L375.9,267.4 L371.4,270.0 L366.7,272.6 L361.9,275.2 L357.0,277.9 L352.0,280.5 L346.9,283.1 L341.6,285.7 L336.3,288.2 L330.9,290.8 L325.4,293.4 L319.9,295.9 L314.2,298.4 L308.5,300.9 L302.8,303.3 L297.0,305.7 L291.1,308.1 L285.3,310.5 L279.4,312.8 L273.4,315.1 L267.5,317.3 L261.6,319.5 L255.6,321.7 L249.7,323.8 L243.7,325.8 L237.8,327.8 L231.9,329.7 L226.1,331.6 L220.2,333.4 L214.5,335.2 L208.7,336.9 L203.1,338.5 L197.5,340.0 L191.9,341.5 L186.5,342.9 L181.1,344.2 L175.8,345.4 L170.6,346.6 L165.5,347.6 L160.5,348.6 L155.6,349.5 L150.9,350.3 L146.2,351.0 L141.7,351.6 L137.3,352.1 L133.1,352.5 L129.0,352.8 L125.0,353.0 L121.2,353.1 L117.6,353.1 L114.1,353.0 L110.8,352.8 L107.6,352.5 L104.6,352.0 L101.8,351.5 L99.2,350.9 L96.8,350.1 L94.5,349.2 L92.5,348.2 L90.6,347.1 L88.9,345.9 L87.5,344.6 L86.2,343.2 L85.1,341.6 L84.2,339.9 L83.6,338.2 L83.1,336.3 L82.9,334.3 L82.8,332.2 L83.0,330.0 L83.4,327.7 L84.0,325.3 L84.7,322.8 L85.7,320.2 L86.9,317.5 L88.3,314.7 L89.9,311.8 L91.7,308.8 L93.7,305.8 L95.8,302.6 L98.1,299.2 L100.1,295.7 Z" fill="#000" stroke="#000" stroke-width="16" stroke-linejoin="round"/></mask>
+        <clipPath id="reveal"><rect id="sweep" x="40" y="60" width="520" height="420"/></clipPath>
+      </defs>
+      <circle class="dot" cx="256" cy="116" r="46" fill="#fff"/>
+      <g mask="url(#cut)"><path class="stem" d="M190,186 H322 V208 Q290,210 288,236 V396 Q290,422 334,424 V448 H178 V424 Q222,422 224,396 V236 Q222,210 190,208 Z" fill="#fff"/></g>
+      <path d="M100.1,295.7 L95.5,298.6 L91.5,301.6 L87.9,304.6 L84.5,307.7 L81.3,310.8 L78.4,313.9 L75.8,317.0 L73.4,320.1 L71.3,323.2 L69.5,326.3 L67.9,329.3 L66.6,332.3 L65.5,335.2 L64.7,338.2 L64.2,341.0 L64.0,343.8 L64.0,346.6 L64.3,349.2 L64.9,351.9 L65.8,354.4 L66.9,356.8 L68.3,359.2 L70.0,361.5 L71.9,363.7 L74.1,365.8 L76.6,367.8 L79.3,369.6 L82.3,371.4 L85.5,373.1 L89.0,374.6 L92.7,376.0 L96.6,377.3 L100.8,378.5 L105.2,379.6 L109.9,380.5 L114.7,381.3 L119.8,381.9 L125.0,382.4 L130.5,382.8 L136.1,383.0 L141.9,383.1 L147.9,383.0 L154.0,382.8 L160.3,382.5 L166.7,382.0 L173.2,381.4 L179.9,380.6 L186.7,379.6 L193.6,378.6 L200.6,377.4 L207.6,376.0 L214.8,374.5 L222.0,372.9 L229.2,371.1 L236.5,369.2 L243.9,367.2 L251.2,365.0 L258.6,362.7 L265.9,360.3 L273.2,357.8 L280.6,355.1 L287.8,352.4 L295.1,349.5 L302.3,346.5 L309.4,343.4 L316.4,340.3 L323.4,337.0 L330.3,333.7 L337.0,330.2 L343.7,326.7 L350.2,323.2 L356.6,319.5 L362.8,315.8 L368.9,312.1 L374.9,308.3 L380.6,304.5 L386.2,300.6 L391.7,296.7 L396.9,292.8 L401.9,288.9 L406.7,284.9 L411.4,281.0 L415.8,277.0 L419.9,273.1 L423.9,269.2 L427.6,265.3 L431.1,261.4 L434.3,257.6 L437.3,253.8 L440.1,250.0 L442.6,246.4 L444.8,242.7 L446.8,239.2 L448.6,235.7 L450.0,232.3 L451.3,228.9 L452.2,225.7 L452.9,222.5 L453.3,219.5 L453.5,216.5 L453.4,213.7 L453.1,210.9 L452.5,208.3 L451.6,205.8 L450.5,203.5 L449.1,201.2 L447.5,199.1 L445.7,197.1 L443.6,195.3 L441.2,193.6 L438.7,192.1 L435.9,190.7 L432.8,189.5 L429.6,188.4 L426.1,187.5 L422.4,186.8 L418.6,186.3 L414.5,185.9 L410.1,185.8 L405.4,186.2 L405.4,186.2 L408.4,187.8 L411.5,189.1 L414.4,190.5 L417.0,191.8 L419.5,193.2 L421.8,194.6 L423.9,196.1 L425.7,197.7 L427.3,199.3 L428.7,201.0 L429.8,202.7 L430.8,204.5 L431.5,206.3 L432.0,208.2 L432.2,210.1 L432.2,212.1 L432.0,214.1 L431.6,216.2 L430.9,218.3 L430.1,220.5 L429.0,222.7 L427.7,225.0 L426.1,227.3 L424.4,229.6 L422.5,231.9 L420.3,234.3 L418.0,236.7 L415.5,239.2 L412.7,241.7 L409.8,244.2 L406.7,246.7 L403.4,249.2 L400.0,251.8 L396.4,254.4 L392.6,256.9 L388.6,259.5 L384.5,262.1 L380.3,264.8 L375.9,267.4 L371.4,270.0 L366.7,272.6 L361.9,275.2 L357.0,277.9 L352.0,280.5 L346.9,283.1 L341.6,285.7 L336.3,288.2 L330.9,290.8 L325.4,293.4 L319.9,295.9 L314.2,298.4 L308.5,300.9 L302.8,303.3 L297.0,305.7 L291.1,308.1 L285.3,310.5 L279.4,312.8 L273.4,315.1 L267.5,317.3 L261.6,319.5 L255.6,321.7 L249.7,323.8 L243.7,325.8 L237.8,327.8 L231.9,329.7 L226.1,331.6 L220.2,333.4 L214.5,335.2 L208.7,336.9 L203.1,338.5 L197.5,340.0 L191.9,341.5 L186.5,342.9 L181.1,344.2 L175.8,345.4 L170.6,346.6 L165.5,347.6 L160.5,348.6 L155.6,349.5 L150.9,350.3 L146.2,351.0 L141.7,351.6 L137.3,352.1 L133.1,352.5 L129.0,352.8 L125.0,353.0 L121.2,353.1 L117.6,353.1 L114.1,353.0 L110.8,352.8 L107.6,352.5 L104.6,352.0 L101.8,351.5 L99.2,350.9 L96.8,350.1 L94.5,349.2 L92.5,348.2 L90.6,347.1 L88.9,345.9 L87.5,344.6 L86.2,343.2 L85.1,341.6 L84.2,339.9 L83.6,338.2 L83.1,336.3 L82.9,334.3 L82.8,332.2 L83.0,330.0 L83.4,327.7 L84.0,325.3 L84.7,322.8 L85.7,320.2 L86.9,317.5 L88.3,314.7 L89.9,311.8 L91.7,308.8 L93.7,305.8 L95.8,302.6 L98.1,299.2 L100.1,295.7 Z" fill="#fff" clip-path="url(#reveal)"/>
+    </svg>
+    <h1 class="motto" id="motto" data-text="— to inspire action, awaken ambition, and drive meaningful progress."
+        aria-label="Incentium — to inspire action, awaken ambition, and drive meaningful progress.">
+      <span class="name" aria-hidden="true">Incentium</span><span class="words" aria-hidden="true">— to inspire action, awaken ambition, and drive meaningful progress.</span>
+    </h1>
+    <p class="lede">An open network where anyone can run an AI model, answer requests and earn ICT for answers that pass verification.</p>
+    <div class="cta">
+      <a class="btn main" href="/mine/">Start mining</a>
+      <a class="btn" href="https://chat.incentium.org/">Try the chat</a>
+    </div>
+  </div>
+  <a class="down" href="#live">Scroll</a>
+</div>
 
-      <div class="epoch" aria-live="polite">
-        <div class="track" id="track" role="img" aria-label="Progress of the current testnet epoch"></div>
-        <div class="epoch-read" id="read">
-          <span>Connecting to the testnet</span>
-        </div>
-      </div>
+<main>
+  <div class="wrap">
+    <div class="epoch" id="live" aria-live="polite">
+      <h2>The network, live</h2>
+      <div class="track" id="track" role="img" aria-label="Progress of the current epoch"></div>
+      <div class="epoch-read" id="read"><span>Connecting to the network</span></div>
     </div>
 
-    <section id="mine">
-      <h2>Mine on the testnet</h2>
-      <div class="col">
-        <p>One command on a Linux computer with 4 GB of RAM installs the model, creates your miner key and registers it. You need no ICT, no open port and no GPU.</p>
+    <section id="take-part">
+      <h2>Take part</h2>
+      <div class="cards">
+        <a class="card" href="/mine/"><span class="k">Mine</span><p>Lend your Mac, PC or Linux computer to the network with one command, and earn ICT for verified answers.</p><span class="go">Set up a miner &rarr;</span></a>
+        <a class="card" href="https://chat.incentium.org/"><span class="k">Chat</span><p>Ask anything. The answer comes from a Qwen model running on a miner's computer. Free, with a daily limit.</p><span class="go">Open the chat &rarr;</span></a>
+        <a class="card" href="https://explorer.incentium.org/"><span class="k">Explorer</span><p>Blocks, accounts, rewards and the launch vault, read straight from the chain.</p><span class="go">Open the explorer &rarr;</span></a>
+        <a class="card" href="https://faucet.incentium.org/"><span class="k">Faucet</span><p>Get test ICT for your wallet to try transfers and staking on the testnet.</p><span class="go">Get test ICT &rarr;</span></a>
       </div>
-      <div class="cmd">
-        <code id="install">curl -sSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-miner.sh | bash</code>
-        <button type="button" id="copy">Copy</button>
-      </div>
-      <p class="note">Your key is saved in <code>~/.incentium-miner/miner-key.json</code>. Back it up: whoever has it controls the miner's rewards. Test ICT has no value.</p>
     </section>
 
     <section id="how">
@@ -174,14 +243,123 @@
         <li><span class="when">Phase 3</span><p>Issuance follows measured use: locked value, user revenue and fees, with caps that make manipulation cost more than it pays.</p></li>
       </ol>
     </section>
-  </main>
+  </div>
+</main>
 
-  <footer>
-    <p>Incentium is open-source software, published and run by no company or foundation. This page is not an offer to sell or a solicitation to buy anything, and test ICT has no value. <a href="https://github.com/Doncoin1999/incentium-chain">Source code</a></p>
-  </footer>
-</div>
+<!-- ic:footer -->
+<style>
+/* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
+   python3 scripts/sync_topbar.py. */
+.ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+.ic-foot .ic-fbrand img { width: 24px; height: 22px; }
+.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav a { color: #c3cad8; text-decoration: none; }
+.ic-foot nav a:hover { color: #e8a33d; }
+.ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+</style>
+<footer class="ic-foot">
+  <div class="ic-in">
+    <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
+    <nav aria-label="Incentium sites">
+      <a href="https://incentium.org/">Home</a>
+      <a href="https://incentium.org/mine/">Mine ICT</a>
+      <a href="https://chat.incentium.org/">Chat</a>
+      <a href="https://explorer.incentium.org/">Explorer</a>
+      <a href="https://faucet.incentium.org/">Faucet</a>
+      <a href="https://github.com/Doncoin1999/incentium-chain">Source code</a>
+    </nav>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+  </div>
+</footer>
+<!-- /ic:footer -->
 
 <script>
+// ------------------------------------------------------------ the motto, word by word
+(() => {
+  const h = document.getElementById("motto"), box = h.querySelector(".words");
+  const words = h.dataset.text.split(" ");
+  box.textContent = "";
+  words.forEach((w, i) => {
+    const s = document.createElement("span");
+    s.className = "w"; s.style.setProperty("--i", i);
+    s.textContent = w + (i < words.length - 1 ? " " : "");
+    box.appendChild(s);
+  });
+  const after = 2.5 + words.length * 0.2 + 0.4;
+  document.querySelectorAll(".hero .lede, .cta, .down").forEach((el) => el.style.setProperty("--after", after + "s"));
+})();
+
+// ------------------------------------------------------------ the living network behind the logo
+(() => {
+  const c = document.getElementById("field"), g = c.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W = 0, H = 0, dpr = 1, nodes = [], pulses = [], mouse = null, last = 0;
+  function size() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    W = c.clientWidth; H = c.clientHeight;
+    c.width = W * dpr; c.height = H * dpr;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const n = Math.min(110, Math.round(W * H / 14000));
+    nodes = Array.from({length: n}, () => ({
+      x: Math.random() * W, y: Math.random() * H,
+      vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22,
+      r: 1 + Math.random() * 1.6, lit: 0,
+    }));
+  }
+  const LINK = 150;
+  function frame(t) {
+    const dt = Math.min(50, t - last || 16); last = t;
+    g.clearRect(0, 0, W, H);
+    for (const n of nodes) {
+      n.x += n.vx * dt / 16; n.y += n.vy * dt / 16;
+      if (n.x < -20) n.x = W + 20; if (n.x > W + 20) n.x = -20;
+      if (n.y < -20) n.y = H + 20; if (n.y > H + 20) n.y = -20;
+      n.lit = Math.max(0, n.lit - dt / 900);
+    }
+    // links
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j], dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+        if (d < LINK) {
+          let al = (1 - d / LINK) * .22;
+          if (mouse) { const m = Math.hypot((a.x + b.x) / 2 - mouse.x, (a.y + b.y) / 2 - mouse.y); if (m < 160) al += (1 - m / 160) * .25; }
+          g.strokeStyle = `rgba(151,161,180,${al})`; g.lineWidth = 1;
+          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+        }
+      }
+    }
+    // pulses: work travelling from one node to a neighbour, lighting it up when it arrives
+    if (!still && Math.random() < dt / 260 && pulses.length < 14) {
+      const a = nodes[Math.floor(Math.random() * nodes.length)];
+      const near = nodes.filter((b) => b !== a && Math.hypot(a.x - b.x, a.y - b.y) < LINK);
+      if (near.length) pulses.push({a, b: near[Math.floor(Math.random() * near.length)], t: 0});
+    }
+    pulses = pulses.filter((p) => {
+      p.t += dt / 1300;
+      if (p.t >= 1) { p.b.lit = 1; return false; }
+      const x = p.a.x + (p.b.x - p.a.x) * p.t, y = p.a.y + (p.b.y - p.a.y) * p.t;
+      const grd = g.createRadialGradient(x, y, 0, x, y, 9);
+      grd.addColorStop(0, "rgba(232,163,61,.95)"); grd.addColorStop(1, "rgba(232,163,61,0)");
+      g.fillStyle = grd; g.beginPath(); g.arc(x, y, 9, 0, 7); g.fill();
+      return true;
+    });
+    for (const n of nodes) {
+      g.fillStyle = n.lit ? `rgba(232,163,61,${.35 + n.lit * .65})` : "rgba(201,208,222,.55)";
+      g.beginPath(); g.arc(n.x, n.y, n.r + n.lit * 2.2, 0, 7); g.fill();
+    }
+    if (!still) requestAnimationFrame(frame);
+  }
+  addEventListener("resize", () => { size(); if (still) frame(0); });
+  c.parentElement.addEventListener("pointermove", (e) => { const r = c.getBoundingClientRect(); mouse = {x: e.clientX - r.left, y: e.clientY - r.top}; });
+  c.parentElement.addEventListener("pointerleave", () => (mouse = null));
+  size();
+  requestAnimationFrame(frame);
+})();
+
+// ------------------------------------------------------------ the live epoch track
 (() => {
   const EPOCH = 360, TICKS = 120, PER = EPOCH / TICKS, BLOCK_S = 12;
   const track = document.getElementById("track"), read = document.getElementById("read");
@@ -215,16 +393,6 @@
     read.innerHTML = "<span>The testnet cannot be reached right now. This page tries again every 10 seconds.</span>";
   }
   connect();
-
-  document.getElementById("copy").addEventListener("click", async (e) => {
-    try {
-      await navigator.clipboard.writeText(document.getElementById("install").textContent);
-      e.target.textContent = "Copied";
-      setTimeout(() => (e.target.textContent = "Copy"), 1800);
-    } catch (_) {
-      e.target.textContent = "Select and copy";
-    }
-  });
 })();
 </script>
 </body>

@@ -132,8 +132,8 @@ class Limiter:
             return len(h) <= self.n
 
 
-STYLE = """body{font:16px/1.55 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;background:#14161c;color:#e8e6e1;
-margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center}main{width:min(420px,92vw);padding:28px 0}
+STYLE = """body{font:16px/1.55 -apple-system,Segoe UI,Helvetica,Arial,sans-serif;background:#1c2230;color:#e9ecf2;
+margin:0;display:flex;flex-direction:column;min-height:100vh}main{width:min(420px,92vw);padding:28px 0;margin:auto}
 h1{font-size:26px;margin:0 0 6px}p{color:#a9adb8;margin:0 0 16px}label{display:block;margin:12px 0 4px;font-size:14px}
 input,textarea{width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #3a3f4b;background:#1d2028;color:#e8e6e1;font:inherit}
 button{margin-top:16px;padding:10px 16px;border:0;border-radius:8px;background:#e0a84e;color:#1a1a1a;font-weight:600;font:inherit;cursor:pointer}
@@ -143,10 +143,24 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 6px;b
 button.ghost{background:#2b2f39;color:#e8e6e1}"""
 
 
+def site_partial(name: str) -> str:
+    """The shared Incentium top bar or footer (site/partials), or "" if it is missing."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "site", "partials", name + ".html"),
+                  encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+TOPBAR, FOOTER = site_partial("topbar"), site_partial("footer")
+
+
 def page(title, body, wide=False):
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' "
             f"content='width=device-width,initial-scale=1'><title>{html.escape(title)} · Incentium</title>"
-            f"<style>{STYLE}</style></head><body><main class='{'wide' if wide else ''}'>{body}</main></body></html>")
+            f"<link rel='icon' type='image/svg+xml' href='https://incentium.org/brand/incentium-logo-white-on-black.svg'>"
+            f"<style>{STYLE}</style></head><body>{TOPBAR}<main class='{'wide' if wide else ''}'>{body}</main>{FOOTER}</body></html>")
 
 
 def e(s) -> str:

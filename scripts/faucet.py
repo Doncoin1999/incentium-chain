@@ -27,16 +27,23 @@ DAY = 24 * 3600
 
 PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Incentium faucet</title>
+<title>Faucet · Incentium</title>
+<link rel="icon" type="image/svg+xml" href="https://incentium.org/brand/incentium-logo-white-on-black.svg">
 <style>
-body{font-family:system-ui,sans-serif;max-width:560px;margin:8vh auto;padding:0 20px;color:#1d1d1f}
-h1{font-size:1.6rem;margin-bottom:.2rem}p{color:#555;line-height:1.5}
-input{width:100%;box-sizing:border-box;padding:12px;font-size:1rem;border:1px solid #ccc;border-radius:8px}
-button{margin-top:12px;padding:12px 20px;font-size:1rem;border:0;border-radius:8px;background:#e6007a;color:#fff;cursor:pointer}
-button:disabled{opacity:.5}#msg{margin-top:16px;min-height:1.5em}.ok{color:#137333}.err{color:#b3261e}
-small{color:#888}
-</style></head><body>
-<h1>Incentium faucet</h1>
+html{background:#1c2230;color:#e9ecf2}
+body{margin:0;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;display:flex;flex-direction:column;min-height:100vh}
+main{flex:1;width:min(560px,100%);margin:0 auto;padding:7vh 24px 64px}
+h1{font:500 40px/1.1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;margin:0 0 12px}
+p{color:#97a1b4}a{color:#e9ecf2;text-decoration-color:#e8a33d;text-underline-offset:3px}a:hover{color:#e8a33d}
+input{width:100%;box-sizing:border-box;padding:12px 14px;font:15px ui-monospace,Menlo,Consolas,monospace;border:1px solid #39425a;
+border-radius:8px;background:#242b3a;color:#e9ecf2}input:focus{outline:none;border-color:#e8a33d}
+button{margin-top:12px;padding:12px 20px;font:600 16px system-ui,sans-serif;border:0;border-radius:8px;background:#e8a33d;color:#1b1b1b;cursor:pointer}
+button:disabled{opacity:.5}#msg{margin-top:16px;min-height:1.5em}.ok{color:#8fd19e}.err{color:#f2a7a0}
+small{color:#97a1b4}code{font:13px ui-monospace,Menlo,Consolas,monospace}
+</style></head><body data-site="faucet">
+__TOPBAR__
+<main>
+<h1>Faucet</h1>
 <p>Get <b>__AMOUNT__ test ICT</b> on the Incentium __NETWORK__. Test ICT has no value.
 Paste your address from Talisman, SubWallet or Polkadot.js. One request per address and per
 IP every 24 hours.</p>
@@ -44,7 +51,9 @@ IP every 24 hours.</p>
 <button id="b">Send me test ICT</button>
 <div id="msg"></div>
 <p><small>Network: <code>__RPC__</code> &middot;
-<a href="__EXPLORER__">Explorer</a></small></p>
+<a href="__EXPLORER__">Explorer</a> &middot; <a href="https://incentium.org/mine/">Start mining</a></small></p>
+</main>
+__FOOTER__
 <script>
 const b=document.getElementById('b'),m=document.getElementById('msg');
 b.onclick=async()=>{b.disabled=true;m.className='';m.textContent='Sending...';
@@ -55,6 +64,16 @@ b.onclick=async()=>{b.disabled=true;m.className='';m.textContent='Sending...';
  catch(e){m.className='err';m.textContent='Could not reach the faucet.';}
  b.disabled=false;};
 </script></body></html>"""
+
+
+def site_partial(name: str) -> str:
+    """The shared Incentium top bar or footer (site/partials), or "" if it is missing."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "site", "partials", name + ".html"),
+                  encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
 
 
 class Limits:
@@ -130,7 +149,8 @@ NETWORK_RPC = {"testnet": "wss://testnet-rpc.incentium.org", "devnet": "wss://de
 def make_handler(f: Faucet):
     rpc = NETWORK_RPC.get(f.network, "wss://testnet-rpc.incentium.org")
     explorer = "https://polkadot.js.org/apps/?rpc=" + rpc.replace(":", "%3A").replace("/", "%2F") + "#/explorer"
-    page = (PAGE.replace("__AMOUNT__", str(f.amount // UNIT)).replace("__NETWORK__", f.network)
+    page = (PAGE.replace("__TOPBAR__", site_partial("topbar")).replace("__FOOTER__", site_partial("footer"))
+            .replace("__AMOUNT__", str(f.amount // UNIT)).replace("__NETWORK__", f.network)
             .replace("__RPC__", rpc).replace("__EXPLORER__", explorer).encode())
 
     class H(BaseHTTPRequestHandler):
