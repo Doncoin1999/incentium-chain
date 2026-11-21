@@ -36,6 +36,16 @@
   .links a.main { background: var(--lamp); border-color: var(--lamp); color: #1b1b1b; font-weight: 600; }
   .empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 22px; }
   .past .item { opacity: .85; }
+  .none { color: var(--muted); font-size: 18px; margin: 0; }
+  .viewer { grid-column: 1 / -1; margin-top: 8px; }
+  .viewer[hidden] { display: none; }
+  .stage { position: relative; background: #11151f; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; }
+  .stage img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .vbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+  .vbar button { background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 14px; font: 14px var(--sans); cursor: pointer; }
+  .vbar button:hover { border-color: var(--lamp); }
+  .vbar .count { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .links button { border: 1px solid var(--lamp); background: var(--lamp); color: #1b1b1b; font-weight: 600; border-radius: 8px; padding: 5px 12px; font: 600 14px var(--sans); cursor: pointer; }
   @media (max-width: 560px) { .item { grid-template-columns: 1fr; } .date { border-right: 0; border-bottom: 1px solid var(--line); padding: 0 0 10px; text-align: left; display: flex; gap: 8px; align-items: baseline; } .date .d { font-size: 24px; } }
 </style>
 </head>
@@ -90,15 +100,13 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
   <p class="lede">Where to meet the people building and mining the network, and talks and slides that explain how Incentium works.</p>
 
   <h2 id="upcoming">Upcoming events</h2>
-  <div class="list" id="upcoming-list"><div class="empty">No events are announced yet. New dates appear here first.</div></div>
+  <div class="list" id="upcoming-list"><p class="none">None.</p></div>
 
   <h2 id="presentations">Presentations</h2>
   <div class="list" id="talks-list"><div class="empty">Slides and recordings will be published here. Until then, the <a href="/whitepaper/">whitepaper</a> and the <a href="/spec/">technical specification</a> explain the network in full.</div></div>
 
-  <div id="past-wrap" hidden>
-    <h2 id="past">Past events</h2>
-    <div class="list past" id="past-list"></div>
-  </div>
+  <h2 id="past">Past events</h2>
+  <div class="list past" id="past-list"><p class="none">None.</p></div>
 </div>
 <!-- ic:footer -->
 <style>
@@ -136,8 +144,9 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 "use strict";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
-const safe = (u) => /^(https?:\/\/|\/|[\w.-]+\.(pdf|pptx?|key|png|jpe?g)$)/i.test(u || "") ? u : "";
+const safe = (u) => (/^(https?:\/\/|\/|[\w.\/-]+\.(pdf|pptx?|key|png|jpe?g)$)/i.test(u || "") && !/\.\./.test(u)) ? u : "";
 
+let nviewer = 0;
 function card(x, links) {
   const [y, m, d] = String(x.date).split("-");
   const meta = [x.time, x.place, x.event].filter(Boolean).map(esc).join(" · ");
@@ -145,8 +154,46 @@ function card(x, links) {
     `<a ${i === 0 ? 'class="main"' : ""} href="${esc(safe(u))}" target="_blank" rel="noopener">${esc(label)}</a>`).join("");
   return `<div class="item"><div class="date"><div class="d">${esc(Number(d) || "")}</div><div class="m">${esc(MONTHS[Number(m) - 1] || "")}</div><div class="y">${esc(y)}</div></div>
     <div><h3>${esc(x.title)}</h3><div class="meta">${x.kind ? `<span class="tag">${esc(x.kind)}</span>` : ""}${meta}</div>
-    ${x.summary ? `<p>${esc(x.summary)}</p>` : ""}${ls ? `<div class="links">${ls}</div>` : ""}</div></div>`;
+    ${x.summary ? `<p>${esc(x.summary)}</p>` : ""}${(ls || viewable(x)) ? `<div class="links">${viewable(x) ? `<button type="button" data-viewer="v${nviewer}">View slides</button>` : ""}${ls}</div>` : ""}</div>${viewer(x)}</div>`;
 }
+
+function viewable(x) { return x.images && /^[\w-]+$/.test(x.images.folder || "") && Number(x.images.count) > 0; }
+function viewer(x) {
+  if (!viewable(x)) return "";
+  const id = "v" + nviewer++;
+  return `<div class="viewer" id="${id}" data-folder="${esc(x.images.folder)}" data-count="${Number(x.images.count)}" hidden>
+    <div class="stage"><img alt="Slide 1 of ${esc(x.title)}"></div>
+    <div class="vbar"><button type="button" data-step="-1">&larr; Previous</button><span class="count"></span><button type="button" data-step="1">Next &rarr;</button></div></div>`;
+}
+function show(v, i) {
+  const n = Number(v.dataset.count);
+  i = Math.max(1, Math.min(n, i));
+  v.dataset.i = i;
+  const img = v.querySelector("img");
+  img.src = `${v.dataset.folder}/slide-${String(i).padStart(2, "0")}.jpg`;
+  img.alt = img.alt.replace(/^Slide \d+/, "Slide " + i);
+  v.querySelector(".count").textContent = `${i} / ${n}`;
+  if (i < n) new Image().src = `${v.dataset.folder}/slide-${String(i + 1).padStart(2, "0")}.jpg`;
+}
+let active = null;
+document.addEventListener("click", (e) => {
+  const open = e.target.closest("[data-viewer]");
+  if (open) {
+    const v = document.getElementById(open.dataset.viewer);
+    v.hidden = !v.hidden;
+    open.textContent = v.hidden ? "View slides" : "Hide slides";
+    if (!v.hidden) { show(v, Number(v.dataset.i) || 1); active = v; v.scrollIntoView({behavior: "smooth", block: "nearest"}); }
+    return;
+  }
+  const step = e.target.closest("[data-step]");
+  if (step) { const v = step.closest(".viewer"); active = v; show(v, Number(v.dataset.i) + Number(step.dataset.step)); }
+  else if (e.target.closest(".stage")) { const v = e.target.closest(".viewer"); active = v; show(v, Number(v.dataset.i) + 1); }
+});
+document.addEventListener("keydown", (e) => {
+  if (!active || active.hidden) return;
+  if (e.key === "ArrowRight") show(active, Number(active.dataset.i) + 1);
+  if (e.key === "ArrowLeft") show(active, Number(active.dataset.i) - 1);
+});
 
 fetch("events.json", {cache: "no-store"}).then((r) => r.json()).then((data) => {
   const today = new Date().toISOString().slice(0, 10);
@@ -156,11 +203,8 @@ fetch("events.json", {cache: "no-store"}).then((r) => r.json()).then((data) => {
   const talks = (data.presentations || []).filter((t) => t.date && t.title).sort((a, b) => b.date.localeCompare(a.date));
   const evLinks = (e) => [["Details & sign-up", e.url], ["Recording", e.video], ["Slides", e.slides]];
   if (upcoming.length) document.getElementById("upcoming-list").innerHTML = upcoming.map((e) => card(e, evLinks(e))).join("");
-  if (talks.length) document.getElementById("talks-list").innerHTML = talks.map((t) => card(t, [["Slides", t.slides], ["Video", t.video], ["More", t.url]])).join("");
-  if (past.length) {
-    document.getElementById("past-list").innerHTML = past.map((e) => card(e, evLinks(e))).join("");
-    document.getElementById("past-wrap").hidden = false;
-  }
+  if (talks.length) document.getElementById("talks-list").innerHTML = talks.map((t) => card(t, [["Download PDF", t.slides], ["PowerPoint", t.pptx], ["Video", t.video], ["More", t.url]])).join("");
+  if (past.length) document.getElementById("past-list").innerHTML = past.map((e) => card(e, evLinks(e))).join("");
 }).catch(() => {});
 </script>
 </body>
