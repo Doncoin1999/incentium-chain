@@ -1,0 +1,5 @@
+{
+  "_help": "Add events and presentations here; the page sorts them by date. Dates are YYYY-MM-DD. Every field except date and title can be left out. kind: conference, meetup, online, workshop or talk. Links can point to slides (PDF, Google Slides, Claude Slides), a video or a sign-up page; files can be put in this folder.",
+  "events": [],
+  "presentations": []
+}

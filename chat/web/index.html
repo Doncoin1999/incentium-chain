@@ -16,12 +16,14 @@
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; background: var(--slate); color: var(--text); font: 16px/1.6 var(--sans); }
+  body { display: flex; flex-direction: column; }
   a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
   button, select, textarea { font: inherit; color: inherit; }
   :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
-  .app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
+  .app { display: grid; grid-template-columns: 260px 1fr; flex: 1; min-height: 0; }
   aside { background: #181d29; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
   .brand { padding: 18px 18px 10px; font: 600 20px/1 var(--serif); }
+  .brand a { color: var(--muted); text-decoration: none; font: 13px var(--sans); }
   .brand small { display: block; font: 12px var(--sans); color: var(--muted); margin-top: 6px; }
   .new { margin: 8px 14px 10px; padding: 10px 12px; border: 1px solid var(--line); background: transparent; border-radius: 8px; cursor: pointer; text-align: left; }
   .new:hover { border-color: var(--lamp); }
@@ -35,7 +37,7 @@
   .chats li:hover button.del, .chats li.on button.del { visibility: visible; }
   .side-foot { padding: 14px 18px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); }
   main { display: flex; flex-direction: column; min-height: 0; }
-  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  main > header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .menu { display: none; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
   .models { display: flex; gap: 4px; background: #151a25; border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
   .models button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--muted); }
@@ -77,20 +79,64 @@
   .fine { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
   @media (max-width: 760px) {
     .app { grid-template-columns: 1fr; }
-    aside { position: fixed; inset: 0 30% 0 0; z-index: 5; transform: translateX(-100%); transition: transform .2s; }
+    aside { position: fixed; inset: 56px 30% 0 0; z-index: 5; transform: translateX(-100%); transition: transform .2s; }
     aside.show { transform: none; }
     .menu { display: block; }
     .pill { margin-left: 0; width: 100%; }
   }
 </style>
 </head>
-<body>
+<body data-site="chat">
+<!-- ic:topbar -->
+<style>
+/* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
+.ic-brand img { width: 30px; height: 28px; display: block; }
+.ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
+.ic-brand:hover span { color: #e8a33d; }
+.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.ic-nav::-webkit-scrollbar { display: none; }
+.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
+.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav .ic-short { display: none; }
+@media (max-width: 1180px) { .ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; } }
+.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
+.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
+body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
+body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
+@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+</style>
+<header class="ic-top">
+  <div class="ic-in">
+    <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
+      <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
+    </a>
+    <nav class="ic-nav" aria-label="Incentium">
+      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
+      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
+      <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
+      <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
+      <a href="https://incentium.org/events/" data-site="events"><span class="ic-long">Events &amp; Presentations</span><span class="ic-short">Events</span></a>
+      <a href="https://github.com/Doncoin1999/incentium-chain">Code</a>
+      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+<!-- /ic:topbar -->
 <div class="app">
   <aside id="side">
-    <div class="brand">Incentium Chat<small>Answered by the network's miners</small></div>
+    <div class="brand">Chat<small>Answered by the network's miners</small></div>
     <button class="new" id="new" type="button">+ New chat</button>
     <ul class="chats" id="chats"></ul>
-    <div class="side-foot">Chats are kept in this browser only. <a href="https://incentium.org/mine/">Lend your computer and earn ICT</a></div>
+    <div class="side-foot">Chats are kept in this browser only. <a href="https://incentium.org/mine/">Lend your computer and earn ICT</a><br><a href="https://incentium.org/">&larr; Incentium home</a></div>
   </aside>
   <main>
     <header>
