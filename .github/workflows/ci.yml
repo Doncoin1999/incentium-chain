@@ -60,6 +60,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pytest && cd neuron && python -m pytest -q
       - run: cd scripts && python -m pytest -q
+      - run: python -m pytest -q chat
 
   devnet-smoke:
     # Builds the real wasm runtime and node, runs a dev chain with 10-block epochs and
