@@ -43,8 +43,8 @@ IP every 24 hours.</p>
 <input id="a" placeholder="Your Incentium address (5...)" autocomplete="off" spellcheck="false">
 <button id="b">Send me test ICT</button>
 <div id="msg"></div>
-<p><small>Network: <code>wss://rpc.incentium.org</code> &middot;
-<a href="https://explorer.incentium.org">Explorer</a></small></p>
+<p><small>Network: <code>__RPC__</code> &middot;
+<a href="__EXPLORER__">Explorer</a></small></p>
 <script>
 const b=document.getElementById('b'),m=document.getElementById('msg');
 b.onclick=async()=>{b.disabled=true;m.className='';m.textContent='Sending...';
@@ -123,8 +123,15 @@ def client_ip(handler: BaseHTTPRequestHandler) -> str:
     return peer
 
 
+# Public RPC shown on the page for each network the faucet can serve (mainnet has no faucet).
+NETWORK_RPC = {"testnet": "wss://testnet-rpc.incentium.org", "devnet": "wss://devnet-rpc.incentium.org"}
+
+
 def make_handler(f: Faucet):
-    page = PAGE.replace("__AMOUNT__", str(f.amount // UNIT)).replace("__NETWORK__", f.network).encode()
+    rpc = NETWORK_RPC.get(f.network, "wss://testnet-rpc.incentium.org")
+    explorer = "https://polkadot.js.org/apps/?rpc=" + rpc.replace(":", "%3A").replace("/", "%2F") + "#/explorer"
+    page = (PAGE.replace("__AMOUNT__", str(f.amount // UNIT)).replace("__NETWORK__", f.network)
+            .replace("__RPC__", rpc).replace("__EXPLORER__", explorer).encode())
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):
