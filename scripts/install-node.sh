@@ -73,9 +73,38 @@ rm -rf "$TMP"
 LLAMA="$(find "$D/llama" -name llama-server -type f 2>/dev/null | head -n 1 || true)"
 if [ -z "$LLAMA" ] || [ "${INCENTIUM_UPDATE_LLAMA:-0}" = 1 ]; then
   say "Downloading llama.cpp"
-  ASSET=$(curl -fsSL https://api.github.com/repos/ggml-org/llama.cpp/releases/latest \
+  # llama.cpp publishes several releases a day and the Mac files are often uploaded after the
+  # release itself, so the newest release can lack them. Take the newest release that has them.
+  LLAMA_DL="https://github.com/ggml-org/llama.cpp/releases/download"
+  llama_asset_for_tag() {  # prints the download URL if release $1 has a build for $PLAT
+    local ext url
+    for ext in tar.gz zip; do
+      url="$LLAMA_DL/$1/llama-$1-bin-$PLAT.$ext"
+      curl -fsIL -o /dev/null "$url" 2>/dev/null && { echo "$url"; return 0; }
+    done
+    return 1
+  }
+  ASSET=""
+  # 1) a release chosen by hand: INCENTIUM_LLAMA_TAG=b12606
+  [ -n "${INCENTIUM_LLAMA_TAG:-}" ] && ASSET=$(llama_asset_for_tag "$INCENTIUM_LLAMA_TAG" || true)
+  # 2) the GitHub API, newest releases first (can be rate limited)
+  [ -n "$ASSET" ] || ASSET=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" 2>/dev/null \
     | grep -Eo "https://[^\"]*-bin-${PLAT}\.(tar\.gz|zip)" | head -n 1 || true)
-  [ -n "$ASSET" ] || die "could not find llama.cpp for $PLAT"
+  # 3) without the API: step back from the latest release tag
+  if [ -z "$ASSET" ]; then
+    TAG=$(curl -fsSIL -o /dev/null -w '%{url_effective}' https://github.com/ggml-org/llama.cpp/releases/latest 2>/dev/null \
+      | grep -Eo 'b[0-9]+$' || true)
+    if [ -n "$TAG" ]; then
+      N=${TAG#b}
+      for i in $(seq 0 40); do
+        ASSET=$(llama_asset_for_tag "b$((N - i))" || true)
+        [ -n "$ASSET" ] && break
+      done
+    fi
+  fi
+  # 4) a release known to work
+  [ -n "$ASSET" ] || ASSET=$(llama_asset_for_tag b12606 || true)
+  [ -n "$ASSET" ] || die "could not find llama.cpp for $PLAT (check the internet connection, or set INCENTIUM_LLAMA_TAG)"
   rm -rf "$D/llama" && mkdir -p "$D/llama"
   case "$ASSET" in
     *.zip) curl -fsSL "$ASSET" -o "$D/llama/l.zip" && unzip -q -o "$D/llama/l.zip" -d "$D/llama" && rm -f "$D/llama/l.zip" ;;
