@@ -1,0 +1,15 @@
+{
+  "_help": "Add events and presentations here; the page sorts them by date. Dates are YYYY-MM-DD. Every field except date and title can be left out. kind: conference, meetup, online, workshop or talk. A presentation can name its slide pictures with 'images' (a folder and a count: folder/slide-01.jpg …), so it can be paged through on the page, and its files with 'slides' (PDF) and 'pptx'.",
+  "events": [],
+  "presentations": [
+    {
+      "date": "2026-11-21",
+      "title": "Incentium — Introduction",
+      "kind": "presentation",
+      "summary": "What Incentium is, how the price of ICT and the number of miners are linked, how trading and AI mining work, and the road to 2028.",
+      "images": {"folder": "incentium-introduction", "count": 14},
+      "slides": "incentium-introduction/incentium-introduction.pdf",
+      "pptx": "incentium-introduction/incentium-introduction.pptx"
+    }
+  ]
+}
