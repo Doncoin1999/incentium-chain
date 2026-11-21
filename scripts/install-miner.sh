@@ -45,7 +45,7 @@ command -v sudo >/dev/null || die "sudo is needed to install packages and servic
 say "Installing system packages"
 if command -v apt-get >/dev/null; then
   sudo apt-get update -qq
-  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv curl unzip ca-certificates >/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-venv curl unzip ca-certificates libgomp1 >/dev/null
 else
   for c in python3 curl unzip; do command -v $c >/dev/null || die "please install $c first"; done
 fi

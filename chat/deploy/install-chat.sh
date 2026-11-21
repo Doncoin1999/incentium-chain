@@ -22,9 +22,11 @@ echo "== python"
 FALLBACK_ARGS=""
 if [ "${WITH_FALLBACK:-0}" = 1 ]; then
   echo "== backup model (llama.cpp + Qwen3.5-2B)"
+  # the prebuilt llama-server needs OpenMP (libgomp), which minimal Ubuntu servers lack
+  command -v apt-get >/dev/null && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libgomp1 >/dev/null
   case "$(uname -m)" in x86_64) ARCH=x64 ;; aarch64|arm64) ARCH=arm64 ;; *) echo "unsupported CPU"; exit 1 ;; esac
   if [ -z "$(find "$D/llama" -name llama-server -type f 2>/dev/null | head -n 1)" ]; then
-    ASSET=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" \
+    ASSET=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" 2>/dev/null \
       | grep -Eo "https://[^\"]*bin-ubuntu-${ARCH}\.(tar\.gz|zip)" | head -n 1 || true)
     [ -n "$ASSET" ] || { echo "could not find a llama.cpp build for ubuntu-$ARCH"; exit 1; }
     rm -rf "$D/llama" && mkdir -p "$D/llama"
