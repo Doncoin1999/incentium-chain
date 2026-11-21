@@ -64,12 +64,16 @@ curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" \
 LLAMA="$(find "$D/llama" -name llama-server -type f 2>/dev/null | head -n 1 || true)"
 if [ -z "$LLAMA" ]; then
   say "Installing llama.cpp (llama-server)"
-  ASSET=$(curl -fsSL https://api.github.com/repos/ggml-org/llama.cpp/releases/latest \
-    | grep -o "https://[^\"]*bin-ubuntu-${ARCH}\.zip" | head -n 1 || true)
+  # newest release that has a prebuilt file for this machine (newer releases ship .tar.gz, older .zip)
+  ASSET=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" 2>/dev/null \
+    | grep -Eo "https://[^\"]*bin-ubuntu-${ARCH}\.(tar\.gz|zip)" | head -n 1 || true)
   if [ -n "$ASSET" ]; then
-    curl -fsSL "$ASSET" -o "$D/llama/llama.zip"
-    unzip -q -o "$D/llama/llama.zip" -d "$D/llama"
-    rm -f "$D/llama/llama.zip"
+    case "$ASSET" in
+      *.zip) curl -fsSL "$ASSET" -o "$D/llama/llama.zip"
+             unzip -q -o "$D/llama/llama.zip" -d "$D/llama"
+             rm -f "$D/llama/llama.zip" ;;
+      *)     curl -fsSL "$ASSET" | tar xz -C "$D/llama" ;;
+    esac
   else
     say "No prebuilt llama.cpp for this machine: building it (takes 5-15 minutes)"
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential cmake git >/dev/null
