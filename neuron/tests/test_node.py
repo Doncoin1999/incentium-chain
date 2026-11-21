@@ -125,9 +125,19 @@ def test_node_end_to_end(monkeypatch):
 
     big_mac = HW.Hardware("macos", "arm64", "Apple M2", 8, 16, "Apple M2 (Metal)", 0, True, 200)
     node = N.Node(cfg, chain_factory=lambda url: chain, register_fn=register, detect=lambda home: big_mac)
+    cfg.set(overrides={"chat": "http://gateway.test"})
+    chats = []
+
+    def chat_serve(gateway, hotkey, sign, tier, model, llama_url):
+        chats.append((gateway, hotkey, tier, model, llama_url, sign(b"x")))
+        time.sleep(0.2)
+        return 1
+
+    node.chat_serve = chat_serve
     srv = ThreadingHTTPServer(("127.0.0.1", port), N.make_handler(node))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     threading.Thread(target=node.run, daemon=True).start()
+    threading.Thread(target=node.chat_loop, daemon=True).start()
     try:
         # it downloads tier 0 (tier 1 fits this Mac but is closed on chain), runs it and asks to join
         assert wait_for(lambda: node.st.phase == "request"), (node.st.phase, node.st.message, list(node.st.log))
@@ -162,6 +172,19 @@ def test_node_end_to_end(monkeypatch):
         assert wait_for(lambda: node.st.phase == "mining" and Validator.results), (node.st.phase, list(node.st.log))
         assert sent[0]["email"] == "far@example.org" and node.st.uid == 7
         assert Validator.results[0]["hotkey"] == node.st.address
+        # while mining it also answers chat visitors with the same model, signed by its hotkey
+        assert wait_for(lambda: chats), list(node.st.log)
+        gw, hk, tier, model, url, sig = chats[0]
+        assert (gw, hk, tier, model, url) == ("http://gateway.test", node.st.address, 0, "qwen3.5-2b", node.llama_url)
+        assert len(sig) == 128
+        assert wait_for(lambda: json.loads(call("GET", "/api/status", token=tok)[2])["chat"]["today"] >= 1)
+        # it can be switched off from the dashboard
+        assert call("POST", "/api/chat", {"enabled": False}, token=tok)[0] == 200
+        assert wait_for(lambda: json.loads(call("GET", "/api/status", token=tok)[2])["chat"]["state"] == "off")
+        n = len(chats)
+        time.sleep(0.6)
+        assert len(chats) <= n + 1
+        call("POST", "/api/chat", {"enabled": True}, token=tok)
         # backup: words once, then marked done
         words = json.loads(call("POST", "/api/backup/phrase", {}, token=tok)[2])["phrase"].split()
         assert len(words) == 12

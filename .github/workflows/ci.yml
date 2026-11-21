@@ -60,6 +60,7 @@ jobs:
           python-version: "3.12"
       - run: pip install pytest substrate-interface && cd neuron && python -m pytest -q
       - run: cd scripts && python -m pytest -q
+      - run: python -m pytest -q chat
 
   windows-installer:
     # runs scripts/install-node.ps1 from this commit in Windows PowerShell 5.1, the way users run it

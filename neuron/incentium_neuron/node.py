@@ -5,7 +5,8 @@ One process does everything, so the installer only has to start this:
   * downloads the model (checked against the hash on chain once that is locked),
   * runs llama-server and restarts it if it stops,
   * asks to be registered (from the dashboard) and waits until the hotkey is on chain,
-  * answers validators' tasks, keeps the computer awake while it works (macOS),
+  * answers validators' tasks, keeps the computer awake while it works (macOS, Windows),
+  * answers chat.incentium.org visitors with the same model (incentium_neuron.chat; can be switched off),
   * serves the dashboard on http://127.0.0.1:7777 (only this computer; a token in the link).
 
   python -m incentium_neuron.node --home ~/.incentium-node
@@ -38,8 +39,10 @@ UNIT = 10**9
 SN0 = 0
 NETWORKS = {
     "testnet": {"rpc": "wss://testnet-rpc.incentium.org", "register": "https://register.incentium.org",
+                "chat": "https://chat.incentium.org",
                 "explorer": "https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ftestnet-rpc.incentium.org#/accounts"},
     "mainnet": {"rpc": "wss://rpc.incentium.org", "register": "https://register-mainnet.incentium.org",
+                "chat": "",                       # the chat prototype runs on testnet only
                 "explorer": "https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Frpc.incentium.org#/accounts"},
 }
 MIN_TOKENS_PER_S = {0: 0.5, 1: 2.0, 2: 2.0}     # slower than this after start-up: drop a tier
@@ -63,6 +66,7 @@ class Config:
         d.setdefault("request", None)        # {"name","email","note","at","status","message"}
         d.setdefault("tier", None)           # tier of the model now on disk / running
         d.setdefault("day", {})
+        d.setdefault("chat", True)           # answer chat.incentium.org visitors while mining
         self.lock = threading.Lock()
         self.save()
 
@@ -104,6 +108,7 @@ class State:
         self.free = None
         self.locked = None
         self.today = {"tasks": 0, "earned": 0}
+        self.chat = {"state": "off", "message": "", "answered": 0}
         self.validators = 0
         self.last_task = None
         self.log = deque(maxlen=200)
@@ -188,6 +193,8 @@ class Node:
         self.awake = None
         self.wake = threading.Event()         # set by the dashboard to skip waiting
         self.stop = threading.Event()
+        self.llama_url = None
+        self.chat_serve = None                # replaced in tests; default incentium_neuron.chat.serve_once
 
     # -- outside world (replaced in tests)
     def _chain(self, url):
@@ -293,6 +300,7 @@ class Node:
             except subprocess.TimeoutExpired:
                 self.llama.kill()
         self.llama = None
+        self.llama_url = None
 
     def speed_test(self, tier: int) -> float:
         body = json.dumps({"model": HW.CATALOG[tier]["model"], "prompt": "The Incentium network is",
@@ -479,6 +487,47 @@ class Node:
         self.st.say(f"registration request: {status} ({msg})")
         self.cfg.set(request={**req, "status": status, "message": msg})
 
+    # -- chat.incentium.org
+    def chat_loop(self):
+        """Answer chat visitors while the node is mining. Runs in its own thread."""
+        from substrateinterface import Keypair
+
+        from . import chat
+        from .addr import SS58_FORMAT
+
+        serve = self.chat_serve or chat.serve_once
+        kp, pause = None, 0.0
+        while not self.stop.is_set():
+            if pause:
+                self.stop.wait(pause)
+                pause = 0.0
+                continue
+            gateway = self.cfg.net().get("chat") or ""
+            tier = self.st.running_tier
+            if not (self.cfg["chat"] and gateway and self.st.phase == "mining" and tier is not None and self.llama_url):
+                self.st.set(chat={**self.st.chat, "state": "off" if not self.cfg["chat"] else "waiting",
+                                  "message": "" if self.cfg["chat"] else "Chat answers are switched off."})
+                pause = 5.0
+                continue
+            if kp is None:
+                kp = Keypair.create_from_mnemonic(json.load(open(self.key_file))["secretPhrase"], ss58_format=SS58_FORMAT)
+            try:
+                n = serve(gateway, kp.ss58_address, lambda m: kp.sign(m).hex(), tier,
+                          HW.CATALOG[tier]["model"], self.llama_url)
+                answered = self.st.chat.get("answered", 0) + n
+                self.st.set(chat={"state": "serving", "message": "Ready to answer chat visitors.", "answered": answered})
+                if n:
+                    d = dict(self.cfg["day"])
+                    d["chats"] = d.get("chats", 0) + n
+                    self.cfg.set(day=d)
+            except PermissionError as e:
+                self.st.set(chat={**self.st.chat, "state": "refused", "message": f"The chat gateway said no: {e}"})
+                pause = 300.0
+            except Exception as e:
+                self.st.set(chat={**self.st.chat, "state": "unreachable",
+                                  "message": f"Cannot reach the chat gateway ({e.__class__.__name__}). Retrying."})
+                pause = 30.0
+
     def shutdown(self, *_):
         self.stop.set()
         self.wake.set()
@@ -500,6 +549,8 @@ def status_json(node: Node) -> dict:
             "download": st.download, "speed": st.speed,
             "free": st.free, "locked": st.locked, "today": st.today, "validators": st.validators,
             "last_task": st.last_task, "paused": cfg["paused"], "backed_up": cfg["backed_up"],
+            "chat": {**st.chat, "enabled": cfg["chat"], "today": cfg["day"].get("chats", 0)
+                     if cfg["day"].get("date") == time.strftime("%Y-%m-%d") else 0},
             "request": {k: v for k, v in (cfg["request"] or {}).items() if k in ("name", "email", "status", "message")} or None,
             "log": list(st.log)[-60:], "unit": UNIT,
         }
@@ -580,6 +631,9 @@ def make_handler(node: Node):
             if p == "/api/backup/done":
                 cfg.set(backed_up=True)
                 return self.send(200, {"ok": True})
+            if p == "/api/chat":
+                cfg.set(chat=bool(body.get("enabled")))
+                return self.send(200, {"ok": True})
             if p == "/api/pause":
                 cfg.set(paused=bool(body.get("paused")))
                 node.wake.set()
@@ -599,6 +653,7 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: (node.shutdown(), sys.exit(0)))
     srv = ThreadingHTTPServer(("127.0.0.1", cfg["port"]), make_handler(node))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
+    threading.Thread(target=node.chat_loop, daemon=True).start()
     node.st.say(f"Incentium Node on http://127.0.0.1:{cfg['port']} ({cfg['network']})")
     try:
         node.run()

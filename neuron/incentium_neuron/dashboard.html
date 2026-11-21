@@ -91,7 +91,9 @@ details summary{cursor:pointer;color:var(--muted)}
         <dt>Locked (launch period)</dt><dd id="locked">–</dd>
         <dt>Earned today</dt><dd id="today">–</dd>
         <dt>Tasks answered today</dt><dd id="tasks">–</dd>
+        <dt>Chat answers today</dt><dd id="chats">–</dd>
       </dl>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="chaton"><span>Also answer visitors on <a href="https://chat.incentium.org" target="_blank" rel="noopener">chat.incentium.org</a> with this computer's model <span class="note" id="chatstate"></span></span></label>
       <p class="note" style="margin-top:12px"><a id="explorer" target="_blank" rel="noopener">See your account on the network</a></p>
     </section>
 
@@ -150,6 +152,11 @@ function render(s) {
   $("locked").textContent = ict(s.locked);
   $("today").textContent = s.today ? ict(s.today.earned) : "–";
   $("tasks").textContent = s.today ? s.today.tasks : "–";
+  if (s.chat) {
+    $("chats").textContent = s.chat.today;
+    if (document.activeElement !== $("chaton")) $("chaton").checked = s.chat.enabled;
+    $("chatstate").textContent = s.chat.message ? "· " + s.chat.message : "";
+  }
   $("explorer").href = s.explorer;
   const h = s.hardware;
   if (h) {
@@ -199,6 +206,7 @@ $("showphrase").addEventListener("click", async () => {
 $("stored").addEventListener("change", (e) => { $("backupdone").disabled = !e.target.checked; });
 $("backupdone").addEventListener("click", async () => { await post("/api/backup/done"); $("phrase").replaceChildren(); tick(); });
 $("pause").addEventListener("click", async () => { await post("/api/pause", {paused: !S.paused}); tick(); });
+$("chaton").addEventListener("change", async (e) => { await post("/api/chat", {enabled: e.target.checked}); tick(); });
 </script>
 </body>
 </html>
