@@ -297,6 +297,7 @@ async function doFill(f, say, step) {
     await sendInc(api.tx.swap.lock(id, fill, h, o.recipient, qty, expiry), state.inc.address);
     store.set("swaptake:" + incLockId(state.inc.address, id, fill), { chain, order: id, fill, at: nowS() });
   }
+  f.querySelector("[type=submit]")?.remove(); // the fill is done: a second Continue would start a new one
   step(2); say(`Done. The ${chain === "inc" ? "seller" : "buyer"} has 12 hours to confirm; you can follow it under My orders.`, true);
 }
 
@@ -367,7 +368,8 @@ async function confirmFill(chain, id, fill, lockId) {
     if (lo.isNone) throw new Error("No ICT lock for this fill on Incentium.");
     const l = lo.unwrap();
     if (!l.state.isActive) throw new Error("The ICT lock is no longer active.");
-    if (l.hash.toHex() !== h.toLowerCase()) throw new Error("The lock uses a different hash.");
+    // `.hash` on a polkadot.js struct is the hash of the whole value, not the field: read the field.
+    if (l.get("hash").toHex() !== h.toLowerCase()) throw new Error("The lock uses a different hash.");
     if (l.payee.toString() !== o.recipient) throw new Error("The lock does not pay your Incentium address.");
     if (l.qty.toBigInt() < big(f.qty)) throw new Error("The lock holds less ICT than this fill needs.");
     if (l.expiry.toNumber() < tInc + 1800) throw new Error("Too close to the lock's deadline to confirm safely.");
