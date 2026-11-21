@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incentium Chat</title>
+<link rel="icon" type="image/svg+xml" href="https://incentium.org/brand/incentium-logo-white-on-black.svg">
+<meta name="description" content="Free AI chat answered by Qwen models running on the computers of Incentium miners.">
+<style>
+  :root {
+    --slate: #1c2230; --panel: #242b3a; --panel2: #2b3345; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4;
+    --lamp: #e8a33d; --bad: #e57373;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--slate); color: var(--text); font: 16px/1.6 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  button, select, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+  .app { display: grid; grid-template-columns: 260px 1fr; height: 100%; }
+  aside { background: #181d29; border-right: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+  .brand { padding: 18px 18px 10px; font: 600 20px/1 var(--serif); }
+  .brand small { display: block; font: 12px var(--sans); color: var(--muted); margin-top: 6px; }
+  .new { margin: 8px 14px 10px; padding: 10px 12px; border: 1px solid var(--line); background: transparent; border-radius: 8px; cursor: pointer; text-align: left; }
+  .new:hover { border-color: var(--lamp); }
+  .chats { list-style: none; margin: 0; padding: 0 8px; overflow-y: auto; flex: 1; }
+  .chats li { display: flex; align-items: center; border-radius: 6px; }
+  .chats li button.open { flex: 1; background: none; border: 0; text-align: left; padding: 8px 10px; cursor: pointer; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+  .chats li.on, .chats li:hover { background: var(--panel); }
+  .chats li.on button.open { color: var(--text); }
+  .chats li button.del { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px 10px; visibility: hidden; }
+  .chats li:hover button.del, .chats li.on button.del { visibility: visible; }
+  .side-foot { padding: 14px 18px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--line); }
+  main { display: flex; flex-direction: column; min-height: 0; }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .menu { display: none; background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .models { display: flex; gap: 4px; background: #151a25; border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+  .models button { border: 0; background: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  .models button.on { background: var(--panel2); color: var(--text); }
+  .models button:disabled { opacity: .35; cursor: not-allowed; }
+  .models button .n { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .pill { margin-left: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: #6cc28a; }
+  #log { flex: 1; overflow-y: auto; padding: 24px 20px 8px; }
+  .col { max-width: 760px; margin: 0 auto; }
+  .empty { text-align: center; padding-top: 10vh; }
+  .empty h1 { font: 500 clamp(30px, 5vw, 44px)/1.1 var(--serif); margin: 0 0 12px; }
+  .empty p { color: var(--muted); max-width: 32em; margin: 0 auto 24px; }
+  .ideas { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  .ideas button { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+  .ideas button:hover { border-color: var(--lamp); }
+  .msg { margin: 0 0 22px; }
+  .msg.user .body { background: var(--panel2); border-radius: 12px; padding: 10px 14px; margin-left: auto; max-width: 85%; width: fit-content; white-space: pre-wrap; }
+  .msg.bot .body { padding: 2px 2px; }
+  .msg.bot .body p { margin: 0 0 10px; }
+  .msg.bot .body pre { background: #121722; border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-x: auto; font: 13.5px/1.5 var(--mono); }
+  .msg.bot .body code { font: 13.5px var(--mono); background: #121722; padding: 1px 5px; border-radius: 4px; }
+  .msg.bot .body pre code { background: none; padding: 0; }
+  .msg.bot .body ul, .msg.bot .body ol { margin: 0 0 10px; padding-left: 22px; }
+  .msg.bot .body h3 { font: 600 17px var(--sans); margin: 14px 0 6px; }
+  .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .err { color: var(--bad); }
+  .cursor::after { content: "▍"; color: var(--lamp); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .composer { padding: 10px 20px 16px; }
+  .box { display: flex; gap: 10px; align-items: flex-end; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 14px; }
+  .box:focus-within { border-color: var(--lamp); }
+  textarea:focus-visible { outline: none; }
+  textarea { flex: 1; border: 0; background: transparent; resize: none; max-height: 220px; padding: 6px 0; outline: none; line-height: 1.5; }
+  .send { background: var(--lamp); color: #1b1b1b; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+  .send:disabled { opacity: .4; cursor: not-allowed; }
+  .send.stop { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  .fine { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: fixed; inset: 0 30% 0 0; z-index: 5; transform: translateX(-100%); transition: transform .2s; }
+    aside.show { transform: none; }
+    .menu { display: block; }
+    .pill { margin-left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside id="side">
+    <div class="brand">Incentium Chat<small>Answered by the network's miners</small></div>
+    <button class="new" id="new" type="button">+ New chat</button>
+    <ul class="chats" id="chats"></ul>
+    <div class="side-foot">Chats are kept in this browser only. <a href="https://incentium.org/mine/">Lend your computer and earn ICT</a></div>
+  </aside>
+  <main>
+    <header>
+      <button class="menu" id="menu" type="button" aria-label="Chats">☰</button>
+      <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
+      <div class="pill"><span class="dot" id="dot"></span><span id="net">Connecting…</span></div>
+    </header>
+    <div id="log"><div class="col" id="col"></div></div>
+    <div class="composer">
+      <div class="col">
+        <form class="box" id="form">
+          <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Message"></textarea>
+          <button class="send" id="send" type="submit">Send</button>
+        </form>
+        <div class="fine">
+          <span>Answers come from Qwen models on community computers. Do not share passwords or personal details.</span>
+          <span id="quota"></span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const SYSTEM = "You are Incentium Chat, a helpful assistant running on Qwen models served by the miners of the Incentium network. Answer clearly and concisely, in the language the user writes in.";
+const IDEAS = ["Explain how a blockchain reaches agreement", "Write a short poem about the northern lights", "Give me a 3-day plan to learn basic Python", "What is a good way to start running?"];
+
+let chats = store.get("ic.chats", []);
+let current = store.get("ic.current", null);
+let model = store.get("ic.model", "auto");
+let models = [];
+let busy = null;   // AbortController while an answer streams
+
+function save() { store.set("ic.chats", chats.slice(0, 100)); store.set("ic.current", current); }
+function chat() { return chats.find((c) => c.id === current); }
+
+// ---------------------------------------------------------------- rendering
+function esc(s) { return s.replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c])); }
+function inline(s) {
+  return s.replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+          .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener nofollow">$1</a>');
+}
+function markdown(src) {
+  src = src.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+  const out = [], parts = src.split(/```/);
+  parts.forEach((part, i) => {
+    if (i % 2) { out.push("<pre><code>" + esc(part.replace(/^[\w+-]*\n/, "")) + "</code></pre>"); return; }
+    let list = null;
+    for (const line of esc(part).split("\n")) {
+      const li = line.match(/^\s*(?:[-*]|(\d+)[.)])\s+(.*)/);
+      if (li) {
+        const kind = li[1] ? "ol" : "ul";
+        if (list !== kind) { if (list) out.push(`</${list}>`); out.push(`<${kind}>`); list = kind; }
+        out.push("<li>" + inline(li[2]) + "</li>");
+        continue;
+      }
+      if (list) { out.push(`</${list}>`); list = null; }
+      const h = line.match(/^#{1,4}\s+(.*)/);
+      if (h) out.push("<h3>" + inline(h[1]) + "</h3>");
+      else if (line.trim()) out.push("<p>" + inline(line) + "</p>");
+    }
+    if (list) out.push(`</${list}>`);
+  });
+  return out.join("");
+}
+
+function renderList() {
+  const ul = $("chats");
+  ul.innerHTML = "";
+  for (const c of chats) {
+    const li = document.createElement("li");
+    li.className = c.id === current ? "on" : "";
+    const b = document.createElement("button");
+    b.className = "open"; b.type = "button"; b.textContent = c.title || "New chat";
+    b.onclick = () => { if (busy) return; current = c.id; save(); renderAll(); $("side").classList.remove("show"); };
+    const d = document.createElement("button");
+    d.className = "del"; d.type = "button"; d.textContent = "×"; d.setAttribute("aria-label", "Delete chat");
+    d.onclick = () => { if (busy) return; chats = chats.filter((x) => x.id !== c.id); if (current === c.id) current = null; save(); renderAll(); };
+    li.append(b, d);
+    ul.append(li);
+  }
+}
+
+function msgEl(m) {
+  const div = document.createElement("div");
+  div.className = "msg " + (m.role === "user" ? "user" : "bot");
+  const body = document.createElement("div");
+  body.className = "body";
+  if (m.role === "user") body.textContent = m.content;
+  else body.innerHTML = markdown(m.content || "");
+  div.append(body);
+  if (m.role === "assistant" && (m.meta || m.error)) {
+    const meta = document.createElement("div");
+    meta.className = "meta" + (m.error ? " err" : "");
+    meta.textContent = m.error || m.meta;
+    div.append(meta);
+  }
+  return div;
+}
+
+function renderLog() {
+  const col = $("col"), c = chat();
+  col.innerHTML = "";
+  if (!c || !c.messages.length) {
+    col.innerHTML = `<div class="empty"><h1>Ask the network</h1><p>Your question is answered by an open Qwen model running on the computer of an Incentium miner. Free, with a daily limit.</p><div class="ideas"></div></div>`;
+    const ideas = col.querySelector(".ideas");
+    for (const t of IDEAS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = t;
+      b.onclick = () => { $("input").value = t; send(); };
+      ideas.append(b);
+    }
+    return;
+  }
+  for (const m of c.messages) col.append(msgEl(m));
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function renderModels() {
+  const box = $("models");
+  box.innerHTML = "";
+  const list = models.length ? models : [{id: "auto", label: "Auto", miners: 0}];
+  if (!list.some((m) => m.id === model)) model = "auto";
+  for (const m of list) {
+    const b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "radio");
+    b.className = m.id === model ? "on" : "";
+    b.setAttribute("aria-checked", m.id === model);
+    b.title = m.model + (m.fallback && !m.miners ? " (backup model)" : "");
+    b.innerHTML = esc(m.label) + (m.id !== "auto" ? `<span class="n">${m.miners}</span>` : "");
+    b.disabled = !models.length;
+    b.onclick = () => { model = m.id; store.set("ic.model", model); renderModels(); };
+    box.append(b);
+  }
+}
+
+function renderAll() { renderList(); renderLog(); }
+
+// ---------------------------------------------------------------- network status
+async function status() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    models = s.models;
+    const miners = models.length ? models[0].miners : 0;
+    $("dot").className = "dot" + (models.length ? " ok" : "");
+    $("net").textContent = models.length
+      ? `${miners} miner${miners === 1 ? "" : "s"} online · testnet`
+      : "No miners online right now";
+    $("quota").textContent = `${s.quota.left} of ${s.quota.limit} free messages left today`;
+  } catch {
+    $("net").textContent = "Cannot reach the gateway";
+    $("dot").className = "dot";
+  }
+  renderModels();
+}
+
+// ---------------------------------------------------------------- sending
+async function send() {
+  const text = $("input").value.trim();
+  if (!text || busy) return;
+  let c = chat();
+  if (!c) {
+    c = {id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), title: "", messages: []};
+    chats.unshift(c); current = c.id;
+  }
+  if (!c.title) c.title = text.slice(0, 48);
+  c.messages.push({role: "user", content: text});
+  const answer = {role: "assistant", content: ""};
+  c.messages.push(answer);
+  $("input").value = ""; grow();
+  save(); renderAll();
+
+  const el = $("col").lastElementChild, body = el.querySelector(".body");
+  body.classList.add("cursor");
+  busy = new AbortController();
+  setSending(true);
+  const history = c.messages.slice(0, -1).filter((m) => !m.error).map((m) => ({role: m.role, content: m.content}));
+  const t0 = performance.now();
+  let first = 0, pieces = 0, info = {};
+  try {
+    const r = await fetch("/v1/chat/completions", {
+      method: "POST", headers: {"Content-Type": "application/json"}, signal: busy.signal,
+      body: JSON.stringify({model, stream: true, messages: [{role: "system", content: SYSTEM}, ...history]}),
+    });
+    if (!r.ok) {
+      let msg = `The gateway answered ${r.status}.`;
+      try { msg = (await r.json()).error.message; } catch {}
+      throw new Error(msg);
+    }
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") continue;
+        const ev = JSON.parse(data);
+        if (ev.incentium) info = {...info, ...Object.fromEntries(Object.entries(ev.incentium).filter(([, v]) => v != null))};
+        const ch = ev.choices[0];
+        if (ch.delta && ch.delta.content) {
+          if (!first) first = performance.now();
+          pieces++;
+          answer.content += ch.delta.content;
+          body.innerHTML = markdown(answer.content);
+          $("log").scrollTop = $("log").scrollHeight;
+        }
+        if (ch.finish_reason === "error") throw new Error(info.error || "The answer stopped.");
+      }
+    }
+    const secs = first ? (performance.now() - first) / 1000 : 0;
+    const n = info.tokens || pieces;
+    const rate = secs > 0.5 && n > 3 ? ` · ${(n / secs).toFixed(0)} tokens/s` : "";
+    answer.meta = [models.find((m) => m.tier === info.tier)?.model || info.label, info.served_by === "fallback" ? "backup model" : info.served_by]
+      .filter(Boolean).join(" · ") + rate;
+  } catch (e) {
+    if (e.name === "AbortError") answer.meta = "Stopped";
+    else answer.error = e.message || "Something went wrong.";
+    if (!answer.content && answer.error) answer.content = "";
+  } finally {
+    busy = null;
+    setSending(false);
+    save(); renderLog();
+    status();
+  }
+}
+
+function setSending(on) {
+  const b = $("send");
+  b.textContent = on ? "Stop" : "Send";
+  b.classList.toggle("stop", on);
+  b.type = on ? "button" : "submit";
+}
+
+function grow() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 220) + "px"; }
+
+$("form").addEventListener("submit", (e) => { e.preventDefault(); send(); });
+$("send").addEventListener("click", () => { if (busy) busy.abort(); });
+$("input").addEventListener("input", grow);
+$("input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+});
+$("new").addEventListener("click", () => { if (busy) return; current = null; save(); renderAll(); $("input").focus(); $("side").classList.remove("show"); });
+$("menu").addEventListener("click", () => $("side").classList.toggle("show"));
+
+renderAll();
+status();
+setInterval(status, 15000);
+$("input").focus();
+</script>
+</body>
+</html>

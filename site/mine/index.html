@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mine ICT on your Mac · Incentium</title>
+<title>Mine ICT on your Mac or PC · Incentium</title>
 <link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
-<meta name="description" content="Run an Incentium node on your Mac with one command. It picks the Qwen model your Mac can run, answers AI tasks and earns ICT.">
+<meta name="description" content="Run an Incentium node on your Mac or Windows PC with one command. It picks the Qwen model your Mac can run, answers AI tasks and earns ICT.">
 <style>
   :root {
     --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4; --lamp: #e8a33d;
@@ -40,15 +40,17 @@
   .facts p, .facts li { color: var(--muted); font-size: 15px; margin: 0 0 6px; }
   .facts ul { padding-left: 18px; margin: 0; }
   .small { font-size: 14px; color: var(--muted); }
+  h2.os { font: 600 15px var(--sans); text-transform: uppercase; letter-spacing: .08em; color: var(--lamp); margin: 8px 0 22px; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header><a class="mark" href="/">Incentium</a></header>
 
-  <h1>Mine ICT on your Mac</h1>
-  <p class="lede">Your Mac answers small AI tasks with an open Qwen model. Validators check the answers, and the network pays in ICT. Setting it up is one line, and nothing needs an administrator password.</p>
+  <h1>Mine ICT on your Mac or PC</h1>
+  <p class="lede">Your computer answers small AI tasks with an open Qwen model. Validators check the answers, and the network pays in ICT. Setting it up is one line, and nothing needs an administrator password.</p>
 
+  <h2 class="os">On a Mac</h2>
   <ol class="steps">
     <li>
       <h2>Open Terminal</h2>
@@ -56,8 +58,8 @@
     </li>
     <li>
       <h2>Copy this line</h2>
-      <div class="cmd"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash</code>
-        <button id="copy" type="button">Copy</button></div>
+      <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash</code>
+        <button class="copy" type="button">Copy</button></div>
     </li>
     <li>
       <h2>Paste it and press Return</h2>
@@ -69,18 +71,39 @@
     </li>
   </ol>
 
+  <h2 class="os">On a Windows PC</h2>
+  <ol class="steps">
+    <li>
+      <h2>Open PowerShell</h2>
+      <p>Press the <kbd>Windows</kbd> key, type <b>PowerShell</b> and press <kbd>Enter</kbd>. A blue or black window with text opens. You do not need to run it as administrator.</p>
+    </li>
+    <li>
+      <h2>Copy this line</h2>
+      <div class="cmd"><code>irm https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.ps1 | iex</code>
+        <button class="copy" type="button">Copy</button></div>
+    </li>
+    <li>
+      <h2>Paste it and press Enter</h2>
+      <p>Right-click in the PowerShell window to paste, then press <kbd>Enter</kbd>. It takes a few minutes. When it is done, your browser opens the Incentium dashboard, and an <b>Incentium</b> icon appears on your desktop.</p>
+    </li>
+    <li>
+      <h2>Follow the dashboard</h2>
+      <p>The same as on a Mac. With an NVIDIA graphics card the PC can run larger models; without one it runs the smallest model on the processor.</p>
+    </li>
+  </ol>
+
   <div class="facts">
     <div>
       <h3>What you need</h3>
       <ul>
-        <li>A Mac with at least 8 GB of memory (4 GB works, slowly). Apple Silicon (M1 or newer) runs larger models.</li>
+        <li>A Mac or a 64-bit Windows 10 or 11 PC with at least 8 GB of memory (4 GB works, slowly). Apple Silicon (M1 or newer) or an NVIDIA graphics card runs larger models.</li>
         <li>3 GB of free disk, more for larger models.</li>
-        <li>The Mac switched on, plugged in and online. Rewards follow the time it is available.</li>
+        <li>The computer switched on, plugged in and online. Rewards follow the time it is available.</li>
       </ul>
     </div>
     <div>
       <h3>What it installs</h3>
-      <p>Everything goes into one folder, <code>~/.incentium-node</code>: Python, llama.cpp and the Incentium node. It starts when you log in. The code is open on <a href="https://github.com/Doncoin1999/incentium-chain">GitHub</a>; read <a href="https://github.com/Doncoin1999/incentium-chain/blob/main/scripts/install-node.sh">the install script</a> before you run it.</p>
+      <p>Everything goes into one folder, <code>~/.incentium-node</code> (on Windows <code>%USERPROFILE%\.incentium-node</code>): Python, llama.cpp and the Incentium node. It starts when you log in. The code is open on <a href="https://github.com/Doncoin1999/incentium-chain">GitHub</a>; read the install script for <a href="https://github.com/Doncoin1999/incentium-chain/blob/main/scripts/install-node.sh">Mac</a> or <a href="https://github.com/Doncoin1999/incentium-chain/blob/main/scripts/install-node.ps1">Windows</a> before you run it.</p>
     </div>
     <div>
       <h3>Rewards in the launch period</h3>
@@ -88,18 +111,20 @@
     </div>
     <div>
       <h3>Remove it</h3>
-      <p>Paste this in Terminal. Your key is copied to your home folder first.</p>
+      <p>On a Mac, paste this in Terminal. Your key is copied to your home folder first.</p>
       <p><code class="small">curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash -s -- --uninstall</code></p>
+      <p>On Windows, paste this in PowerShell:</p>
+      <p><code class="small">$env:INCENTIUM_UNINSTALL=1; irm https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.ps1 | iex</code></p>
     </div>
   </div>
-  <p class="small" style="margin-top:32px">Windows comes next. The node runs on the Incentium testnet while the network is being tested.</p>
+  <p class="small" style="margin-top:32px">The node runs on the Incentium testnet while the network is being tested.</p>
 </div>
 <script>
-document.getElementById("copy").addEventListener("click", async (e) => {
-  await navigator.clipboard.writeText(document.getElementById("cmd").textContent);
-  e.target.textContent = "Copied";
-  setTimeout(() => (e.target.textContent = "Copy"), 2000);
-});
+document.querySelectorAll("button.copy").forEach((b) => b.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(b.parentElement.querySelector("code").textContent);
+  b.textContent = "Copied";
+  setTimeout(() => (b.textContent = "Copy"), 2000);
+}));
 </script>
 </body>
 </html>

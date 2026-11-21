@@ -18,6 +18,7 @@ Status: step 2 in progress. Open source, Apache-2.0. No company or foundation op
 | `runtime` | Aura + Grandpa solochain runtime with all Incentium pallets, devnet genesis presets | Done; native tests incl. end-to-end Phase 1 loop |
 | `node` | Reference node from the Polkadot SDK solochain template | Compiles; needs the wasm runtime to run |
 | `neuron` | Python reference SN0 miner and validator (OpenAI-compatible backends, spot checks, commit-reveal) | Done, tested against mock models |
+| `chat` | chat.incentium.org prototype: free chat and OpenAI-compatible API answered by SN0 miners | Prototype, tested |
 | `scripts`, `docs/DEVNET.md` | 3-validator devnet launcher, SN0 bootstrap, runbook | Ready |
 | `pallets/amm`, `buyback`, `alpha-assets`, `utility-metrics`, `payments` | Phase 2-3 | Later |
 
