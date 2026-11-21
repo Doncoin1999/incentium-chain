@@ -151,7 +151,11 @@ class Keeper:
                 raise ValueError("quantity too large for the order, or under 5 USDC")
             if sum(1 for f in o["fills"] if f["state"] == "active") >= MAX_OPEN_RES:
                 raise ValueError("this order has 3 open reservations; try again later")
-            fill = store.next_free_fill(self.con, chain, oid)
+            # The store follows the chain with a delay (Base: 10 confirmations), so a fill reserved
+            # moments ago may not be in it yet: also skip every fill already used on chain.
+            oc = (self.inc if chain == "inc" else self.base).order(oid) or {}
+            used_mask = int(oc.get("usedFills", oc.get("used_fills", 0)) or 0)
+            fill = store.next_free_fill(self.con, chain, oid, used_mask)
             if fill is None:
                 raise ValueError("no fills left on this order")
             if chain == "inc":

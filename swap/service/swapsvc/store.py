@@ -135,9 +135,10 @@ def order_detail(con, chain, oid):
     return o
 
 
-def next_free_fill(con, chain, oid):
+def next_free_fill(con, chain, oid, used_mask: int = 0):
+    """First fill not used in the store nor in `used_mask` (bit i set = fill i used on chain)."""
     used = {r[0] for r in con.execute("SELECT fill FROM reservations WHERE chain = ? AND order_id = ?", (chain, oid))}
-    return next((i for i in range(16) if i not in used), None)
+    return next((i for i in range(16) if i not in used and not (used_mask >> i) & 1), None)
 
 
 def for_account(con, addrs):
