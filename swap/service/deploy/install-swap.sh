@@ -87,6 +87,10 @@ $DOMAIN {
 	}
 }
 CADDY
+# keep the page behind Incentium sign-in when the sign-in service is installed (auth/deploy/install-auth.sh)
+if [ -f /etc/caddy/sites/00-auth.caddy ]; then
+  sudo python3 "$HERE/../../auth/deploy/protect-caddy.py" /etc/caddy/sites/swap.caddy --all --no-snippet >/dev/null
+fi
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sudo systemctl reload caddy
 
