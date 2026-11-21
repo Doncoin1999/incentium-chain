@@ -356,6 +356,14 @@ class Node:
             pass
 
     def keep_awake(self, on: bool):
+        if sys.platform == "win32":
+            # ES_CONTINUOUS | ES_SYSTEM_REQUIRED keeps Windows from sleeping; ES_CONTINUOUS alone lets it again
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | (0x00000001 if on else 0))
+            except Exception:
+                pass
+            return
         if sys.platform != "darwin":
             return
         if on and not (self.awake and self.awake.poll() is None):
