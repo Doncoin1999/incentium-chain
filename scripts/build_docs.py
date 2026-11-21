@@ -21,6 +21,8 @@ import sync_topbar  # noqa: E402
 
 # slug -> (source markdown, PDF file name in site/<slug>/ or None, top bar id, description)
 DOCS = {
+    "whitepaper": ("site/docs/whitepaper.md", "incentium-whitepaper-v0.1.pdf", "whitepaper",
+                   "Incentium: an open network where machine intelligence is produced, verified and rewarded in ICT."),
     "spec": ("site/docs/technical-specification.md", "incentium-technical-specification-v0.1.pdf", "spec",
              "The rules of the Incentium chain, module by module, with the simulation results behind them."),
 }
@@ -76,6 +78,7 @@ TEMPLATE = """<!doctype html>
   th { background: #20273a; font-weight: 600; color: var(--text); white-space: nowrap; }
   tr:last-child td { border-bottom: 0; }
   td { color: #d5dae4; }
+  article img { display: block; max-width: 100%; height: auto; margin: 22px auto; border-radius: 10px; background: #fff; }
   .math { overflow-x: auto; margin: 18px 0; padding: 14px; background: #151a25; border-radius: 8px; text-align: center; }
   .math.raw { font: 14px var(--mono); text-align: left; white-space: pre-wrap; }
   h2 .anchor, h3 .anchor { opacity: 0; margin-left: 8px; color: var(--muted); text-decoration: none; font-size: .7em; }
@@ -204,6 +207,8 @@ def render(md_text: str) -> tuple[str, str, str, str]:
 def build(slug: str) -> str:
     src, pdf, site, desc = DOCS[slug]
     title, byline, body, toc = render(open(os.path.join(ROOT, src), encoding="utf-8").read())
+    if title == "Incentium":
+        title = "Incentium Whitepaper"
     kind = "Technical specification" if slug == "spec" else "Whitepaper"
     dl = []
     if pdf:
