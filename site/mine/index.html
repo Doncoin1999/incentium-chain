@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mine ICT on your Mac · Incentium</title>
+<link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
+<meta name="description" content="Run an Incentium node on your Mac with one command. It picks the Qwen model your Mac can run, answers AI tasks and earns ICT.">
+<style>
+  :root {
+    --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4; --lamp: #e8a33d;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--slate); color: var(--text); }
+  body { margin: 0; font: 17px/1.6 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  a:hover { color: var(--lamp); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--lamp); outline-offset: 3px; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px 64px; }
+  header { padding: 28px 0; }
+  .mark { font: 600 22px/1 var(--serif); text-decoration: none; }
+  h1 { font: 500 clamp(36px, 6vw, 60px)/1.05 var(--serif); letter-spacing: -.015em; margin: 40px 0 18px; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 34em; margin: 0 0 40px; }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 0 0 34px 64px; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: -4px; width: 40px; height: 40px;
+    border: 1px solid var(--lamp); border-radius: 50%; display: grid; place-items: center; font: 500 20px var(--serif); color: var(--lamp); }
+  ol.steps h2 { font: 500 24px/1.25 var(--serif); margin: 0 0 6px; }
+  ol.steps p { margin: 0; color: var(--muted); }
+  kbd { font: 14px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; color: var(--text); }
+  .cmd { display: flex; gap: 10px; align-items: stretch; margin-top: 12px; }
+  .cmd code { flex: 1; background: #151a25; border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px;
+    font: 14px/1.5 var(--mono); overflow-x: auto; white-space: nowrap; }
+  button { font: 600 16px var(--sans); background: var(--lamp); color: #1b1b1b; border: 0; border-radius: 8px; padding: 0 20px; cursor: pointer; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 28px; border-top: 1px solid var(--line); padding-top: 28px; margin-top: 12px; }
+  .facts h3 { font: 600 15px var(--sans); margin: 0 0 6px; }
+  .facts p, .facts li { color: var(--muted); font-size: 15px; margin: 0 0 6px; }
+  .facts ul { padding-left: 18px; margin: 0; }
+  .small { font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><a class="mark" href="/">Incentium</a></header>
+
+  <h1>Mine ICT on your Mac</h1>
+  <p class="lede">Your Mac answers small AI tasks with an open Qwen model. Validators check the answers, and the network pays in ICT. Setting it up is one line, and nothing needs an administrator password.</p>
+
+  <ol class="steps">
+    <li>
+      <h2>Open Terminal</h2>
+      <p>Press <kbd>⌘</kbd> <kbd>Space</kbd>, type <b>Terminal</b> and press <kbd>Return</kbd>. A window with text opens.</p>
+    </li>
+    <li>
+      <h2>Copy this line</h2>
+      <div class="cmd"><code id="cmd">curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash</code>
+        <button id="copy" type="button">Copy</button></div>
+    </li>
+    <li>
+      <h2>Paste it and press Return</h2>
+      <p>Click in the Terminal window, press <kbd>⌘</kbd> <kbd>V</kbd> and then <kbd>Return</kbd>. It takes a few minutes. When it is done, your browser opens the Incentium dashboard, and an <b>Incentium</b> icon appears on your desktop.</p>
+    </li>
+    <li>
+      <h2>Follow the dashboard</h2>
+      <p>It finds the largest Qwen model your Mac can run and downloads it. Send the short request to join, and write down the 12 backup words. Mining starts by itself once you are approved.</p>
+    </li>
+  </ol>
+
+  <div class="facts">
+    <div>
+      <h3>What you need</h3>
+      <ul>
+        <li>A Mac with at least 8 GB of memory (4 GB works, slowly). Apple Silicon (M1 or newer) runs larger models.</li>
+        <li>3 GB of free disk, more for larger models.</li>
+        <li>The Mac switched on, plugged in and online. Rewards follow the time it is available.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>What it installs</h3>
+      <p>Everything goes into one folder, <code>~/.incentium-node</code>: Python, llama.cpp and the Incentium node. It starts when you log in. The code is open on <a href="https://github.com/Doncoin1999/incentium-chain">GitHub</a>; read <a href="https://github.com/Doncoin1999/incentium-chain/blob/main/scripts/install-node.sh">the install script</a> before you run it.</p>
+    </div>
+    <div>
+      <h3>Rewards in the launch period</h3>
+      <p>For work in the first 90 days, a quarter of each reward is paid at once. Three quarters are locked and released in steps from day 150 to day 690.</p>
+    </div>
+    <div>
+      <h3>Remove it</h3>
+      <p>Paste this in Terminal. Your key is copied to your home folder first.</p>
+      <p><code class="small">curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash -s -- --uninstall</code></p>
+    </div>
+  </div>
+  <p class="small" style="margin-top:32px">Windows comes next. The node runs on the Incentium testnet while the network is being tested.</p>
+</div>
+<script>
+document.getElementById("copy").addEventListener("click", async (e) => {
+  await navigator.clipboard.writeText(document.getElementById("cmd").textContent);
+  e.target.textContent = "Copied";
+  setTimeout(() => (e.target.textContent = "Copy"), 2000);
+});
+</script>
+</body>
+</html>

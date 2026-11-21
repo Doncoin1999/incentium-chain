@@ -38,7 +38,9 @@ def keygen(path: str) -> str:
     return kp.ss58_address
 
 
-def register(key_file: str, service: str, timeout: float = 60) -> tuple[int, dict]:
+def register(key_file: str, service: str, timeout: float = 60, contact: dict | None = None) -> tuple[int, dict]:
+    """Ask the registration service to register this hotkey. `contact` (name, email, note) goes
+    along for services that approve requests by hand; others ignore it."""
     from substrateinterface import Keypair
 
     kp = Keypair.create_from_mnemonic(json.load(open(os.path.expanduser(key_file)))["secretPhrase"])
@@ -46,7 +48,7 @@ def register(key_file: str, service: str, timeout: float = 60) -> tuple[int, dic
     with urllib.request.urlopen(base + "/", timeout=timeout) as r:
         info = json.loads(r.read())
     msg = registration_message(info["genesis"], kp.ss58_address)
-    body = json.dumps({"hotkey": kp.ss58_address, "signature": kp.sign(msg).hex()}).encode()
+    body = json.dumps({"hotkey": kp.ss58_address, "signature": kp.sign(msg).hex(), **({"contact": contact} if contact else {})}).encode()
     req = urllib.request.Request(base + "/register", data=body, headers={"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
