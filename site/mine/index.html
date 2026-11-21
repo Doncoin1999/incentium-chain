@@ -61,10 +61,11 @@
 .ic-nav::-webkit-scrollbar { display: none; }
 .ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
 .ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
 .ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
 body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
 body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
-body[data-site="home"] .ic-nav a[data-site="home"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
 @media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
 @media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
 </style>
@@ -79,6 +80,7 @@ body[data-site="home"] .ic-nav a[data-site="home"] { color: #e8a33d; box-shadow:
       <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
       <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
       <a href="https://github.com/Doncoin1999/incentium-chain">Code</a>
+      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
     </nav>
   </div>
 </header>
@@ -200,6 +202,7 @@ body[data-site="home"] .ic-nav a[data-site="home"] { color: #e8a33d; box-shadow:
       <a href="https://explorer.incentium.org/">Explorer</a>
       <a href="https://faucet.incentium.org/">Faucet</a>
       <a href="https://github.com/Doncoin1999/incentium-chain">Source code</a>
+      <a href="https://auth.incentium.org/admin">Admin</a>
     </nav>
     <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
   </div>

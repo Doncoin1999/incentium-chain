@@ -160,7 +160,7 @@ def page(title, body, wide=False):
     return (f"<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' "
             f"content='width=device-width,initial-scale=1'><title>{html.escape(title)} · Incentium</title>"
             f"<link rel='icon' type='image/svg+xml' href='https://incentium.org/brand/incentium-logo-white-on-black.svg'>"
-            f"<style>{STYLE}</style></head><body>{TOPBAR}<main class='{'wide' if wide else ''}'>{body}</main>{FOOTER}</body></html>")
+            f"<style>{STYLE}</style></head><body data-site='admin'>{TOPBAR}<main class='{'wide' if wide else ''}'>{body}</main>{FOOTER}</body></html>")
 
 
 def e(s) -> str:
