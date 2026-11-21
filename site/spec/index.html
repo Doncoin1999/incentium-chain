@@ -1,0 +1,1531 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Incentium Technical Specification v0.1 · Incentium</title>
+<meta name="description" content="The rules of the Incentium chain, module by module, with the simulation results behind them.">
+<link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<style>
+  :root { --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4; --lamp: #e8a33d;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html { background: var(--slate); color: var(--text); scroll-behavior: smooth; scroll-padding-top: 24px; }
+  body { margin: 0; font: 17px/1.65 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  a:hover { color: var(--lamp); }
+  .page { max-width: 1240px; margin: 0 auto; padding: 0 24px 96px; display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 56px; }
+  nav.toc { position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto; padding: 32px 0 32px; font-size: 14px; }
+  nav.toc b { display: block; font: 600 12px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc li { margin: 0; }
+  nav.toc a { display: block; padding: 4px 10px; border-left: 2px solid var(--line); color: var(--muted); text-decoration: none; }
+  nav.toc a:hover { color: var(--text); }
+  nav.toc a.on { color: var(--text); border-left-color: var(--lamp); }
+  nav.toc ol ol a { padding-left: 24px; font-size: 13.5px; }
+  article { min-width: 0; max-width: 48em; padding-top: 36px; }
+  .doc-head { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 28px; }
+  .doc-head .kind { color: var(--lamp); font: 600 13px var(--sans); letter-spacing: .1em; text-transform: uppercase; }
+  .doc-head h1 { font: 500 clamp(32px, 4.4vw, 48px)/1.12 var(--serif); margin: 8px 0 10px; }
+  .doc-head .by { color: var(--muted); font-size: 15px; }
+  .doc-head .dl { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .doc-head .dl a { border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; font-size: 14px; text-decoration: none; }
+  .doc-head .dl a.main { background: var(--lamp); border-color: var(--lamp); color: #1b1b1b; font-weight: 600; }
+  .doc-head .dl a:hover { border-color: var(--lamp); }
+  article h2 { font: 500 30px/1.2 var(--serif); margin: 52px 0 14px; padding-top: 8px; }
+  article h3 { font: 600 19px/1.3 var(--sans); margin: 34px 0 10px; }
+  article h4 { font: 600 16px/1.3 var(--sans); margin: 24px 0 8px; color: var(--muted); }
+  article p, article li { color: #d5dae4; }
+  article strong { color: var(--text); }
+  article code { font: 14.5px var(--mono); background: #151a25; border: 1px solid #2b3345; padding: 1px 5px; border-radius: 4px; }
+  article pre { background: #151a25; border: 1px solid var(--line); border-radius: 8px; padding: 14px; overflow-x: auto; }
+  article pre code { border: 0; padding: 0; background: none; }
+  .tbl { overflow-x: auto; margin: 18px 0 22px; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid #2f3749; }
+  th { background: #20273a; font-weight: 600; color: var(--text); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  td { color: #d5dae4; }
+  .math { overflow-x: auto; margin: 18px 0; padding: 14px; background: #151a25; border-radius: 8px; text-align: center; }
+  .math.raw { font: 14px var(--mono); text-align: left; white-space: pre-wrap; }
+  h2 .anchor, h3 .anchor { opacity: 0; margin-left: 8px; color: var(--muted); text-decoration: none; font-size: .7em; }
+  h2:hover .anchor, h3:hover .anchor { opacity: 1; }
+  td:first-child { min-width: 9em; }
+  details.mtoc { display: none; margin-top: 18px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 15px; }
+  details.mtoc summary { cursor: pointer; color: var(--muted); }
+  details.mtoc ol { padding-left: 18px; margin: 8px 0 0; } details.mtoc ol ol { display: none; }
+  details.mtoc a { display: block; padding: 4px 0; text-decoration: none; color: #d5dae4; }
+  @media (max-width: 960px) { .page { grid-template-columns: 1fr; gap: 0; } nav.toc { display: none; } details.mtoc { display: block; } }
+</style>
+</head>
+<body data-site="spec">
+<!-- ic:topbar -->
+<style>
+/* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
+.ic-brand img { width: 30px; height: 28px; display: block; }
+.ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
+.ic-brand:hover span { color: #e8a33d; }
+.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.ic-nav::-webkit-scrollbar { display: none; }
+.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
+.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
+.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
+body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
+body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
+@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+</style>
+<header class="ic-top">
+  <div class="ic-in">
+    <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
+      <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
+    </a>
+    <nav class="ic-nav" aria-label="Incentium">
+      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
+      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
+      <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
+      <a href="https://github.com/Doncoin1999/incentium-chain">Code</a>
+      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+<!-- /ic:topbar -->
+<div class="page">
+  <nav class="toc" aria-label="Contents"><b>Contents</b>
+    <ol>
+      <li><a href="#1-scope-and-conventions">1. Scope and conventions</a>
+      </li>
+      <li><a href="#2-simulation-findings">2. Simulation findings</a>
+      <ol>
+        <li><a href="#21-issuance-schedule">2.1 Issuance schedule</a></li>
+        <li><a href="#22-alpha-injection-a-fixed-schedule-dilutes-stakers">2.2 Alpha injection: a fixed schedule dilutes stakers</a></li>
+        <li><a href="#23-which-locked-ict-metric-to-use">2.3 Which “locked ICT” metric to use</a></li>
+        <li><a href="#24-wash-trading-the-fee-rate-matters-not-the-metric">2.4 Wash trading: the fee rate matters, not the metric</a></li>
+        <li><a href="#25-concentration">2.5 Concentration</a></li>
+        <li><a href="#26-recommended-changes-to-the-whitepaper">2.6 Recommended changes to the whitepaper</a></li>
+        <li><a href="#27-limitations">2.7 Limitations</a></li>
+      </ol></li>
+      <li><a href="#3-module-ict-emission">3. Module ict-emission</a>
+      </li>
+      <li><a href="#4-module-subnet-registry">4. Module subnet-registry</a>
+      </li>
+      <li><a href="#5-module-work-verify-sn0">5. Module work-verify (SN0)</a>
+      </li>
+      <li><a href="#6-modules-weights-and-consensus">6. Modules weights and consensus</a>
+      </li>
+      <li><a href="#7-modules-alpha-assets-amm-and-buyback">7. Modules alpha-assets, amm and buyback</a>
+      </li>
+      <li><a href="#8-modules-utility-metrics-payments-and-phase-control">8. Modules utility-metrics, payments and phase-control</a>
+      </li>
+      <li><a href="#9-open-questions-and-next-step">9. Open questions and next step</a>
+      </li>
+      <li><a href="#10-alpha-marketplace-simulation-round-2">10. Alpha marketplace (simulation round 2)</a>
+      <ol>
+        <li><a href="#101-what-was-tested">10.1 What was tested</a></li>
+        <li><a href="#102-effect-of-an-open-market-on-phase-2">10.2 Effect of an open market on Phase 2</a></li>
+        <li><a href="#103-phase-3-holds-up">10.3 Phase 3 holds up</a></li>
+        <li><a href="#104-attacks-in-an-open-market">10.4 Attacks in an open market</a></li>
+        <li><a href="#105-recommended-marketplace-design">10.5 Recommended marketplace design</a></li>
+        <li><a href="#106-not-yet-covered">10.6 Not yet covered</a></li>
+      </ol></li>
+      <li><a href="#11-launch-period-decided-14-nov-2026-reward-split-updated-19-nov-2026">11. Launch period (decided 14 Nov 2026, reward split updated 19 Nov 2026)</a>
+      </li>
+      <li><a href="#12-miner-onboarding">12. Miner onboarding</a>
+      <ol>
+        <li><a href="#121-entry-points">12.1 Entry points</a></li>
+        <li><a href="#122-technical-requirements">12.2 Technical requirements</a></li>
+        <li><a href="#123-delivery-order">12.3 Delivery order</a></li>
+      </ol></li>
+      <li><a href="#13-public-access-and-stake-for-access">13. Public access and stake-for-access</a>
+      <ol>
+        <li><a href="#131-request-path">13.1 Request path</a></li>
+        <li><a href="#132-access-tiers">13.2 Access tiers</a></li>
+        <li><a href="#133-module-access-new">13.3 Module access (new)</a></li>
+        <li><a href="#134-rules-and-timing">13.4 Rules and timing</a></li>
+      </ol></li>
+      <li><a href="#14-evm-compatibility-and-bridge-to-base">14. EVM compatibility and bridge to Base</a>
+      <ol>
+        <li><a href="#141-design">14.1 Design</a></li>
+        <li><a href="#142-security">14.2 Security</a></li>
+        <li><a href="#143-liquidity-and-delivery">14.3 Liquidity and delivery</a></li>
+      </ol></li>
+      <li><a href="#15-subnet-categories-proposed-20-nov-2026">15. Subnet categories (proposed 20 Nov 2026)</a>
+      </li>
+      <li><a href="#16-implementation-status-and-required-changes">16. Implementation status and required changes</a>
+      </li>
+    </ol>
+  </nav>
+  <article>
+    <header class="doc-head">
+      <div class="kind">Technical specification</div>
+      <h1>Incentium Technical Specification v0.1</h1>
+      <div class="by">Nov 20, 2026 · <strong>Ichiro Pakeshi Miyamoto</strong></div>
+      <div class="dl"><a class="main" href="incentium-technical-specification-v0.1.pdf" download>Download PDF</a> <a href="https://github.com/Doncoin1999/incentium-chain/blob/main/site/docs/technical-specification.md">Markdown source</a></div>
+      <details class="mtoc"><summary>Contents</summary>
+    <ol>
+      <li><a href="#1-scope-and-conventions">1. Scope and conventions</a>
+      </li>
+      <li><a href="#2-simulation-findings">2. Simulation findings</a>
+      <ol>
+        <li><a href="#21-issuance-schedule">2.1 Issuance schedule</a></li>
+        <li><a href="#22-alpha-injection-a-fixed-schedule-dilutes-stakers">2.2 Alpha injection: a fixed schedule dilutes stakers</a></li>
+        <li><a href="#23-which-locked-ict-metric-to-use">2.3 Which “locked ICT” metric to use</a></li>
+        <li><a href="#24-wash-trading-the-fee-rate-matters-not-the-metric">2.4 Wash trading: the fee rate matters, not the metric</a></li>
+        <li><a href="#25-concentration">2.5 Concentration</a></li>
+        <li><a href="#26-recommended-changes-to-the-whitepaper">2.6 Recommended changes to the whitepaper</a></li>
+        <li><a href="#27-limitations">2.7 Limitations</a></li>
+      </ol></li>
+      <li><a href="#3-module-ict-emission">3. Module ict-emission</a>
+      </li>
+      <li><a href="#4-module-subnet-registry">4. Module subnet-registry</a>
+      </li>
+      <li><a href="#5-module-work-verify-sn0">5. Module work-verify (SN0)</a>
+      </li>
+      <li><a href="#6-modules-weights-and-consensus">6. Modules weights and consensus</a>
+      </li>
+      <li><a href="#7-modules-alpha-assets-amm-and-buyback">7. Modules alpha-assets, amm and buyback</a>
+      </li>
+      <li><a href="#8-modules-utility-metrics-payments-and-phase-control">8. Modules utility-metrics, payments and phase-control</a>
+      </li>
+      <li><a href="#9-open-questions-and-next-step">9. Open questions and next step</a>
+      </li>
+      <li><a href="#10-alpha-marketplace-simulation-round-2">10. Alpha marketplace (simulation round 2)</a>
+      <ol>
+        <li><a href="#101-what-was-tested">10.1 What was tested</a></li>
+        <li><a href="#102-effect-of-an-open-market-on-phase-2">10.2 Effect of an open market on Phase 2</a></li>
+        <li><a href="#103-phase-3-holds-up">10.3 Phase 3 holds up</a></li>
+        <li><a href="#104-attacks-in-an-open-market">10.4 Attacks in an open market</a></li>
+        <li><a href="#105-recommended-marketplace-design">10.5 Recommended marketplace design</a></li>
+        <li><a href="#106-not-yet-covered">10.6 Not yet covered</a></li>
+      </ol></li>
+      <li><a href="#11-launch-period-decided-14-nov-2026-reward-split-updated-19-nov-2026">11. Launch period (decided 14 Nov 2026, reward split updated 19 Nov 2026)</a>
+      </li>
+      <li><a href="#12-miner-onboarding">12. Miner onboarding</a>
+      <ol>
+        <li><a href="#121-entry-points">12.1 Entry points</a></li>
+        <li><a href="#122-technical-requirements">12.2 Technical requirements</a></li>
+        <li><a href="#123-delivery-order">12.3 Delivery order</a></li>
+      </ol></li>
+      <li><a href="#13-public-access-and-stake-for-access">13. Public access and stake-for-access</a>
+      <ol>
+        <li><a href="#131-request-path">13.1 Request path</a></li>
+        <li><a href="#132-access-tiers">13.2 Access tiers</a></li>
+        <li><a href="#133-module-access-new">13.3 Module access (new)</a></li>
+        <li><a href="#134-rules-and-timing">13.4 Rules and timing</a></li>
+      </ol></li>
+      <li><a href="#14-evm-compatibility-and-bridge-to-base">14. EVM compatibility and bridge to Base</a>
+      <ol>
+        <li><a href="#141-design">14.1 Design</a></li>
+        <li><a href="#142-security">14.2 Security</a></li>
+        <li><a href="#143-liquidity-and-delivery">14.3 Liquidity and delivery</a></li>
+      </ol></li>
+      <li><a href="#15-subnet-categories-proposed-20-nov-2026">15. Subnet categories (proposed 20 Nov 2026)</a>
+      </li>
+      <li><a href="#16-implementation-status-and-required-changes">16. Implementation status and required changes</a>
+      </li>
+    </ol>
+      </details>
+    </header>
+<h2 id="1-scope-and-conventions">1. Scope and conventions<a class="anchor" href="#1-scope-and-conventions" aria-label="Link to this section">#</a></h2>
+<p>Incentium (incentium.org) is the name of the network; its native coin is ICT. This specification turns the Incentium whitepaper (v0.1) into rules precise enough to build and test. It is the output of step 1 of the build plan and the input to step 2 (the chain). It defines each on-chain module's state, calls and rules, and records what the economic simulation says about the proposed parameters.</p>
+<ul>
+<li><strong>Status:</strong> Draft. Parameters marked <em>proposed</em> may change after further simulation; parameters marked <em>protected</em> can only be changed by a 75% supermajority and a 30-day time-lock.</li>
+<li><strong>Units:</strong> ICT and Alpha amounts are fixed-point integers with 9 decimals (1 ICT = 10⁹ base units). All percentages are stored as parts per million. Addresses use the standard Substrate SS58 format (prefix 42), so they start with 5.</li>
+<li><strong>Time:</strong> Blocks are 12 seconds; 1 day = 7,200 blocks; an epoch is 360 blocks (72 minutes).</li>
+<li><strong>Rounding:</strong> Every division rounds down; the remainder stays with the protocol and is burned at the end of the epoch, so issuance never exceeds the schedule.</li>
+<li><strong>Code:</strong> The simulation that backs Section 2 is in the <code>incentium-sim</code> package (Python, with unit tests). Its results are reproducible with <code>python3 run_all.py --seeds 8</code>.</li>
+</ul>
+<h2 id="2-simulation-findings">2. Simulation findings<a class="anchor" href="#2-simulation-findings" aria-label="Link to this section">#</a></h2>
+<p>The simulation confirms the issuance schedule and the cap, but shows that three whitepaper rules need to change: Alpha injection must be price-aware, “net ICT locked” needs a different definition, and the fee weight must be set against the fee rate. The model runs 12 subnets for 2 years in daily steps, averaged over 8 random seeds (attack tests over 4 seeds).</p>
+<h3 id="21-issuance-schedule">2.1 Issuance schedule<a class="anchor" href="#21-issuance-schedule" aria-label="Link to this section">#</a></h3>
+<p>The schedule behaves as specified: 10,506,000 ICT are issued by the end of year 4, when the block reward halves to 0.5 ICT, and 19,690,500 ICT by year 16. Supply never exceeds 21,000,000 (unit-tested over 60 years).</p>
+<h3 id="22-alpha-injection-a-fixed-schedule-dilutes-stakers">2.2 Alpha injection: a fixed schedule dilutes stakers<a class="anchor" href="#22-alpha-injection-a-fixed-schedule-dilutes-stakers" aria-label="Link to this section">#</a></h3>
+<p>Injecting a fixed 7,200 Alpha per day into each pool outpaces the buyback. Stakers end up with 32% less ICT value than they put in. A price-aware rule — inject Alpha only up to what that day's buyback absorbs at the current price, and leave the rest of the schedule unminted — reverses this.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Injection rule</th>
+<th>Staker value after 2 years (ICT out per ICT in)</th>
+<th>Alpha burned (share of minted)</th>
+<th>Allocation vs quality (rank correlation)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fixed 7,200 Alpha/day</td>
+<td>0.68</td>
+<td>4.4%</td>
+<td>0.67</td>
+</tr>
+<tr>
+<td>Price-aware (paired)</td>
+<td>1.46</td>
+<td>24.9%</td>
+<td>0.98</td>
+</tr>
+</tbody>
+</table></div>
+<p>Metric used: market value, Phase 2.</p>
+<h3 id="23-which-locked-ict-metric-to-use">2.3 Which “locked ICT” metric to use<a class="anchor" href="#23-which-locked-ict-metric-to-use" aria-label="Link to this section">#</a></h3>
+<p>“Net ICT staked” (inflows minus outflows) turns negative in every subnet once stakers take profits, so all subnets fall to the same floor and the allocation becomes an equal split. It cannot be used. The pool's ICT reserve resists pumping but follows quality poorly; market value follows quality well but rewards a pump with 1.6 ICT of extra issuance per ICT pumped. Their geometric mean sits in between.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Metric (Phase 2, price-aware injection)</th>
+<th>Allocation vs quality (rank correlation)</th>
+<th>Extra issuance from a 20,000 ICT pump held 30 days</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pool ICT reserve</td>
+<td>0.42</td>
+<td>−3,576 ICT</td>
+</tr>
+<tr>
+<td>Net ICT staked</td>
+<td>0.63 (degenerate: equal split)</td>
+<td>not tested</td>
+</tr>
+<tr>
+<td>Market value (price × supply)</td>
+<td>0.98</td>
+<td>31,889 ICT</td>
+</tr>
+<tr>
+<td>Geometric mean of reserve and market value</td>
+<td>0.88</td>
+<td>13,827 ICT</td>
+</tr>
+</tbody>
+</table></div>
+<p>A 100,000 ICT pump loses money under every metric, because the round trip costs more than the extra issuance. A 20,000 ICT pump still paid off for an attacker controlling half the subnet's issuance under every metric except the pool reserve (+7,521 ICT with the geometric mean, +17,203 ICT with market value), partly because momentum-chasing stakers in the model buy into the pump.</p>
+<h3 id="24-wash-trading-the-fee-rate-matters-not-the-metric">2.4 Wash trading: the fee rate matters, not the metric<a class="anchor" href="#24-wash-trading-the-fee-rate-matters-not-the-metric" aria-label="Link to this section">#</a></h3>
+<p>When every trade pays the same fee rate, burned fees are proportional to volume, so a fee-based metric and a volume-based metric gave the same results. What protects the network is the fee rate relative to the metric's weight. With colluding miners and validators (attacker captures 50% of the subnet's issuance), one year of wash trading gives:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Daily wash volume</th>
+<th>Profit at 0.1% fee</th>
+<th>Profit at 0.5% fee</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5,000 ICT</td>
+<td>+17,046 ICT</td>
+<td>+2,844 ICT</td>
+</tr>
+<tr>
+<td>20,000 ICT</td>
+<td>+47,172 ICT</td>
+<td>−8,399 ICT</td>
+</tr>
+<tr>
+<td>100,000 ICT</td>
+<td>+31,023 ICT</td>
+<td>−225,102 ICT</td>
+</tr>
+</tbody>
+</table></div>
+<p>A subnet owner acting alone (7.5% capture) loses money in every case.</p>
+<h3 id="25-concentration">2.5 Concentration<a class="anchor" href="#25-concentration" aria-label="Link to this section">#</a></h3>
+<p>With the 18% cap, the largest subnet's share stayed at or below 17.1% and the Herfindahl index around 0.10 in every Phase 2 and Phase 3 run.</p>
+<h3 id="26-recommended-changes-to-the-whitepaper">2.6 Recommended changes to the whitepaper<a class="anchor" href="#26-recommended-changes-to-the-whitepaper" aria-label="Link to this section">#</a></h3>
+<ol>
+<li><strong>Alpha injection:</strong> replace the fixed schedule with price-aware injection (Section 7).</li>
+<li><strong>Phase 2 allocation metric:</strong> use the geometric mean of the pool's ICT reserve and Alpha market value, both as 30-day averages. Drop “net ICT staked”.</li>
+<li><strong>Phase 3 fee metric:</strong> count fees only on each account's net daily flow, so a same-day round trip counts as zero; keep the fee at 0.5% and lower the fee weight from 0.2 to 0.1 until organic volume is known.</li>
+</ol>
+<h3 id="27-limitations">2.7 Limitations<a class="anchor" href="#27-limitations" aria-label="Link to this section">#</a></h3>
+<ul>
+<li>New stake arrives as an outside stream (20,000 ICT/day at a 20% yield, scaled 0.2–2× by actual yield); real demand may differ a lot.</li>
+<li>Stakers partly chase 7-day price momentum, which makes short pumps look cheaper than they may be.</li>
+<li>Organic trading volume in the model is low, which overstates what wash trading can achieve.</li>
+<li>In Phase 3, user revenue is modelled as proportional to subnet quality, so the near-perfect quality tracking there (0.98–0.99) is partly built in.</li>
+<li>The ICT price itself is not modelled.</li>
+</ul>
+<h2 id="3-module-ict-emission">3. Module <code>ict-emission</code><a class="anchor" href="#3-module-ict-emission" aria-label="Link to this section">#</a></h2>
+<p>Issues ICT every block and splits it between the development fund and subnets; the halving is triggered by the amount issued.</p>
+<p><strong>State</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TotalIssued</code></td>
+<td>u128</td>
+<td>ICT issued since genesis</td>
+</tr>
+<tr>
+<td><code>Halvings</code></td>
+<td>u8</td>
+<td>Halvings so far (k)</td>
+</tr>
+<tr>
+<td><code>TotalBurned</code></td>
+<td>u128</td>
+<td>ICT burned since genesis</td>
+</tr>
+<tr>
+<td><code>FundAccount</code></td>
+<td>AccountId</td>
+<td>Development fund, controlled by governance</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Rules (every block, in <code>on_initialize</code>)</strong></p>
+<ol>
+<li>Reward r = R₀ / 2^k, with R₀ = 1 ICT (<em>protected</em>).</li>
+<li>Next threshold T = 21,000,000 × (1 − 2^−(k+1)). If <code>TotalIssued</code> + r would pass T, issue only up to T and increment k; the rest of the block uses the new reward.</li>
+<li>10% of r goes to <code>FundAccount</code> (<em>proposed</em>); 90% goes to the subnet pot for <code>utility-metrics</code> to allocate.</li>
+<li>In Phase 1 the subnet pot goes entirely to SN0.</li>
+</ol>
+<p><strong>Invariants</strong></p>
+<ul>
+<li><code>TotalIssued</code> ≤ 21,000,000 ICT at all times (<em>protected</em>).</li>
+<li>No call can mint ICT outside this module.</li>
+</ul>
+<p><strong>Calls:</strong> none for users. Governance can change the fund share and the fund account.</p>
+<h2 id="4-module-subnet-registry">4. Module <code>subnet-registry</code><a class="anchor" href="#4-module-subnet-registry" aria-label="Link to this section">#</a></h2>
+<p>Opens and closes subnets against a locked deposit, registers miner and validator keys, and seeds each new subnet's pool.</p>
+<p><strong>State</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Type</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Subnets</code></td>
+<td>map netuid → SubnetInfo</td>
+<td>Owner, created block, deposit, status</td>
+</tr>
+<tr>
+<td><code>LastRegPrice</code>, <code>LastRegBlock</code></td>
+<td>u128, BlockNumber</td>
+<td>Basis for the dynamic deposit price</td>
+</tr>
+<tr>
+<td><code>MaxSubnets</code></td>
+<td>u16</td>
+<td>32 (<em>proposed</em>); SN0 does not count</td>
+</tr>
+<tr>
+<td><code>Neurons</code></td>
+<td>map (netuid, uid) → hotkey</td>
+<td>Registered miners and validators</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Deposit price</strong></p>
+<p>Price now = max(1,000 ICT, 2 × last price × (1 − days since last registration / 14)). Each registration doubles the price, which then decays linearly back to the floor over 14 days.</p>
+<p><strong>Calls</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Who</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>register_subnet(max_deposit)</code></td>
+<td>Anyone (Phase ≥ 2)</td>
+<td>Locks the deposit, creates the subnet and seeds its pool; fails if the price exceeds <code>max_deposit</code></td>
+</tr>
+<tr>
+<td><code>deregister_subnet(netuid)</code></td>
+<td>Protocol</td>
+<td>Closes a subnet; see below</td>
+</tr>
+<tr>
+<td><code>register_neuron(netuid, hotkey)</code></td>
+<td>Anyone</td>
+<td>Burns the registration fee and assigns a uid; replaces the lowest-scoring neuron when the subnet is full</td>
+</tr>
+<tr>
+<td><code>set_subnet_identity(netuid, meta)</code></td>
+<td>Owner</td>
+<td>Name, URL, description</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Pool seeding:</strong> The locked deposit becomes the ICT side of the new pool, and an equal amount of Alpha is minted for the other side, so the opening price is 1 ICT per Alpha. The seed position is owned by the protocol on the owner's behalf and cannot be withdrawn while the subnet is live.</p>
+<p><strong>Deregistration:</strong> After a 30-day immunity period, when <code>MaxSubnets</code> is reached and a new subnet registers, the subnet with the lowest 30-day utility score is closed. Its seed position is withdrawn from the pool; 90% of the ICT is returned to the owner and 10% is burned. Remaining Alpha stakers are paid out in ICT from the pool at the closing price, and the Alpha supply is retired.</p>
+<p><strong>Open point:</strong> The returned deposit can be worth more or less than the original 1,000+ ICT, depending on the pool price at closing. Decided (14 Nov 2026): the ICT side is returned as it stands in the pool at closing; no nominal guarantee.</p>
+<h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
+<p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
+<p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
+<p><strong>Task tiers (proposed, to be calibrated on testnet)</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Recommended model (Apache 2.0)</th>
+<th>Typical hardware</th>
+<th>Inference engine</th>
+<th>Weight G</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Qwen3.5-4B, 4-bit quantized (entry tier; the only tier in the launch period), plus a small embedding model to be pinned on testnet</td>
+<td>Ordinary PC with 16 GB memory or CPU server, no GPU</td>
+<td>llama.cpp</td>
+<td>0.15</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Qwen3.5-9B, 4-bit quantized</td>
+<td>Gaming GPU or Apple Silicon laptop</td>
+<td>llama.cpp</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Qwen3.5-27B</td>
+<td>One 48–80 GB data-center GPU</td>
+<td>vLLM</td>
+<td>about 3</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Qwen3.5-122B-A10B</td>
+<td>Multi-GPU server</td>
+<td>vLLM</td>
+<td>about 5</td>
+</tr>
+</tbody>
+</table></div>
+<p>One model family across all tiers keeps the tokenizer and output format identical, which simplifies spot checks. Tiers 0, 1 and 2 use dense models, whose outputs vary less between machines than mixture-of-experts models; tier 3 gets a wider tolerance. The exact weight files are pinned by hash at genesis, together with the inference engine version. Alternative if a non-Qwen family is preferred: gpt-oss-20b (fits in 16 GB) and gpt-oss-120b (one 80 GB GPU), also Apache 2.0. <em>Decided 14 Nov 2026.</em></p>
+<p>G values are relative starting points set by governance. They are calibrated from the measured cost per token on each tier (hardware depreciation, power and what the machine could earn elsewhere) plus a premium for larger tiers, so that running a larger, more useful model earns somewhat more per unit of cost. Governance recalibrates G every quarter, with a limit on each step (<em>proposed</em>: ±25%). An optional demand adjustment, up to +20% for a tier with unserved tasks, can be added later. Model names and versions are fixed at genesis and changed only by governance.</p>
+<p><strong>Tier 0 and the launch period.</strong> During the 90-day launch period SN0 runs only tier 0, which runs on ordinary CPU servers and keeps launch costs low. Tier 0 moves from Qwen3.5-2B to Qwen3.5-4B (<em>proposed</em> 20 Nov 2026): the 4B model scores 27 against 16 for the 2B on the Artificial Analysis index and still fits an ordinary PC. The switch is a governance call on the tier table after a test on testnet with mixed Intel, AMD and Apple processors. Tier 1 (Qwen3.5-9B) is enabled by a governance vote at a time the launch operator chooses, preferably a few weeks before day 90, so the switch is tested before outside miners join. After that, tier 0 remains the entry tier for miners without a GPU.</p>
+<p><strong>Declared tier and verification.</strong> Each miner declares its tier on chain when it registers. Validators keep a reference model for every enabled tier and spot-check each miner against the model of its declared tier. A miner that declares tier 1 but runs the 4B model fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below.</p>
+<p><strong>Adding or switching a model.</strong> A governance call adds a tier (model name, weight hash, engine version, G and tolerance). A new tier runs alongside existing ones for a transition window (proposed: 14 days) so miners can upgrade without losing rewards.</p>
+<p><strong>Spot checks</strong></p>
+<ol>
+<li>Each epoch, validators pick 1–5% of requests at random, seeded by the drand beacon so miners cannot predict which.</li>
+<li>The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the tier's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the tier's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp on tier 0 is still to be settled.</li>
+<li>A failed check slashes 10% of the miner's stake (or, for a pool, the pool's bond) and zeroes its W for the epoch. Three failures in 30 days deregister the key.</li>
+<li>Slashed ICT: 50% burned, 50% to the insurance fund.</li>
+</ol>
+<p><strong>Validator tiers (proposed).</strong> Each validator declares on chain which tiers it checks and must hold the pinned model for each (new storage in <code>subnet-registry</code>). A tier opens only when at least three validators have declared it. Later, a piece of work can be sent to two miners of the same tier, and the validator checks only when their answers disagree.</p>
+<p><strong>Task sources (proposed).</strong> Validators fill miners' capacity from three sources in fixed priority:</p>
+<ol>
+<li>Paid jobs from the gateway (Section 13).</li>
+<li>An open public-goods queue, for example structuring and translating public texts, synthetic training data for small models and embeddings of public archives; results are published openly.</li>
+<li>Hidden control tasks with known answers, indistinguishable from the others.</li>
+</ol>
+<p><strong>Assignment.</strong> All three sources count in W in the same way. Tasks are assigned by the protocol, not chosen by a gateway or a miner: each piece goes to a miner drawn at random among the eligible miners of its tier, weighted by measured capacity, with the draw seeded by the drand beacon so anyone can check it. Real-time jobs may be limited to miners within a latency bound, with the draw random inside that set. The public-goods queue fills whatever capacity paid jobs leave, so W reflects capacity made available rather than demand a miner happened to receive. Equal capacity, quality and availability therefore give equal ICT; within one epoch the draw causes small differences that even out within days. Tasks for open tiers carry no sensitive data.</p>
+<p><strong>Pools</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Registration</td>
+<td>A pool registers one SN0 key and posts a bond (proposed: 5,000 ICT)</td>
+</tr>
+<tr>
+<td>Sub-workers</td>
+<td>Sign each work item with their own key; the pool forwards the signed receipt with the result</td>
+</tr>
+<tr>
+<td>Verification</td>
+<td>A failed spot check is traced to the sub-worker through its receipt; the pool's bond covers the slash, and the pool may pass it on</td>
+</tr>
+<tr>
+<td>Payout</td>
+<td>Each epoch, <code>work-verify</code> pays the pool's ICT to sub-workers pro rata to verified W, minus the pool's declared fee (max 5%)</td>
+</tr>
+<tr>
+<td>Transparency</td>
+<td>Receipts are published to the data-availability layer; anyone can recompute the payout</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Calls:</strong> <code>register_pool(fee, bond)</code>, <code>set_pool_fee(fee)</code> (takes effect after 7 days), <code>submit_work_root(epoch, merkle_root)</code> (pool or miner), <code>report_spot_check(epoch, uid, result, proof)</code> (validator).</p>
+<h2 id="6-modules-weights-and-consensus">6. Modules <code>weights</code> and <code>consensus</code><a class="anchor" href="#6-modules-weights-and-consensus" aria-label="Link to this section">#</a></h2>
+<p>Validators commit their weights in encrypted form; the weights open by time-lock, and Yuma Consensus is computed off-chain and verified on-chain by proof.</p>
+<p><strong>Commit-reveal (<code>weights</code>)</strong></p>
+<ol>
+<li>A validator submits <code>commit_weights(netuid, ciphertext)</code>: its weight vector encrypted to the drand round that falls 1 epoch later.</li>
+<li>When that round is published, anyone can decrypt; the chain accepts the decrypted vector through <code>reveal_weights</code> only if it matches the commitment.</li>
+<li>A validator that does not reveal within 1 epoch gets zero dividends for that epoch.</li>
+<li>One commit per validator per epoch; a later commit in the same epoch replaces the earlier one.</li>
+</ol>
+<p><strong>Validator weight in consensus</strong></p>
+<p>Effective stake = min(√(stake), 10% of the subnet's total effective stake) × audit factor. The audit factor starts at 1.0, drops by 0.1 for each failed audit (floor 0.3) and recovers by 0.02 per clean epoch.</p>
+<p><strong>Off-chain Yuma with proof (<code>consensus</code>)</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Where</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Off-chain prover</td>
+<td>Reads revealed weights and effective stakes for the epoch; computes consensus, clipping, bonds and incentives</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Off-chain prover</td>
+<td>Produces a zkVM proof (SP1 or RISC Zero) that the output follows the published Yuma program</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Chain</td>
+<td><code>submit_epoch_result(netuid, epoch, result_root, proof)</code> verifies the proof and stores per-uid incentives and dividends</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Chain</td>
+<td>Pays out; if no valid proof arrives within 2 epochs, falls back to the last valid result and pays 50%</td>
+</tr>
+</tbody>
+</table></div>
+<p>Anyone may run a prover; the first valid proof earns a small fee from the epoch's issuance (proposed: 0.1%).</p>
+<p><strong>Audits:</strong> Each epoch a drand-seeded draw picks validators whose published evaluations (prompts, outputs, scores on IPFS or Celestia) are re-scored by other validators. A score deviation beyond the subnet's tolerance counts as a failed audit.</p>
+<h2 id="7-modules-alpha-assets-amm-and-buyback">7. Modules <code>alpha-assets</code>, <code>amm</code> and <code>buyback</code><a class="anchor" href="#7-modules-alpha-assets-amm-and-buyback" aria-label="Link to this section">#</a></h2>
+<p>Each subnet has one Alpha asset and one constant-product pool against ICT; every block the protocol injects Alpha only as far as the buyback absorbs it, buys Alpha, burns half and pays half to stakers.</p>
+<p><strong>Alpha asset (<code>alpha-assets</code>)</strong></p>
+<ul>
+<li>Maximum supply 21,000,000 per subnet; schedule of 7,200 Alpha per day, halving like ICT (<em>protected per subnet once created</em>).</li>
+<li>Form: a transferable token per subnet (Alpha1, Alpha2, …) that trades against ICT in the subnet's canonical pool (Section 10). Alpha is bought and sold with <code>stake</code> / <code>unstake</code> or through the marketplace router. Staking it into a (coldkey, hotkey, netuid) position earns the buyback distribution; Alpha that is only held does not.</li>
+<li>Unminted schedule carries forward: Alpha not injected today remains available later, so the supply cap is never exceeded.</li>
+</ul>
+<p><strong>Pool (<code>amm</code>)</strong></p>
+<ul>
+<li>Constant product x · y = k; price = x / y ICT per Alpha.</li>
+<li>Fee 0.5% on every swap (<em>proposed</em>), taken in the input asset; half burned, half left in the pool.</li>
+<li>Calls: <code>stake(netuid, hotkey, ict_in, min_alpha_out)</code> and <code>unstake(netuid, hotkey, alpha_in, min_ict_out)</code>; both fail if the slippage limit is breached.</li>
+<li>The pool records each account's net daily flow, for the fee metric in Section 8.</li>
+</ul>
+<p><strong>Order of operations per subnet, every block (<code>buyback</code>)</strong></p>
+<ol>
+<li>Read the subnet's issuance for the block, E, from <code>utility-metrics</code>.</li>
+<li>Buyback budget B = 50% of E (<em>protected minimum</em>) plus any user revenue routed to the subnet that block.</li>
+<li>Price-aware injection: inject a = min(scheduled Alpha for the block, B / price) into the pool's Alpha side.</li>
+<li>Swap B ICT for Alpha through the pool. Because it runs every block, each purchase is small.</li>
+<li>Burn 50% of the Alpha bought; add 50% pro rata to stakers' positions.</li>
+<li>Pay the remaining 50% of E in ICT: 22.5% miners, 20% validators and delegators, 7.5% owner (vesting over 6 months).</li>
+</ol>
+<p><strong>Why price-aware injection:</strong> in simulation, a fixed injection of 7,200 Alpha per day left stakers with 0.68 ICT per ICT staked after two years; the price-aware rule gave 1.46 (Section 2.2).</p>
+<p><strong>Invariants:</strong> k never decreases during a swap; total Alpha minted ≤ 21,000,000; the buyback cannot be skipped or redirected by any call.</p>
+<h2 id="8-modules-utility-metrics-payments-and-phase-control">8. Modules <code>utility-metrics</code>, <code>payments</code> and <code>phase-control</code><a class="anchor" href="#8-modules-utility-metrics-payments-and-phase-control" aria-label="Link to this section">#</a></h2>
+<p><code>utility-metrics</code> decides each subnet's share of issuance from on-chain data only; <code>payments</code> turns user payments into buybacks; <code>phase-control</code> switches phases on by governance vote.</p>
+<p><strong>Metrics, updated once per epoch as 30-day exponential moving averages (90-day for L once the marketplace opens, Section 10)</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Symbol</th>
+<th>Definition</th>
+<th>Used in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L</td>
+<td>√(pool ICT reserve × Alpha price × Alpha supply), using the epoch's average price; only protocol-owned liquidity and staked positions count, not third-party LP deposits</td>
+<td>Phase 2 and 3</td>
+</tr>
+<tr>
+<td>R</td>
+<td>User revenue routed to the subnet through <code>payments</code>, in ICT</td>
+<td>Phase 3</td>
+</tr>
+<tr>
+<td>F</td>
+<td>Burned fees, counted only on each account's net daily flow per subnet</td>
+<td>Phase 3</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Allocation</strong></p>
+<div class="math">\text{Phase 2:}\quad S_s = \frac{\bar L_s}{\sum_j \bar L_j} \qquad \text{Phase 3:}\quad S_s = 0.45\,\frac{\bar L_s}{\sum_j \bar L_j} + 0.45\,\frac{\bar R_s}{\sum_j \bar R_j} + 0.10\,\frac{\bar F_s}{\sum_j \bar F_j}</div>
+<p>Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and any excess is redistributed pro rata to the uncapped subnets. The Phase 3 weights (0.45 / 0.45 / 0.10) are the recommendation from Section 2.6 and replace the whitepaper's 0.4 / 0.4 / 0.2 if adopted.</p>
+<p><strong>Revenue cap (<em>proposed</em> 20 Nov 2026).</strong> The issuance a subnet gains through R in an epoch may not exceed k × the ICT value burned from its revenue in that epoch (half of the Alpha bought with revenue, valued at the epoch's average price), with k = 0.8. Self-paid revenue then costs more than the issuance it returns, whoever pays it. R weight left unused by the cap is redistributed to L and F pro rata. Not simulated yet (Section 9). The addendum of 20 Nov 2026 also proposed replacing L with net stake inflow; that is not adopted, because Section 2.3 found that net ICT staked degenerates to an equal split.</p>
+<p><strong>Payments (<code>payments</code>)</strong></p>
+<ul>
+<li>Gateway operators register and post a bond. Users pay in ICT (stablecoin payments are swapped to ICT by the gateway before settlement).</li>
+<li>For each batch of requests, the serving validator co-signs a usage receipt; the gateway settles receipts per epoch with <code>settle(netuid, receipts_root, amount)</code>.</li>
+<li>100% of settled revenue goes to that subnet's buyback in the next block. In Phase 3, the issuance-funded part of the buyback falls by 10 percentage points per quarter; the freed issuance goes to miners and validators, never below the 50% total buyback floor counting revenue.</li>
+<li>Receipts are published to the data-availability layer; a fraudulent receipt slashes the gateway bond.</li>
+</ul>
+<p><strong>SN0 payments (Phase 1, <em>proposed</em>).</strong> SN0 has no Alpha token, so payments for SN0 work settle into an epoch pot: 70% goes to miners pro rata to their W for the epoch, exactly like issuance; 10% to validators pro rata to their consensus weight; 20% buys ICT and burns it. Who served a paid job does not change what anyone is paid. Paying for fake jobs therefore spreads the payment over all miners, burns 20% and returns to the payer only its own capacity share. Users may pay in ICT, at a discount, or in USDC, which the gateway converts through the ICT⇄USDC atomic swap or another venue before settlement.</p>
+<p><strong>Phase control (<code>phase-control</code>)</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Switch</th>
+<th>Turns on</th>
+<th>Requires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Phase2</code></td>
+<td><code>register_subnet</code>, Alpha, AMM, buyback</td>
+<td>Gate 1 criteria (whitepaper Section 5) and a passed referendum</td>
+</tr>
+<tr>
+<td><code>Phase3</code></td>
+<td>Phase 3 allocation formula, revenue-funded buybacks</td>
+<td>Gate 2 criteria (whitepaper Section 11) and a passed referendum</td>
+</tr>
+</tbody>
+</table></div>
+<p>Switches can only move forward. Each switch takes effect at the start of the epoch after a 14-day enactment delay.</p>
+<h2 id="9-open-questions-and-next-step">9. Open questions and next step<a class="anchor" href="#9-open-questions-and-next-step" aria-label="Link to this section">#</a></h2>
+<p><strong>Decisions needed before step 2</strong></p>
+<ul>
+<li>[x] Done: the changes in Sections 2.6 and 10.5 are in the whitepaper (v0.1, 14 Nov 2026).</li>
+<li>[x] Decided: the ICT side of the deposit is returned as it stands in the pool (Section 4).</li>
+<li>[x] Decided: Alpha is a transferable token traded in canonical pools through a marketplace (Section 10).</li>
+<li>[x] Decided: the chain is built on the Polkadot SDK solochain template.</li>
+<li>[x] Decided: no legal entity or chosen jurisdiction; the protocol, the marketplace front end and the reference software are open source and run by no one in particular. The development fund is an on-chain treasury governed by vote from genesis.</li>
+<li>[x] Decided: SN0 uses the Qwen3.5 family (Section 5).</li>
+<li>[x] Decided: the network is named Incentium (incentium.org) and its coin ICT; both documents use these names.</li>
+<li>[x] Done: whitepaper references to a foundation are replaced with core contributors and on-chain governance.</li>
+</ul>
+<p><strong>Simulation work still to do</strong></p>
+<ul>
+<li>The recommended Phase 3 setup (geometric-mean L, weights 0.45 / 0.45 / 0.10, net-flow fee metric) has not been simulated as a whole yet; Section 2 tested its parts separately.</li>
+<li>Add an ICT price model and miner/validator selling pressure.</li>
+<li>Stress tests: a market crash (inflow drops 90%), a bank run on one subnet, and 32 subnets instead of 12.</li>
+<li>Calibrate SN0 tier weights against real hardware costs once testnet data exists.</li>
+</ul>
+<p>Simulate the revenue cap (Section 8) with self-paid revenue at several sizes, and calibrate f, k and the pooled SN0 payment pot before Phase 3 is switched on.</p>
+<p><strong>Step 2: chain build (done; mainnet live since 18 Nov 2026)</strong></p>
+<ol>
+<li>Set up the repository: Polkadot SDK node, CI, reproducible builds.</li>
+<li>Implement <code>ict-emission</code>, <code>subnet-registry</code> (SN0 only) and <code>work-verify</code> with unit tests that mirror the simulation's emission tests.</li>
+<li>Implement <code>weights</code> with drand commit-reveal, and a first version of <code>consensus</code> that computes Yuma on-chain for SN0, to be replaced by the proof-based version.</li>
+<li>Launch a closed devnet with SN0 and a reference miner, validator and pool.</li>
+</ol>
+<p><strong>Status 19 Nov 2026 (repository <code>incentium-chain</code>, Polkadot SDK stable2610):</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Status</th>
+<th>Tests</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ict-economics</code> (issuance, AMM, buyback with price-aware injection, allocation, deposit price, Yuma-lite)</td>
+<td>Done</td>
+<td>27 passing; matches the simulation (10,506,000 ICT after 4 years)</td>
+</tr>
+<tr>
+<td><code>pallet-ict-emission</code></td>
+<td>Done</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td><code>pallet-subnet-registry</code> (SN0, Phase 2 gate, deposits, neuron fee, deregistration, on-chain endpoints)</td>
+<td>Done</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td><code>pallet-weights</code> (hash commit-reveal per epoch)</td>
+<td>Done</td>
+<td>Passing, including a hash test vector shared with the Python validator</td>
+</tr>
+<tr>
+<td><code>pallet-work-verify</code> (bonds, spot-check quorum, slashing, three-strike ban, pools)</td>
+<td>Done</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td><code>pallet-ict-consensus</code> (validator staking, Yuma-lite, epoch payout)</td>
+<td>Done</td>
+<td>Passing</td>
+</tr>
+<tr>
+<td>Runtime (Aura, Grandpa, all Incentium pallets, devnet presets, <code>fast-epochs</code> feature)</td>
+<td>Done</td>
+<td>End-to-end Phase 1 test: issuance, stake, pool, commit, reveal, settlement and pool payout</td>
+</tr>
+<tr>
+<td>Node (from the Polkadot SDK solochain template)</td>
+<td>Runs mainnet</td>
+<td>Built in CI (artifact incentium-node); mainnet on two servers with four genesis authorities</td>
+</tr>
+<tr>
+<td>Reference miner and validator (Python)</td>
+<td>Done</td>
+<td>Passing against mock models, including a cheating miner that gets reported</td>
+</tr>
+<tr>
+<td>Devnet launcher, SN0 bootstrap, runbook, CI with devnet smoke test</td>
+<td>Done</td>
+<td>CI not yet run</td>
+</tr>
+<tr>
+<td>Governance (treasury, bounties, child bounties, multisig, referenda, conviction voting, launch-end hook)</td>
+<td>Done</td>
+<td>Runtime tests, including that the launch vault and the fund cannot vote</td>
+</tr>
+<tr>
+<td>Mainnet scripts (keys, genesis, node, SN0, miner, watchdog, runtime upgrade) and runbook docs/MAINNET.md</td>
+<td>Done</td>
+<td>Used for the 18 Nov 2026 launch</td>
+</tr>
+</tbody>
+</table></div>
+<p>Mainnet has run since the evening of 18 November 2026, which started the 90-day launch period. Not yet in the runtime: Frontier EVM and the Hyperlane bridge (Section 14), the <code>access</code> module (Section 13) and the Phase 2–3 modules (<code>amm</code>, <code>buyback</code>, <code>alpha-assets</code>, <code>utility-metrics</code>, <code>payments</code>).</p>
+<p>The status on 20 Nov 2026 and the changes that follow from the SN0 review are in Section 16.</p>
+<p>One finding from the Rust port: price-aware injection keeps the Alpha side of a pool level, so the ICT side grows by the buyback budget and the Alpha price rises over time. This matches the simulation and is the intended effect: price-aware injection prevents dilution; it does not hold the price constant.</p>
+<h2 id="10-alpha-marketplace-simulation-round-2">10. Alpha marketplace (simulation round 2)<a class="anchor" href="#10-alpha-marketplace-simulation-round-2" aria-label="Link to this section">#</a></h2>
+<p>An open marketplace where each subnet's own token (Alpha1 for SN1, Alpha2 for SN2, and so on) is swapped against ICT works, provided four safeguards are in place. Under them, Phase 3 allocation still follows subnet quality closely (rank correlation 0.98), and none of the tested wash-trading strategies paid off.</p>
+<h3 id="101-what-was-tested">10.1 What was tested<a class="anchor" href="#101-what-was-tested" aria-label="Link to this section">#</a></h3>
+<p>The model from Section 2 was extended with an open market:</p>
+<ul>
+<li><strong>Transferable Alpha:</strong> each AlphaN is a token that can be bought, held and sold without staking. Only staked Alpha receives the buyback distribution.</li>
+<li><strong>Traders:</strong> speculative traders with 200,000 ICT of capital follow 7-day momentum, pull back toward the 90-day average price, and trade 1% (light) or 3% (heavy) of each pool's ICT reserve per day.</li>
+<li><strong>Cross-subnet swaps:</strong> 30% of trader sales are routed straight into another subnet's Alpha through ICT, paying the fee twice.</li>
+<li><strong>Third-party liquidity providers (LPs):</strong> outside LPs keep 50% of each pool's liquidity.</li>
+<li><strong>Attacks:</strong> pumps, wash trading (same-day round trips and buy-one-day, sell-the-next) and a new liquidity-inflation attack, where an attacker parks liquidity in its own subnet's pool for 30 days.</li>
+</ul>
+<p>Phase 2 results average 8 random seeds; attack results average 4 seeds and are noisy.</p>
+<h3 id="102-effect-of-an-open-market-on-phase-2">10.2 Effect of an open market on Phase 2<a class="anchor" href="#102-effect-of-an-open-market-on-phase-2" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Setup</th>
+<th>Allocation vs quality (rank correlation)</th>
+<th>Daily price volatility</th>
+<th>Staker value (ICT out per ICT in)</th>
+<th>Trader value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stake-only, no market</td>
+<td>0.88</td>
+<td>1.5%</td>
+<td>1.46</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Market, light trading (1%/day)</td>
+<td>0.92</td>
+<td>2.7%</td>
+<td>1.48</td>
+<td>0.92</td>
+</tr>
+<tr>
+<td>Market, heavy trading (3%/day)</td>
+<td>0.50</td>
+<td>6.9%</td>
+<td>1.46</td>
+<td>1.01</td>
+</tr>
+<tr>
+<td>Heavy trading + third-party LPs</td>
+<td>0.71</td>
+<td>6.1%</td>
+<td>1.44</td>
+<td>0.93</td>
+</tr>
+<tr>
+<td>Heavy trading + LPs, LP liquidity excluded from L</td>
+<td>0.71</td>
+<td>6.2%</td>
+<td>1.44</td>
+<td>0.94</td>
+</tr>
+<tr>
+<td>Heavy trading, 90-day average instead of 30-day</td>
+<td>0.65</td>
+<td>6.6%</td>
+<td>1.46</td>
+<td>0.96</td>
+</tr>
+</tbody>
+</table></div>
+<p>Light trading does no harm. Heavy speculation makes prices noisy, and because Phase 2 allocation is based on pool size and price, the noise reaches issuance. Deeper liquidity and a longer average both reduce this. Stakers do equally well in every setup; traders as a group lose money.</p>
+<h3 id="103-phase-3-holds-up">10.3 Phase 3 holds up<a class="anchor" href="#103-phase-3-holds-up" aria-label="Link to this section">#</a></h3>
+<p>With user revenue in the formula, heavy trading barely matters. With 3% daily trading, the whitepaper weights (0.4 / 0.4 / 0.2, gross fees) gave a rank correlation of 0.93; the recommended setup (0.45 / 0.45 / 0.10, net-flow fees) gave 0.98, and 0.99 with light trading.</p>
+<h3 id="104-attacks-in-an-open-market">10.4 Attacks in an open market<a class="anchor" href="#104-attacks-in-an-open-market" aria-label="Link to this section">#</a></h3>
+<p>Profit below is for an attacker controlling 50% of its subnet's issuance (owner, miners and validators colluding), in ICT.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Attack</th>
+<th>Unprotected</th>
+<th>With safeguard</th>
+<th>Safeguard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wash trading, buy one day and sell the next, 20,000 ICT/day</td>
+<td>+3,056</td>
+<td>−10,351</td>
+<td>Net-flow fee metric, fee weight 0.10</td>
+</tr>
+<tr>
+<td>Wash trading, same-day round trip, 20,000 ICT/day</td>
+<td>−28,296</td>
+<td>−69,714</td>
+<td>Net-flow fee metric (the round trip counts as zero)</td>
+</tr>
+<tr>
+<td>Pump 20,000 ICT, hold 30 days</td>
+<td>+12,809</td>
+<td>+2,925</td>
+<td>90-day average</td>
+</tr>
+<tr>
+<td>Pump 20,000 ICT, hold 90 days</td>
+<td>+22,151</td>
+<td>−1,525</td>
+<td>90-day average</td>
+</tr>
+<tr>
+<td>Park 100,000 ICT of liquidity for 30 days</td>
+<td>+29,842</td>
+<td>−11,996</td>
+<td>LP liquidity excluded from L</td>
+</tr>
+</tbody>
+</table></div>
+<p>An owner acting alone (7.5% capture) lost money in almost every case; the largest exception was +4,803 ICT from a 90-day pump under the 30-day average.</p>
+<h3 id="105-recommended-marketplace-design">10.5 Recommended marketplace design<a class="anchor" href="#105-recommended-marketplace-design" aria-label="Link to this section">#</a></h3>
+<ol>
+<li><strong>One canonical pool per subnet.</strong> AlphaN trades against ICT in the protocol's own constant-product pool. The marketplace is a front end and router over these pools; a swap from AlphaN to AlphaM is routed through ICT and pays the fee on both legs.</li>
+<li><strong>Alpha as a transferable token, with yield only for staked Alpha.</strong> Holders can trade freely, but only Alpha that is staked receives the buyback distribution. This separates long-term stakers from traders.</li>
+<li><strong>Third-party LPs welcome, but not counted in L.</strong> Outside liquidity makes prices steadier and allocation more accurate, but it must not raise a subnet's share of issuance. Only protocol-owned liquidity and staked positions count.</li>
+<li><strong>Use a 90-day average for L once the market opens.</strong> It cuts the gain from pumps to around break-even, and with heavy trading it also tracked quality better than 30 days (0.65 vs 0.50).</li>
+<li><strong>Keep the Phase 3 changes from Section 2.6:</strong> net-flow fee metric and weights 0.45 / 0.45 / 0.10.</li>
+</ol>
+<h3 id="106-not-yet-covered">10.6 Not yet covered<a class="anchor" href="#106-not-yet-covered" aria-label="Link to this section">#</a></h3>
+<ul>
+<li>Trading on outside venues (other DEXs, exchanges) once Alpha is transferable. The metrics read only canonical pools, and arbitrage should keep prices aligned, but this is not simulated.</li>
+<li>Regulation: a marketplace front end for trading tokens may count as a crypto-asset service under MiCA, even if the pools themselves are non-custodial protocol code. This needs legal review before the marketplace opens.</li>
+</ul>
+<h2 id="11-launch-period-decided-14-nov-2026-reward-split-updated-19-nov-2026">11. Launch period (decided 14 Nov 2026, reward split updated 19 Nov 2026)<a class="anchor" href="#11-launch-period-decided-14-nov-2026-reward-split-updated-19-nov-2026" aria-label="Link to this section">#</a></h2>
+<p>The first 90 days of mainnet are a launch period in which the network can be built up quickly. Mainnet started on 18 November 2026; the period ends automatically at block 648,000. The participation rules designed for a mature, open network with many independent operators — registration fees, minimum validator stake and the per-key work cap — take effect after 90 days, so they do not slow down the start. In return, only 25% of the ICT the network pays out for work done in the launch period is paid at once; the other 75% is locked and released gradually.</p>
+<p><strong>What applies in the launch period</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Launch period (first 90 days)</th>
+<th>From day 90</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Registration of miners and validators</td>
+<td>By the launch operator, who builds up SN0's first capacity; no fee</td>
+<td>Open to everyone, with the normal fee</td>
+</tr>
+<tr>
+<td>Validator minimum stake</td>
+<td>None</td>
+<td>1,000 ICT</td>
+</tr>
+<tr>
+<td>Genesis allocation</td>
+<td>100 ICT to the launch operator for transaction fees and first stake, counted in the 21M cap</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Rewards</td>
+<td>25% paid at once; 75% locked per account in an on-chain launch vault</td>
+<td>Paid directly</td>
+</tr>
+<tr>
+<td>End</td>
+<td>Automatic at block 648,000; can be ended earlier, never extended</td>
+<td>–</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Lock on launch-period rewards</strong></p>
+<p>For work done in an epoch that started during the launch period, 25% of each reward is paid at once and 75% goes to the launch vault, recorded per account. The locked part is released as follows, counted from the end of the launch period (day 90):</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Time after day 90</th>
+<th>Day</th>
+<th>Share of the locked part unlocked</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0–2 months</td>
+<td>90–149</td>
+<td>0%</td>
+</tr>
+<tr>
+<td>2 months</td>
+<td>150</td>
+<td>10%</td>
+</tr>
+<tr>
+<td>Every further 2 months</td>
+<td>+60 days</td>
+<td>+10%</td>
+</tr>
+<tr>
+<td>20 months</td>
+<td>690</td>
+<td>100%</td>
+</tr>
+</tbody>
+</table></div>
+<p>Accounts collect their unlocked share with <code>claim_launch_rewards</code>. The schedule is enforced by the runtime; nobody can release vault funds faster. The development fund's 10% share of issuance is not locked: it sits in the on-chain treasury and can only be spent by governance vote.</p>
+<p><strong>Expected amounts:</strong> 648,000 ICT are issued in the launch period. Miners and validators earn about 583,200 ICT: about 145,800 are paid during the period and about 437,400 (2.1% of maximum supply) go into the launch vault. The other 64,800 ICT go to the development fund.</p>
+<p><strong>Implementation (in <code>incentium-chain</code>, tested):</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Module</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BootstrapUntil</code>, <code>BootstrapOperator</code></td>
+<td><code>subnet-registry</code></td>
+<td>Set in genesis: 648,000 blocks and the launch operator</td>
+</tr>
+<tr>
+<td><code>register_neuron</code></td>
+<td><code>subnet-registry</code></td>
+<td>In the launch period only the launch operator registers, without fee</td>
+</tr>
+<tr>
+<td><code>end_bootstrap</code></td>
+<td><code>subnet-registry</code></td>
+<td>Ends the launch period early; it cannot be extended or restarted</td>
+</tr>
+<tr>
+<td><code>stake</code></td>
+<td><code>ict-consensus</code></td>
+<td>No minimum stake in the launch period</td>
+</tr>
+<tr>
+<td>Launch vault, <code>LaunchLocked</code>, <code>claim_launch_rewards</code></td>
+<td><code>ict-consensus</code></td>
+<td>Pays 25% of launch-period rewards at once (LaunchImmediatePpm = 250,000) and locks 75%; 2-month lock, then 10% every 2 months</td>
+</tr>
+<tr>
+<td><code>pre_issued</code></td>
+<td><code>ict-emission</code></td>
+<td>The 100 ICT genesis allocation counts against the 21M cap</td>
+</tr>
+<tr>
+<td><code>bootstrap</code> preset, <code>make_bootstrap_spec.py</code></td>
+<td>runtime, scripts</td>
+<td>Mainnet template; the script inserts the real keys and rejects development keys</td>
+</tr>
+</tbody>
+</table></div>
+<p>A runtime test runs the whole period: registration and stake from the 100 ICT allocation, payouts into the vault, open registration at block 648,000, 25% paid at once, nothing of the locked part claimable before day 150, 10% on day 150 and everything on day 690.</p>
+<p><strong>End of the launch period (runtime, <code>governance</code>):</strong> in the block where the launch period ends, the runtime itself carries out three disclosed steps. Nobody has to act.</p>
+<ol>
+<li>It removes the sudo key; from then on every change goes through on-chain governance.</li>
+<li>It creates and approves two bounties from the development fund: 25,000 ICT for marketing (curated bounties) and up to 50,000 ICT for listing ICT on a recognised exchange. The fund holds about 64,800 ICT at day 90, so the marketing bounty is funded at once and the listing bounty around day 104.</li>
+<li>It appoints the curator: a 2-of-3 multisig created at genesis from three separately stored keys, held at first by the launch operator. Governance can replace the curator at any time.</li>
+</ol>
+<p><strong>Governance from genesis:</strong></p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Development fund</td>
+<td><code>pallet-treasury</code> on the fund account; spends paid once a day; unspent funds are not burned</td>
+</tr>
+<tr>
+<td>Referendum tracks</td>
+<td>Root (runtime changes), Treasurer (large spends), Small spender (up to 1,000 ICT)</td>
+</tr>
+<tr>
+<td>Voting</td>
+<td>Conviction voting; vote locking period 7 days; submission deposit 1 ICT; undecided proposals time out after 14 days</td>
+</tr>
+<tr>
+<td>Turnout</td>
+<td>Counts only ICT that can vote; the launch vault, the fund, the subnet pot and stake and work accounts are left out</td>
+</tr>
+<tr>
+<td>Bounties</td>
+<td>Child bounties under each bounty; 3-day payout delay, during which governance can stop an award; the curator must show activity every 90 days</td>
+</tr>
+<tr>
+<td>Portal</td>
+<td>governance.incentium.org, voting with Talisman or SubWallet</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="12-miner-onboarding">12. Miner onboarding<a class="anchor" href="#12-miner-onboarding" aria-label="Link to this section">#</a></h2>
+<p>A new miner should earn their first ICT within 15 minutes, without opening ports, running a node or holding ICT first. Onboarding offers three entry points that share one technical base.</p>
+<h3 id="121-entry-points">12.1 Entry points<a class="anchor" href="#121-entry-points" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Entry point</th>
+<th>For</th>
+<th>How it works</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pool</td>
+<td>Anyone, no hardware</td>
+<td>A web page: connect a wallet and stake ICT in a pool run by a professional miner; payout is pro rata (pools in <code>work-verify</code>, Section 5).</td>
+</tr>
+<tr>
+<td>Incentium Miner app</td>
+<td>Mac or Windows PC with a GPU or Apple Silicon</td>
+<td>Install and press Start. The app detects the hardware and picks the tier (2B, 9B, 27B or 122B), downloads the pinned model and checks its hash, creates a wallet with a recovery phrase, registers the miner and shows earnings.</td>
+</tr>
+<tr>
+<td>One-line install</td>
+<td>GPU servers and cloud</td>
+<td><code>install.sh</code> or a Docker image (<code>incentium-miner start</code>); ready-made templates on GPU rental services.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="122-technical-requirements">12.2 Technical requirements<a class="anchor" href="#122-technical-requirements" aria-label="Link to this section">#</a></h3>
+<ol>
+<li><strong>Pull-based tasks.</strong> The miner opens an outbound connection to validators or a relay and fetches its tasks. No inbound port is needed, so it works behind any home router. This replaces the inbound endpoint in the current reference neuron.</li>
+<li><strong>No own node.</strong> The miner talks to public RPC endpoints (at least two, run by different operators). An embedded light client (smoldot) can replace them later.</li>
+<li><strong>No ICT needed to start.</strong> On testnet a faucet funds registration. On mainnet the first registration is sponsored and repaid from the miner's first payouts.</li>
+<li><strong>Pinned models and automatic updates.</strong> Model hashes are stored on chain, and the app updates itself when the protocol changes.</li>
+</ol>
+<h3 id="123-delivery-order">12.3 Delivery order<a class="anchor" href="#123-delivery-order" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Deliverable</th>
+<th>Ready by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Pull-based task protocol in the reference neuron</td>
+<td>Testnet</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Install script and Docker image</td>
+<td>Testnet</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Public RPC endpoints and testnet faucet</td>
+<td>Testnet</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Desktop app for Mac and Windows (Tauri, llama.cpp built in)</td>
+<td>Day 90 of mainnet</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Pool web page over the existing pallets</td>
+<td>Day 90 of mainnet</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Onboarding test with outside users (a mainnet readiness criterion)</td>
+<td>Before mainnet</td>
+</tr>
+</tbody>
+</table></div>
+<p>During the 90-day launch period only the launch operator registers miners, so the app and the pool page must be ready when registration opens on day 90.</p>
+<h2 id="13-public-access-and-stake-for-access">13. Public access and stake-for-access<a class="anchor" href="#13-public-access-and-stake-for-access" aria-label="Link to this section">#</a></h2>
+<p>The public reaches the network's models through a gateway, not through individual miners. The first gateway is a free public demo run by the launch operator; once ICT circulates, larger shares of capacity are reserved for wallets that lock ICT for access.</p>
+<h3 id="131-request-path">13.1 Request path<a class="anchor" href="#131-request-path" aria-label="Link to this section">#</a></h3>
+<p>A user or app calls the gateway's OpenAI-compatible API (for example <code>chat.incentium.org</code>). The protocol's draw picks a miner of the requested tier (Section 5, Assignment), limited to miners within the latency bound, and the gateway returns the answer. Validators spot-check a share of gateway traffic in the same way as their own tasks. Miners see the content of requests, so the terms state that sensitive data must not be sent; trusted execution (TEE) can remove this limit later.</p>
+<p><strong>Streaming, failover and batch (<em>proposed</em>).</strong> Miners keep an outbound WebSocket open to the gateway, so answers stream token by token without inbound ports; if a miner drops mid-answer, the gateway continues on another miner. Checks run after delivery. Besides real-time chat the gateway offers a batch API: jobs that can wait up to 24 hours are split into pieces of one to two minutes and served by tier-0 PCs at a lower price. A paid tier (per million tokens) sits beside stake-for-access, the API is listed on OpenRouter, and a private tier routes confidential work only to approved operators or TEE machines.</p>
+<h3 id="132-access-tiers">13.2 Access tiers<a class="anchor" href="#132-access-tiers" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Requirement</th>
+<th>Capacity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Free</td>
+<td>Bot check, no wallet</td>
+<td>A few messages per day per user and IP</td>
+</tr>
+<tr>
+<td>Holder</td>
+<td>Wallet signed in (Talisman, SubWallet, Polkadot.js) and ICT locked for access</td>
+<td>Pro rata to the account's share of all ICT locked for access</td>
+</tr>
+<tr>
+<td>Developer</td>
+<td>Larger lock, API key bound to the wallet</td>
+<td>Higher rate limits and API access</td>
+</tr>
+</tbody>
+</table></div>
+<p>Sign-in uses a signed message (no transaction, no fee): the gateway checks the sr25519 signature and reads the account's locked amount from chain.</p>
+<h3 id="133-module-access-new">13.3 Module <code>access</code> (new)<a class="anchor" href="#133-module-access-new" aria-label="Link to this section">#</a></h3>
+<ul>
+<li><code>lock_for_access(amount)</code> locks ICT in the caller's own account; the tokens never leave the wallet.</li>
+<li><code>unlock(amount)</code> starts an unbonding period (proposed: 7 days), after which <code>withdraw</code> releases the tokens. Locked balance cannot be moved or used twice, which prevents the same ICT from granting access to many wallets.</li>
+<li>Storage: locked amount per account and the network total, so a gateway can compute each account's share.</li>
+</ul>
+<h3 id="134-rules-and-timing">13.4 Rules and timing<a class="anchor" href="#134-rules-and-timing" aria-label="Link to this section">#</a></h3>
+<ul>
+<li><strong>Gateway traffic</strong> counts towards miner rewards like any other task, because the protocol, not the gateway, assigns it (Section 5, Assignment): a gateway operator cannot route traffic to its own miners, and payments are pooled per epoch (Section 8).</li>
+<li><strong>Abuse protection:</strong> per-user and per-IP limits, a bot check (for example Cloudflare Turnstile) in front of the free tier, and a queue with a clear message when capacity is full.</li>
+<li><strong>Timing:</strong> the gateway is built and tested against the devnet now. The public demo opens when Tier 1 (Qwen3.5-9B on GPU) is enabled, before day 90, because the CPU-only 2B model is too slow for a public showcase. Holder and Developer tiers open once ICT can be traded, since almost all ICT issued before day 90 sits in the launch vault.</li>
+<li><strong>Legal:</strong> terms of use, AI disclosure and data retention (preferably none) are set before the public opening; how stake-for-access affects the token's assessment under MiCA is part of the pre-launch legal review.</li>
+</ul>
+<h2 id="14-evm-compatibility-and-bridge-to-base">14. EVM compatibility and bridge to Base<a class="anchor" href="#14-evm-compatibility-and-bridge-to-base" aria-label="Link to this section">#</a></h2>
+<p>ICT reaches EVM wallets and exchanges through a Hyperlane Warp Route between the Incentium chain and Base, which the project deploys and operates itself without anyone's permission. The bridge is built and tested on testnet ahead of time, but is not switched on for mainnet until day 90; it then opens with caps.</p>
+<h3 id="141-design">14.1 Design<a class="anchor" href="#141-design" aria-label="Link to this section">#</a></h3>
+<ol>
+<li><strong>EVM on the Incentium chain.</strong> The runtime adds Frontier (<code>pallet-evm</code>, <code>pallet-ethereum</code>), so MetaMask and Solidity contracts work directly on the chain. Each EVM address maps to a native account; ICT keeps 9 decimals natively and is shown with 18 decimals in the EVM through Frontier's balance adapter.</li>
+<li><strong>Hyperlane core</strong> contracts are deployed on the Incentium EVM with Hyperlane's own tooling (<code>hyperlane core deploy</code>). They are Hyperlane's standard, widely used contracts; no bridge code is written in-house.</li>
+<li><strong>Warp Route Incentium ↔ Base</strong> (<code>hyperlane warp deploy</code>): native ICT is locked as collateral on the Incentium chain, and an equal amount of ICT is minted as an ERC-20 on Base. Moving back burns the ERC-20 and releases the locked ICT. Locked ICT always equals the ERC-20 supply, so the 21,000,000 cap is unchanged.</li>
+<li><strong>Agents run by the project:</strong> Hyperlane validators sign outgoing messages, and a relayer delivers them. The interchain security module (ISM) is a multisig of these validators (proposed: 5 of 7).</li>
+<li><strong>Bridge page</strong> (<code>bridge.incentium.org</code>): connect Talisman and MetaMask, enter an amount, confirm; the page shows fee and progress.</li>
+</ol>
+<h3 id="142-security">14.2 Security<a class="anchor" href="#142-security" aria-label="Link to this section">#</a></h3>
+<ul>
+<li>Caps per transfer, per day and in total, raised step by step; a pause switch held by governance.</li>
+<li>Continuous monitoring that locked ICT equals the ERC-20 supply on Base, with an alert on any difference.</li>
+<li>Validator keys in hardware security modules. At launch the project runs the validators, which is disclosed; the signer set then moves to independent operators.</li>
+<li>The ISM can be replaced later without redeploying the route, so the bridge can move to a trust-minimized model (light client or ZK proofs).</li>
+<li>External audit of the EVM integration and the Hyperlane configuration before mainnet use.</li>
+</ul>
+<h3 id="143-liquidity-and-delivery">14.3 Liquidity and delivery<a class="anchor" href="#143-liquidity-and-delivery" aria-label="Link to this section">#</a></h3>
+<p>An ICT/USDC pool on a Base DEX is needed before trading can start. If the development fund seeds it, that is decided by an on-chain vote and disclosed.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Deliverable</th>
+<th>Ready by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Frontier EVM in the runtime, address mapping and decimals</td>
+<td>Testnet</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Hyperlane core and Warp Route against Base Sepolia</td>
+<td>Testnet</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Bridge page with Talisman and MetaMask</td>
+<td>Before day 90</td>
+</tr>
+<tr>
+<td>4</td>
+<td>External audit; validator keys in HSMs</td>
+<td>Before day 90</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Mainnet route with caps; DEX pool</td>
+<td>Switched on at day 90</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="15-subnet-categories-proposed-20-nov-2026">15. Subnet categories (<em>proposed</em> 20 Nov 2026)<a class="anchor" href="#15-subnet-categories-proposed-20-nov-2026" aria-label="Link to this section">#</a></h2>
+<p>Six subnet categories are defined before Phase 2, each with a standard unit, a standard verification module and a standard on-chain payment contract. Categories carry no issuance share: Section 8 applies to every subnet alike. They exist so that revenue is measured the same way everywhere and new teams start from working code.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Unit metered by <code>payments</code></th>
+<th>Verification module</th>
+<th>Template</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Compute rental</td>
+<td>GPU-hour</td>
+<td>Hardware attestation, uptime probes, test jobs</td>
+<td>To be written</td>
+</tr>
+<tr>
+<td>2. AI inference (incl. verifiable and confidential)</td>
+<td>Tokens, requests</td>
+<td>Prefill spot checks (Section 5)</td>
+<td>SN0</td>
+</tr>
+<tr>
+<td>3. Data, search and storage</td>
+<td>Queries, GB-month</td>
+<td>Retrieval checks, storage proofs</td>
+<td>To be written</td>
+</tr>
+<tr>
+<td>4. Model building</td>
+<td>Delivered model or adapter</td>
+<td>Hidden, rotated test sets</td>
+<td>To be written</td>
+</tr>
+<tr>
+<td>5. Applied AI for a sector</td>
+<td>Completed task</td>
+<td>Reference answers, customer rating</td>
+<td>To be written</td>
+</tr>
+<tr>
+<td>6. Forecasts and signals</td>
+<td>Signal subscription</td>
+<td>Scored against outcomes afterwards</td>
+<td>To be written</td>
+</tr>
+</tbody>
+</table></div>
+<p>A seventh, open category covers anything else and uses the generic receipt format of Section 8. A subnet declares its category in <code>set_subnet_identity</code>; the category selects the metering unit its gateway receipts must use. Order: category 2 runs today as SN0; category 1 comes next because it reuses SN0 hardware; categories 3–6 open to outside teams with Phase 2.</p>
+<h2 id="16-implementation-status-and-required-changes">16. Implementation status and required changes<a class="anchor" href="#16-implementation-status-and-required-changes" aria-label="Link to this section">#</a></h2>
+<p>On 20 November 2026 mainnet runs the Phase 1 core at runtime spec version 7, and the testnet runs spec version 8 with the swap module. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Area</th>
+<th>In the code today</th>
+<th>Change or action</th>
+<th>Where</th>
+<th>Kind of step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Issuance</td>
+<td>Done; mainnet since 18 Nov 2026</td>
+<td>None</td>
+<td><code>ict-emission</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td>Launch period and vault</td>
+<td>Done; 25% paid, 75% locked, release from day 150 to day 690</td>
+<td>None</td>
+<td><code>subnet-registry</code>, <code>ict-consensus</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td>Governance</td>
+<td>Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook</td>
+<td>None</td>
+<td>runtime <code>governance</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td>Tier table</td>
+<td>Four tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed</td>
+<td>Tier 0 to Qwen3.5-4B with pinned file hash; embedding job type; validator tier declarations; three-validator rule for opening a tier</td>
+<td><code>subnet-registry</code></td>
+<td>Runtime upgrade, then governance call</td>
+</tr>
+<tr>
+<td>Task source</td>
+<td>Synthetic prompts (<code>SN0 task &lt;epoch&gt;:&lt;uid&gt;:&lt;i&gt;: &lt;nonce&gt;</code>), 8 per miner per epoch, at most 32 tokens</td>
+<td>Public-goods queue and hidden control tasks; later paid jobs from the gateway</td>
+<td><code>neuron/validator.py</code></td>
+<td>Software release</td>
+</tr>
+<tr>
+<td>Task fetching</td>
+<td>Miner polls validators every 5 s and gets a fixed task count</td>
+<td>Protocol assignment by capacity with a drand-seeded draw; WebSocket streaming for real-time tiers</td>
+<td><code>neuron/miner.py</code>, <code>tasks.py</code></td>
+<td>Software release</td>
+</tr>
+<tr>
+<td>Work units</td>
+<td>W = T × Q × A × G; T = output tokens capped at the task's limit</td>
+<td>T by token type; G from measured cost per token, quarterly recalibration</td>
+<td><code>neuron/scoring.py</code>, tier table</td>
+<td>Software release, governance</td>
+</tr>
+<tr>
+<td>Spot checks</td>
+<td>Regenerates the answer; default share 25% (devnet value); local random draw</td>
+<td>Prefill scoring; 1–5% on mainnet; drand-seeded draw</td>
+<td><code>neuron/validator.py</code>, <code>scoring.py</code></td>
+<td>Software release</td>
+</tr>
+<tr>
+<td>Slashing and pools</td>
+<td>Done: quorum reports, 10% slash, three-strike ban, pool bonds and pro-rata payouts</td>
+<td>None</td>
+<td><code>work-verify</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td>Weights</td>
+<td>Hash commit-reveal per epoch</td>
+<td>drand time-lock (Section 6)</td>
+<td><code>weights</code></td>
+<td>Runtime upgrade</td>
+</tr>
+<tr>
+<td>Consensus</td>
+<td>Yuma-lite computed on chain for SN0</td>
+<td>Proof-based Yuma when subnets outgrow on-chain computation (Section 6)</td>
+<td><code>ict-consensus</code></td>
+<td>Runtime upgrade</td>
+</tr>
+<tr>
+<td>ICT⇄USDC swap</td>
+<td>Pallet <code>ict-swap</code> (index 15) on testnet since 20 Nov 2026; <code>IncentiumSwap</code> at 0x24836E90fEA706DA855D0f3cD7772D7282fD962D on Base Sepolia; keeper and trading page on testnet; 19 pallet, 16 contract and 4 keeper end-to-end tests pass</td>
+<td>Full testnet run including failure paths; benchmarked weights; replace <code>ValidateUnsigned</code> before April 2027; external audit; mainnet upgrade and Base mainnet contract</td>
+<td><code>pallets/ict-swap</code>, <code>swap/</code></td>
+<td>Audit, runtime upgrade, contract deployment</td>
+</tr>
+<tr>
+<td>Explorer</td>
+<td>Live at explorer.incentium.org; swap events classified in code but not yet deployed</td>
+<td>Deploy swap events; from Phase 2 show allocation inputs per subnet and epoch</td>
+<td><code>explorer/</code></td>
+<td>Software release</td>
+</tr>
+<tr>
+<td>Phase 2–3 economics</td>
+<td>Rules in <code>ict-economics</code>, tested against the simulation</td>
+<td>Build <code>alpha-assets</code>, <code>amm</code>, <code>buyback</code>, <code>utility-metrics</code>, <code>payments</code>, <code>phase-control</code>; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole</td>
+<td>New pallets</td>
+<td>Build, simulation, audit, referendum</td>
+</tr>
+<tr>
+<td>Gateway and access</td>
+<td>Not built</td>
+<td>Gateway with streaming, failover, batch and payment receipts; <code>access</code> module (Section 13)</td>
+<td>New service, new pallet</td>
+<td>Build, legal review</td>
+</tr>
+<tr>
+<td>Miner onboarding</td>
+<td>Pull-based miner and <code>install-miner.sh</code></td>
+<td>Desktop app for Mac and Windows, pool web page, Docker image (Section 12)</td>
+<td>New software</td>
+<td>Build before day 90</td>
+</tr>
+<tr>
+<td>EVM and bridge</td>
+<td>Not in the runtime</td>
+<td>Frontier and Hyperlane route (Section 14), or rely on the atomic swap until a bridge is audited</td>
+<td>Runtime, contracts</td>
+<td>Decision, then build and audit</td>
+</tr>
+<tr>
+<td>Legal</td>
+<td>No legal entity</td>
+<td>Review of the contracting party for paid users, GDPR for the gateway, MiCA for trading and marketing, EU AI Act Article 50</td>
+<td>–</td>
+<td>External advice</td>
+</tr>
+</tbody>
+</table></div>
+<p>None of the proposed changes touches protected parameters (maximum supply, halving, the 50% buyback floor).</p>
+  </article>
+</div>
+<!-- ic:footer -->
+<style>
+/* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
+   python3 scripts/sync_topbar.py. */
+.ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+.ic-foot .ic-fbrand img { width: 24px; height: 22px; }
+.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav a { color: #c3cad8; text-decoration: none; }
+.ic-foot nav a:hover { color: #e8a33d; }
+.ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+</style>
+<footer class="ic-foot">
+  <div class="ic-in">
+    <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
+    <nav aria-label="Incentium sites">
+      <a href="https://incentium.org/">Home</a>
+      <a href="https://incentium.org/mine/">Mine ICT</a>
+      <a href="https://chat.incentium.org/">Chat</a>
+      <a href="https://explorer.incentium.org/">Explorer</a>
+      <a href="https://faucet.incentium.org/">Faucet</a>
+      <a href="https://incentium.org/spec/">Technical specification</a>
+      <a href="https://github.com/Doncoin1999/incentium-chain">Source code</a>
+      <a href="https://auth.incentium.org/admin">Admin</a>
+    </nav>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+  </div>
+</footer>
+<!-- /ic:footer -->
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script>
+// formulas: typeset with KaTeX when it loads, otherwise the TeX stays readable as text
+addEventListener("load", () => {
+  document.querySelectorAll(".math").forEach((el) => {
+    try { katex.render(el.textContent, el, {displayMode: true, throwOnError: false}); }
+    catch { el.classList.add("raw"); }
+  });
+});
+// mark the section being read in the contents
+const links = [...document.querySelectorAll("nav.toc a")];
+const byId = new Map(links.map((a) => [a.hash.slice(1), a]));
+const obs = new IntersectionObserver((entries) => {
+  for (const e of entries) if (e.isIntersecting) {
+    links.forEach((a) => a.classList.remove("on"));
+    const a = byId.get(e.target.id); if (a) a.classList.add("on");
+  }
+}, {rootMargin: "0px 0px -75% 0px"});
+document.querySelectorAll("article h2[id], article h3[id]").forEach((h) => obs.observe(h));
+</script>
+</body>
+</html>

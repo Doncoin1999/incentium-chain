@@ -19,6 +19,7 @@ PAGES = {                                   # page -> shared parts it carries
     "site/mine/index.html": ["topbar", "footer"],
     "explorer/web/index.html": ["topbar", "footer"],
     "chat/web/index.html": ["topbar"],         # a full-height app: no footer
+    "site/spec/index.html": ["topbar", "footer"],   # made by scripts/build_docs.py
 }
 PARTS = ["topbar", "footer"]
 
