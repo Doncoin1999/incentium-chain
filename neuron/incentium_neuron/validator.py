@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass, field
 from typing import NamedTuple, Protocol
 
 from .scale import commit_hash
+from . import control
 from .scoring import MinerStats, passes_spot_check, to_weights
 from .tasks import Task, TaskBoard
 
@@ -103,16 +104,33 @@ class Validator:
             json.dump(d, f)
         os.replace(tmp, self.state_file)
 
+    def save_stats(self, epoch: int, stats, weights: dict) -> None:
+        """Last epoch's measurements, for the mining control board."""
+        path = control.stats_path(self.state_file)
+        if not path:
+            return
+        try:
+            control.write_json(path, {"epoch": epoch, "time": int(time.time()), "miners": {
+                str(s.uid): {"requests": s.requests, "answered": s.answered, "tokens": s.tokens,
+                             "checks": s.checks, "checks_passed": s.checks_passed,
+                             "weight": weights.get(s.uid, 0)} for s in stats}})
+        except OSError as e:
+            self.log.append(f"could not write stats: {e}")
+
     # -- work --------------------------------------------------------------------------------
     def publish(self, epoch: int) -> tuple[list[tuple[int, str]], float | None, float | None]:
         """Put this epoch's tasks on the board. Returns the miners to score and G, tolerance."""
         tiers = self.chain.tiers() if hasattr(self.chain, "tiers") else {}
         info = tiers.get(self.tier)
         miners, tasks = [], []
+        off = control.blocked_now(control.blocklist_path(self.state_file))
         for m in self.chain.miners(SN0):
             uid, hotkey = m[0], m[1]
             miner_tier = m[3] if len(m) > 3 else 0
             if uid == self.own_uid or hotkey in getattr(self.chain, "validator_hotkeys", lambda: set())():
+                continue
+            if hotkey in off:
+                self.log.append(f"epoch {epoch} uid {uid}: switched off by the operator; no tasks, no weight")
                 continue
             if miner_tier != self.tier:
                 self.log.append(f"epoch {epoch} uid {uid}: tier {miner_tier}, this validator checks "
@@ -180,6 +198,7 @@ class Validator:
                 self.chain.report_failed_check(epoch, s.uid, bytes.fromhex(ev))
                 self.log.append(f"reported uid {s.uid} in epoch {epoch}")
         uids, weights = to_weights(stats)
+        self.save_stats(epoch, stats, dict(zip(uids, weights)))
         if uids:
             salt = os.urandom(32)
             # Measuring can take longer than an epoch: the chain records the commit in the

@@ -76,8 +76,13 @@ def test_flow_register_approve_verify_revoke():
     assert "Domain=.incentium.org" in h["Set-Cookie"] and "Secure" in h["Set-Cookie"] and "HttpOnly" in h["Set-Cookie"]
     ann = session_from(h)
     assert req(port, "GET", "/verify", cookie=ann)[0] == 200
-    # Ann is not an admin
+    # Ann is not an admin: no admin page, and verify-admin (mining control) refuses her
     assert req(port, "GET", "/admin", cookie=ann)[0] == 303
+    assert req(port, "GET", "/verify-admin", cookie=ann)[0] == 403
+    s, h, _ = req(port, "GET", "/verify-admin", cookie=admin)
+    assert s == 200 and h["X-Incentium-User"] == "boss@example.org"
+    s, h, _ = req(port, "GET", "/verify-admin", headers={"X-Incentium-Host": "control.incentium.org", "X-Forwarded-Uri": "/"})
+    assert s == 303 and "next=https%3A%2F%2Fcontrol.incentium.org%2F" in h["Location"]
     # revoking ends her sessions at once
     req(port, "POST", "/admin", {"csrf": csrf, "email": "ann@example.org", "action": "revoke"}, cookie=admin)
     assert req(port, "GET", "/verify", cookie=ann)[0] == 303

@@ -207,3 +207,41 @@ def test_two_address_forms_of_one_key_are_the_same_miner():
     r = {"task_id": "t1", "hotkey": kp.ss58_address, "text": "x", "tokens": 1, "top_logprobs": [{"x": -0.1}],
          "signature": kp.sign(msg).hex()}
     assert board.submit(r) == 200
+
+
+def test_operator_switch_off_within_window_only(tmp_path):
+    import time as _t
+
+    from incentium_neuron import control
+
+    state = str(tmp_path / "validator-testnet-state.json")
+    blocked = control.blocklist_path(state)
+    assert blocked.endswith("validator-testnet-blocked.json")
+    now = _t.time()
+    control.write_json(blocked, {"start": now - 10, "until": now + 3600, "blocked": {"honest-b": {"since": now}}})
+    chain = FakeChain([(0, "validator", ""), (1, "honest-a", ""), (2, "honest-b", "")])
+    v, srv, _ = make_validator(chain, [("honest-a", MockBackend(noise=0.05)), ("honest-b", MockBackend(noise=0.05))],
+                               state_file=state)
+    try:
+        v.step()
+        assert v.pending.uids == [1]  # the switched-off miner gets no tasks and no weight
+        assert any("uid 2: switched off by the operator" in line for line in v.log)
+        stats = json.load(open(control.stats_path(state)))
+        assert set(stats["miners"]) == {"1"} and stats["miners"]["1"]["weight"] == 65535
+        # after the launch window the file is ignored
+        control.write_json(blocked, {"start": now - 100, "until": now - 1, "blocked": {"honest-b": {"since": now}}})
+        chain.epoch = 1
+        v.step()
+        assert v.pending.uids == [1, 2]
+    finally:
+        srv.shutdown()
+
+
+def test_blocklist_tolerates_missing_or_broken_file(tmp_path):
+    from incentium_neuron import control
+
+    assert control.blocked_now(str(tmp_path / "none.json")) == set()
+    p = tmp_path / "bad.json"
+    p.write_text("{not json")
+    assert control.blocked_now(str(p)) == set()
+    assert control.blocked_now(None) == set()

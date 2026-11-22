@@ -213,6 +213,8 @@ def make_handler(store: Store, base: str = BASE, cookie_domain: str = COOKIE_DOM
             path = urlsplit(self.path).path
             if path == "/verify":
                 return self.verify()
+            if path == "/verify-admin":
+                return self.verify(admin_only=True)
             if path in ("/", "/login"):
                 return self.login_page(self.query().get("next"))
             if path == "/register":
@@ -241,11 +243,14 @@ def make_handler(store: Store, base: str = BASE, cookie_domain: str = COOKIE_DOM
             dom = f"; Domain={cookie_domain}" if cookie_domain else ""
             return f"{COOKIE}={value}{dom}; Path=/; Max-Age={max_age}; Secure; HttpOnly; SameSite=Lax"
 
-        def verify(self):
-            """Caddy forward_auth: 200 lets the request through; anything else is sent to the browser."""
+        def verify(self, admin_only=False):
+            """Caddy forward_auth: 200 lets the request through; anything else is sent to the browser.
+            /verify lets any approved user through, /verify-admin only admins."""
             user, _ = store.session(self.token())
-            if user:
+            if user and (user["admin"] or not admin_only):
                 return self.send(200, "", ctype="text/plain", headers=[("X-Incentium-User", user["email"])])
+            if user:
+                return self.send(403, page("Forbidden", "<h1>Admins only</h1><p>This page is for the operator.</p>"))
             host = self.headers.get("X-Incentium-Host") or self.headers.get("X-Forwarded-Host", "incentium.org")
             uri = self.headers.get("X-Forwarded-Uri", "/")
             nxt = safe_next(f"https://{host}{uri}")
@@ -335,7 +340,7 @@ def make_handler(store: Store, base: str = BASE, cookie_domain: str = COOKIE_DOM
                 f"<td>{time.strftime('%Y-%m-%d', time.gmtime(r['created']))}</td><td>{actions(r)}</td></tr>" for r in rows)
             pending = sum(1 for r in rows if r["status"] == "pending")
             self.send(200, page("Access requests", f"""<h1>Access requests</h1>
-<p>{pending} waiting · signed in as {e(user['email'])} · <a href="/logout">Sign out</a></p>
+<p>{pending} waiting · signed in as {e(user['email'])} · <a href="https://control.incentium.org/">Mining control</a> · <a href="/logout">Sign out</a></p>
 {f'<p class="msg ok">{e(msg)}</p>' if msg else ''}
 <table><tr><th>Email</th><th>Status</th><th>Note</th><th>Requested</th><th></th></tr>{body or '<tr><td colspan=5>No requests.</td></tr>'}</table>""", wide=True))
 
