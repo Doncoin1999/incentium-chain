@@ -1,5 +1,5 @@
 //! Runtime APIs (adapted from the Polkadot SDK solochain template, MIT-0).
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use frame_support::{
     genesis_builder_helper::{build_state, get_preset},
     weights::Weight,
