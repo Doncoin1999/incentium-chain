@@ -528,7 +528,7 @@ ICT reaches EVM wallets and exchanges through a Hyperlane Warp Route between the
 
 ### 14.1 Design
 
-1. **EVM on the Incentium chain.** The runtime adds Frontier (`pallet-evm`, `pallet-ethereum`), so MetaMask and Solidity contracts work directly on the chain. Each EVM address maps to a native account; ICT keeps 9 decimals natively and is shown with 18 decimals in the EVM through Frontier's balance adapter.
+1. **EVM on the Incentium chain.** The runtime adds `pallet-revive` with its REVM backend, which runs unmodified EVM bytecode, so MetaMask and Solidity contracts work directly on the chain; Ethereum JSON-RPC is served by Parity's `eth-rpc` server next to a node. (Frontier was the first choice, but it does not yet support the Polkadot SDK release the chain runs on; see `docs/EVM.md`.) Every EVM address has a native account, and an existing account gets an EVM address with one `map_account` call; ICT keeps 9 decimals natively and is shown with 18 decimals in the EVM.
 2. **Hyperlane core** contracts are deployed on the Incentium EVM with Hyperlane's own tooling (`hyperlane core deploy`). They are Hyperlane's standard, widely used contracts; no bridge code is written in-house.
 3. **Warp Route Incentium ↔ Base** (`hyperlane warp deploy`): native ICT is locked as collateral on the Incentium chain, and an equal amount of ICT is minted as an ERC-20 on Base. Moving back burns the ERC-20 and releases the locked ICT. Locked ICT always equals the ERC-20 supply, so the 21,000,000 cap is unchanged.
 4. **Agents run by the project:** Hyperlane validators sign outgoing messages, and a relayer delivers them. The interchain security module (ISM) is a multisig of these validators (proposed: 5 of 7).
@@ -548,7 +548,7 @@ An ICT/USDC pool on a Base DEX is needed before trading can start. If the develo
 
 | Step | Deliverable | Ready by |
 | --- | --- | --- |
-| 1 | Frontier EVM in the runtime, address mapping and decimals | Testnet |
+| 1 | EVM (pallet-revive, REVM) in the runtime, address mapping and decimals | Testnet |
 | 2 | Hyperlane core and Warp Route against Base Sepolia | Testnet |
 | 3 | Bridge page with Talisman and MetaMask | Before day 90 |
 | 4 | External audit; validator keys in HSMs | Before day 90 |
