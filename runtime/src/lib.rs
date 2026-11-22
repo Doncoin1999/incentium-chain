@@ -58,10 +58,12 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("incentium"),
     impl_name: alloc::borrow::Cow::Borrowed("incentium-reference"),
     authoring_version: 1,
-    spec_version: 8,
+    // 9: pallet-revive (EVM). Testnet is at 8 with the swap module, so this comes after it.
+    spec_version: 9,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
-    transaction_version: 1,
+    // 2: the transaction extensions changed (EthSetOrigin added).
+    transaction_version: 2,
     system_version: 1,
 };
 
@@ -105,15 +107,73 @@ pub type TxExtension = (
     frame_system::CheckWeight<Runtime>,
     pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
     frame_metadata_hash_extension::CheckMetadataHash<Runtime>,
+    // EVM (pallet-revive): turns the origin of an Ethereum transaction into an EVM origin.
+    // Must come after every extension that relies on a signed origin. It encodes to zero
+    // bytes, so ordinary Substrate transactions are unaffected apart from the metadata.
+    pallet_revive::evm::tx_extension::SetOrigin<Runtime>,
     frame_system::WeightReclaim<Runtime>,
 );
 
+/// The extensions the runtime applies to an Ethereum transaction (signed in MetaMask and
+/// submitted through the `eth-rpc` server). Must list the same extensions as `TxExtension`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct EthExtraImpl;
+
+impl pallet_revive::evm::runtime::EthExtra for EthExtraImpl {
+    type Config = Runtime;
+    type ExtensionV0 = TxExtension;
+    type ExtensionOtherVersions = sp_runtime::traits::InvalidVersion;
+
+    fn get_eth_extension(nonce: Nonce, tip: Balance) -> Self::ExtensionV0 {
+        (
+            frame_system::CheckNonZeroSender::<Runtime>::new(),
+            frame_system::CheckSpecVersion::<Runtime>::new(),
+            frame_system::CheckTxVersion::<Runtime>::new(),
+            frame_system::CheckGenesis::<Runtime>::new(),
+            frame_system::CheckMortality::from(generic::Era::Immortal),
+            frame_system::CheckNonce::<Runtime>::from(nonce),
+            frame_system::CheckWeight::<Runtime>::new(),
+            pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+            frame_metadata_hash_extension::CheckMetadataHash::<Runtime>::new(false),
+            pallet_revive::evm::tx_extension::SetOrigin::<Runtime>::new_from_eth_transaction(),
+            frame_system::WeightReclaim::<Runtime>::new(),
+        )
+    }
+}
+
+/// Accepts both ordinary Substrate extrinsics and Ethereum transactions (`eth_transact`).
 pub type UncheckedExtrinsic =
-    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, TxExtension>;
+    pallet_revive::evm::runtime::UncheckedExtrinsic<Address, Signature, EthExtraImpl>;
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, TxExtension>;
 
+/// One-off for chains already running (testnet, mainnet): pallet-revive needs its own account
+/// to exist. On a new chain its genesis build mints the existential deposit (counted in
+/// `BOOTSTRAP_PRE_ISSUED`). Here the deposit is moved from the development fund instead of
+/// minted, so total issuance, `TotalIssued` and the 21M cap are unaffected.
+pub struct CreateReviveAccount;
+impl frame_support::traits::OnRuntimeUpgrade for CreateReviveAccount {
+    fn on_runtime_upgrade() -> frame_support::weights::Weight {
+        use frame_support::traits::{fungible::Mutate, tokens::Preservation};
+        let db = <Runtime as frame_system::Config>::DbWeight::get();
+        let revive = pallet_revive::Pallet::<Runtime>::account_id();
+        if frame_system::Pallet::<Runtime>::account_exists(&revive) {
+            return db.reads(1);
+        }
+        let fund = pallet_treasury::Pallet::<Runtime>::account_id();
+        // If the fund cannot pay, the upgrade still succeeds; send 0.001 ICT to the revive
+        // account by hand before using the EVM (docs/EVM.md).
+        let _ = <Balances as Mutate<AccountId>>::transfer(
+            &fund,
+            &revive,
+            EXISTENTIAL_DEPOSIT,
+            Preservation::Preserve,
+        );
+        db.reads_writes(3, 3)
+    }
+}
+
 #[allow(unused_parens)]
-type Migrations = ();
+type Migrations = (CreateReviveAccount,);
 
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -192,4 +252,8 @@ mod runtime {
     pub type Origins = governance::pallet_custom_origins;
     #[runtime::pallet_index(29)]
     pub type Launch = governance::pallet_launch;
+
+    /// EVM and smart contracts (Solidity on the REVM backend), used by the Hyperlane bridge.
+    #[runtime::pallet_index(30)]
+    pub type Revive = pallet_revive;
 }

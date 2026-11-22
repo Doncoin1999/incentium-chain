@@ -428,3 +428,77 @@ fn devnet_without_a_launch_period_never_runs_the_end_of_launch() {
         assert!(pallet_sudo::Key::<Runtime>::get().is_some());
     });
 }
+
+// ---------------------------------------------------------------- EVM (pallet-revive)
+
+#[test]
+fn evm_config_passes_the_pallet_integrity_test() {
+    use frame_support::traits::Get;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        <Revive as Hooks<BlockNumber>>::integrity_test();
+        assert_eq!(
+            <<Runtime as pallet_revive::Config>::ChainId as Get<u64>>::get(),
+            configs::EVM_CHAIN_ID
+        );
+    });
+}
+
+#[test]
+fn weight_fee_is_unchanged_by_the_evm_fee_type() {
+    use frame_support::weights::{Weight, WeightToFee};
+    // Same as the old IctWeightToFee: ref_time / 100. Proof size adds nothing noticeable.
+    let w = Weight::from_parts(200_000_000, 10_000);
+    assert_eq!(configs::IctWeightToFee::weight_to_fee(&w), 2_000_000);
+}
+
+#[test]
+fn mapped_substrate_account_has_an_evm_address_and_18_decimal_balance() {
+    use pallet_revive::AddressMapper;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        type Mapper = <Runtime as pallet_revive::Config>::AddressMapper;
+        assert!(!Mapper::is_mapped(&acc(K::Alice)));
+        assert_ok!(Revive::map_account(signed(K::Alice)));
+        assert!(Mapper::is_mapped(&acc(K::Alice)));
+
+        let addr = Mapper::to_address(&acc(K::Alice));
+        assert_eq!(Mapper::to_account_id(&addr), acc(K::Alice));
+
+        // 1 ICT (10^9 base units) shows as 10^18 wei in the EVM.
+        assert_eq!(
+            Revive::convert_native_to_evm(UNIT),
+            sp_core::U256::from(1_000_000_000_000_000_000u128)
+        );
+        // Alice's spendable ICT is visible from the EVM side.
+        let evm = Revive::evm_balance(&addr);
+        assert!(evm > sp_core::U256::zero());
+        assert!(evm <= Revive::convert_native_to_evm(Balances::free_balance(acc(K::Alice))));
+    });
+}
+
+#[test]
+fn upgrade_creates_the_revive_account_from_the_fund_without_minting() {
+    use frame_support::traits::OnRuntimeUpgrade;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        let revive = pallet_revive::Pallet::<Runtime>::account_id();
+        let fund = pallet_treasury::Pallet::<Runtime>::account_id();
+        // Top up the fund, then simulate a chain that started before the EVM existed.
+        assert_ok!(Balances::transfer_keep_alive(signed(K::Alice), fund.clone().into(), 10 * UNIT));
+        frame_system::Account::<Runtime>::remove(&revive);
+        assert!(!System::account_exists(&revive));
+
+        let fund_before = Balances::free_balance(&fund);
+        let issuance_before = Balances::total_issuance();
+        CreateReviveAccount::on_runtime_upgrade();
+
+        assert!(System::account_exists(&revive));
+        assert_eq!(Balances::free_balance(&revive), EXISTENTIAL_DEPOSIT);
+        assert_eq!(Balances::free_balance(&fund), fund_before - EXISTENTIAL_DEPOSIT);
+        assert_eq!(Balances::total_issuance(), issuance_before);
+
+        // Running it again does nothing.
+        CreateReviveAccount::on_runtime_upgrade();
+        assert_eq!(Balances::free_balance(&revive), EXISTENTIAL_DEPOSIT);
+    });
+}

@@ -21,10 +21,10 @@ use sp_runtime::{
 use sp_version::RuntimeVersion;
 
 use super::{
-    AccountId, Aura, Balance, Balances, Block, BlockNumber, Consensus, Hash, Nonce, PalletInfo,
-    Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin,
-    RuntimeTask, System, Timestamp, EPOCH_LENGTH, EXISTENTIAL_DEPOSIT, SLOT_DURATION, UNIT,
-    VERSION,
+    AccountId, Address, Aura, Balance, Balances, Block, BlockNumber, Consensus, EthExtraImpl,
+    Hash, Nonce, PalletInfo, Runtime, RuntimeCall, RuntimeEvent, RuntimeFreezeReason,
+    RuntimeHoldReason, RuntimeOrigin, RuntimeTask, Signature, System, Timestamp, EPOCH_LENGTH,
+    EXISTENTIAL_DEPOSIT, SLOT_DURATION, UNIT, VERSION,
 };
 
 const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
@@ -115,13 +115,11 @@ parameter_types! {
 /// every successful reveal are free anyway (see `pallet-weights`).
 pub const FEE_DIVISOR: Balance = 100;
 
-pub struct IctWeightToFee;
-impl frame_support::weights::WeightToFee for IctWeightToFee {
-    type Balance = Balance;
-    fn weight_to_fee(weight: &Weight) -> Self::Balance {
-        (weight.ref_time() as Balance) / FEE_DIVISOR
-    }
-}
+/// Fee = ref_time / `FEE_DIVISOR`, as before. pallet-revive only accepts its own
+/// `BlockRatioFee` because its gas mapping depends on it. The type also adds a proof-size
+/// component, but with this solochain's unlimited proof size that part is negligible, so
+/// fees for ordinary transactions are unchanged.
+pub type IctWeightToFee = pallet_revive::evm::fees::BlockRatioFee<1, FEE_DIVISOR, Runtime, Balance>;
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -284,4 +282,57 @@ impl pallet_ict_swap::Config for Runtime {
     type OrderTtlMax = SwapOrderTtlMax;
     type ReservationTtl = SwapReservationTtl;
     type LockTtlMax = SwapLockTtlMax;
+}
+
+// ---------------------------------------------------------------------------------------------
+// EVM: pallet-revive with the REVM backend (spec Section 14).
+//
+// Runs unmodified Solidity/EVM bytecode, so Hyperlane's standard contracts can be deployed with
+// Hyperlane's own tooling. Ethereum JSON-RPC (MetaMask, Foundry, Hyperlane agents) is served by
+// the separate `eth-rpc` server (crate `pallet-revive-eth-rpc`) next to a node; the node binary
+// itself needs no changes.
+// ---------------------------------------------------------------------------------------------
+
+/// EIP-155 chain ID of the Incentium EVM. Check that it is free on chainid.network before
+/// mainnet: it cannot be changed once wallets and contracts rely on it.
+pub const EVM_CHAIN_ID: u64 = 20_261_118;
+
+parameter_types! {
+    /// Storage deposits for contracts, scaled to ICT (9 decimals). The deposit is refunded when
+    /// the storage is freed, and the values can be changed on a live chain (refunds are pro rata).
+    pub const ReviveDepositPerItem: Balance = UNIT / 100; // 0.01 ICT per storage item
+    pub const ReviveDepositPerChildTrieItem: Balance = UNIT / 10_000; // 0.0001 ICT per contract slot
+    pub const ReviveDepositPerByte: Balance = UNIT / 100_000; // 0.00001 ICT per byte
+    pub CodeHashLockupDepositPercent: Perbill = Perbill::from_percent(30);
+}
+
+#[derive_impl(pallet_revive::config_preludes::TestDefaultConfig)]
+impl pallet_revive::Config for Runtime {
+    type Time = Timestamp;
+    type Balance = Balance;
+    type Currency = Balances;
+    /// 32-byte Substrate accounts keep working. MetaMask accounts get a native account
+    /// automatically; a Talisman (sr25519) account calls `map_account` once to get an EVM address.
+    type AddressMapper = pallet_revive::AccountId32Mapper<Self>;
+    type ChainId = ConstU64<EVM_CHAIN_ID>;
+    /// ICT has 9 decimals, the EVM shows 18: 1 ICT = 10^9 base units = 10^18 wei.
+    type NativeToEthRatio = ConstU32<1_000_000_000>;
+    type FeeInfo = pallet_revive::evm::fees::Info<Address, Signature, EthExtraImpl>;
+    type DepositPerItem = ReviveDepositPerItem;
+    type DepositPerChildTrieItem = ReviveDepositPerChildTrieItem;
+    type DepositPerByte = ReviveDepositPerByte;
+    type CodeHashLockupDepositPercent = CodeHashLockupDepositPercent;
+    type AllowEVMBytecode = ConstBool<true>;
+    /// Anyone may deploy contracts. To restrict deployment during the launch period, replace
+    /// these with an origin that only admits approved accounts.
+    type UploadOrigin = frame_system::EnsureSigned<AccountId>;
+    type InstantiateOrigin = frame_system::EnsureSigned<AccountId>;
+    type DebugEnabled = ConstBool<false>;
+    /// Existing accounts would not be mapped retroactively, so mapping stays explicit.
+    type AutoMap = ConstBool<false>;
+    /// Scales gas so that common operations cost roughly what Ethereum tooling expects
+    /// (a plain transfer in the order of 20,000 gas). Does not change what a transaction costs.
+    type GasScale = ConstU32<100>;
+    /// Parity's reference weights; re-benchmark on the mainnet hardware before mainnet.
+    type WeightInfo = pallet_revive::weights::SubstrateWeight<Self>;
 }

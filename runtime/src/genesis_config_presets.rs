@@ -58,9 +58,11 @@ pub const BOOTSTRAP_BLOCKS: u32 = 90 * DAYS;
 /// Genesis allocation to the operator for transaction fees and initial validator stake,
 /// counted against the 21M cap. This and the bootstrap issuance are disclosed in the whitepaper.
 pub const BOOTSTRAP_ALLOCATION: u128 = 100 * UNIT;
-/// What genesis issues: the allocation plus the existential deposit the treasury creates the
-/// fund account with. Both count against the cap.
-pub const BOOTSTRAP_PRE_ISSUED: u128 = BOOTSTRAP_ALLOCATION + crate::EXISTENTIAL_DEPOSIT;
+/// What genesis issues: the allocation plus two existential deposits, one the treasury creates
+/// the fund account with and one pallet-revive creates its own account with. All count against
+/// the cap. (Chains that started before the EVM got the revive account from the fund instead;
+/// see `CreateReviveAccount`.)
+pub const BOOTSTRAP_PRE_ISSUED: u128 = BOOTSTRAP_ALLOCATION + 2 * crate::EXISTENTIAL_DEPOSIT;
 
 /// Mainnet bootstrap template. The dev keys are placeholders: `scripts/make_bootstrap_spec.py`
 /// replaces them with the operator's own keys before launch.
