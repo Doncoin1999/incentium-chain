@@ -1,5 +1,5 @@
 //! Runtime APIs (adapted from the Polkadot SDK solochain template, MIT-0).
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use frame_support::{
     genesis_builder_helper::{build_state, get_preset},
     weights::Weight,
@@ -18,11 +18,18 @@ use sp_version::RuntimeVersion;
 
 // Local module imports
 use super::{
-    AccountId, Aura, Balance, Block, Executive, Grandpa, InherentDataExt, Nonce, Runtime,
-    RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment, VERSION,
+    AccountId, Aura, Balance, Block, BlockNumber, Executive, Grandpa, InherentDataExt, Nonce,
+    Runtime, RuntimeCall, RuntimeGenesisConfig, SessionKeys, System, TransactionPayment, VERSION,
 };
 
-impl_runtime_apis! {
+// `impl_runtime_apis!` plus the runtime APIs pallet-revive needs (ReviveApi: Ethereum blocks,
+// receipts, eth_call, gas estimates, tracing) for the `eth-rpc` server.
+pallet_revive::impl_runtime_apis_plus_revive_traits!(
+    Runtime,
+    Revive,
+    Executive,
+    EthExtraImpl,
+
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
             VERSION
@@ -241,4 +248,4 @@ impl_runtime_apis! {
             Ok(batches)
         }
     }
-}
+);
