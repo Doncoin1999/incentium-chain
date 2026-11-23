@@ -51,11 +51,12 @@ First check what mainnet runs: `specVersion` must be **7** and there must be no 
 ```bash
 scp $WASM administrator@<server A>:~/incentium-runtime-spec8-swap.wasm       # from the testnet server
 # on server A:
-ps -eo args | grep "[r]pc-port" | cut -c1-200          # the mainnet node's RPC port
-python3 scripts/upgrade_runtime_wasm.py --url ws://127.0.0.1:<rpc-port> \
-    --key-file <mainnet sudo key file> --expect Swap --wasm ~/incentium-runtime-spec8-swap.wasm
+python3 scripts/upgrade_runtime_wasm.py --url ws://127.0.0.1:9946 \
+    --key-file ~/incentium-mainnet/secrets/operator.json --expect Swap --wasm ~/incentium-runtime-spec8-swap.wasm
 ```
 
+The sudo key is the launch operator key that `scripts/mainnet-genesis.sh` created on server A
+(`~/incentium-mainnet/secrets/operator.json`); 9946 is A's archive RPC (docs/MAINNET.md).
 The script shows the chain name and current spec and asks for `yes`. Afterwards: spec 8, blocks
 advancing, `Swap` present. A mistake here cannot be undone, only fixed by a further upgrade.
 
@@ -107,9 +108,8 @@ nobody's funds are stuck.
 
 ## 4. Keeper and trading page
 
-Runs next to the testnet keeper on the same server under its own name, port and domain. If the
-testnet page currently answers on `trade.incentium.org`, move it to `trade-test.incentium.org`
-first (`DOMAIN=trade-test.incentium.org bash swap/service/deploy/install-swap.sh`, plus a DNS record).
+Runs next to the testnet keeper (`trade-test.incentium.org`, server 156.67.101.75) under its own
+name, port and domain: `trade.incentium.org` is new and points to the same server.
 
 ```bash
 cd ~/incentium-chain && git fetch origin && git checkout mainnet-swap && git pull
