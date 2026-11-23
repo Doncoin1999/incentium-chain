@@ -38,6 +38,9 @@
   .past .item { opacity: .85; }
   .none { color: var(--muted); font-size: 18px; margin: 0; }
   .viewer { grid-column: 1 / -1; margin-top: 8px; }
+  .film { grid-column: 1 / -1; margin: 8px 0 0; }
+  .film figcaption { color: var(--muted); font-size: 14.5px; margin-bottom: 8px; }
+  .film video { width: 100%; aspect-ratio: 16 / 9; background: #11151f; border-radius: 10px; display: block; }
   .viewer[hidden] { display: none; }
   .stage { position: relative; background: #11151f; border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; }
   .stage img { width: 100%; height: 100%; object-fit: contain; display: block; }
@@ -71,7 +74,8 @@
 body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
 body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
 body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
-body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
+body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
 @media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
 @media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
 </style>
@@ -82,6 +86,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
     </a>
     <nav class="ic-nav" aria-label="Incentium">
       <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://trade.incentium.org/" data-site="trade">Trade</a>
       <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
       <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
       <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
@@ -127,6 +132,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
     <nav aria-label="Incentium sites">
       <a href="https://incentium.org/">Home</a>
       <a href="https://incentium.org/mine/">Mine ICT</a>
+      <a href="https://trade.incentium.org/">Trade ICT</a>
       <a href="https://chat.incentium.org/">Chat</a>
       <a href="https://explorer.incentium.org/">Explorer</a>
       <a href="https://faucet.incentium.org/">Faucet</a>
@@ -144,7 +150,9 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 "use strict";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
-const safe = (u) => (/^(https?:\/\/|\/|[\w.\/-]+\.(pdf|pptx?|key|png|jpe?g)$)/i.test(u || "") && !/\.\./.test(u)) ? u : "";
+const safe = (u) => (/^(https?:\/\/|\/|[\w.\/-]+\.(pdf|pptx?|key|png|jpe?g|mp4|webm)$)/i.test(u || "") && !/\.\./.test(u)) ? u : "";
+// The visitor's own date (not UTC), as YYYY-MM-DD.
+const localDate = (t = new Date()) => `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
 
 let nviewer = 0;
 function card(x, links) {
@@ -154,7 +162,15 @@ function card(x, links) {
     `<a ${i === 0 ? 'class="main"' : ""} href="${esc(safe(u))}" target="_blank" rel="noopener">${esc(label)}</a>`).join("");
   return `<div class="item"><div class="date"><div class="d">${esc(Number(d) || "")}</div><div class="m">${esc(MONTHS[Number(m) - 1] || "")}</div><div class="y">${esc(y)}</div></div>
     <div><h3>${esc(x.title)}</h3><div class="meta">${x.kind ? `<span class="tag">${esc(x.kind)}</span>` : ""}${meta}</div>
-    ${x.summary ? `<p>${esc(x.summary)}</p>` : ""}${(ls || viewable(x)) ? `<div class="links">${viewable(x) ? `<button type="button" data-viewer="v${nviewer}">View slides</button>` : ""}${ls}</div>` : ""}</div>${viewer(x)}</div>`;
+    ${x.summary ? `<p>${esc(x.summary)}</p>` : ""}${(ls || viewable(x)) ? `<div class="links">${viewable(x) ? `<button type="button" data-viewer="v${nviewer}">View slides</button>` : ""}${ls}</div>` : ""}</div>${viewer(x)}${film(x)}</div>`;
+}
+
+function film(x) {
+  const f = x.film && safe(x.film.file);
+  if (!f || !/\.(mp4|webm)$/i.test(f)) return "";
+  const poster = safe(x.film.poster);
+  return `<figure class="film">${x.film.title ? `<figcaption>${esc(x.film.title)}</figcaption>` : ""}
+    <video controls preload="metadata" playsinline${poster ? ` poster="${esc(poster)}"` : ""}><source src="${esc(f)}" type="video/${/\.webm$/i.test(f) ? "webm" : "mp4"}"></video></figure>`;
 }
 
 function viewable(x) { return x.images && /^[\w-]+$/.test(x.images.folder || "") && Number(x.images.count) > 0; }
@@ -196,11 +212,12 @@ document.addEventListener("keydown", (e) => {
 });
 
 fetch("events.json", {cache: "no-store"}).then((r) => r.json()).then((data) => {
-  const today = new Date().toISOString().slice(0, 10);
-  const events = (data.events || []).filter((e) => e.date && e.title);
+  const today = localDate();
+  const dated = (x) => (x.date === "today" ? {...x, date: today} : x);
+  const events = (data.events || []).map(dated).filter((e) => e.date && e.title);
   const upcoming = events.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date));
   const past = events.filter((e) => e.date < today).sort((a, b) => b.date.localeCompare(a.date));
-  const talks = (data.presentations || []).filter((t) => t.date && t.title).sort((a, b) => b.date.localeCompare(a.date));
+  const talks = (data.presentations || []).map(dated).filter((t) => t.date && t.title).sort((a, b) => b.date.localeCompare(a.date));
   const evLinks = (e) => [["Details & sign-up", e.url], ["Recording", e.video], ["Slides", e.slides]];
   if (upcoming.length) document.getElementById("upcoming-list").innerHTML = upcoming.map((e) => card(e, evLinks(e))).join("");
   if (talks.length) document.getElementById("talks-list").innerHTML = talks.map((t) => card(t, [["Download PDF", t.slides], ["PowerPoint", t.pptx], ["Video", t.video], ["More", t.url]])).join("");

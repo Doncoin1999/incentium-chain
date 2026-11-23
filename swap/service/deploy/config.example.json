@@ -1,0 +1,22 @@
+{
+  "db": "/home/administrator/incentium-swap/swap.db",
+  "host": "127.0.0.1",
+  "port": 8095,
+  "interval": 6,
+
+  "incentium_rpc": "ws://127.0.0.1:9944",
+  "incentium_rpc_public": "wss://rpc.incentium.org",
+  "incentium_start": 0,
+  "incentium_keeper_seed_file": "/home/administrator/incentium-swap/incentium-keeper.seed",
+
+  "base_rpc": "https://sepolia.base.org",
+  "base_rpc_public": "https://sepolia.base.org",
+  "base_chain_id": 84532,
+  "base_start": 0,
+  "base_keeper_key_file": "/home/administrator/incentium-swap/base-keeper.key",
+
+  "contract": "0x0000000000000000000000000000000000000000",
+  "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "genesis_time": 0,
+  "explorer": "https://explorer.incentium.org"
+}

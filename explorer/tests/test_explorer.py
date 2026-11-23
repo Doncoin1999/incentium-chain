@@ -139,3 +139,11 @@ def test_http_server(database):
         assert csv_text.startswith("block,ts,kind")
     finally:
         srv.shutdown()
+
+
+def test_classify_swap_events():
+    r = indexer.classify("Balances", "TransferOnHold", {"reason": {"Swap": "Swap"}, "source": ALICE, "dest": BOB, "amount": 5}, PROTO, CTX)
+    assert r == [(ALICE, "swap", "Swap: ICT delivered", BOB, -5, None), (BOB, "swap", "Swap: ICT received", ALICE, 5, None)]
+    held = indexer.classify("Balances", "Held", {"reason": {"Swap": "Swap"}, "who": ALICE, "amount": 2 * common.UNIT}, PROTO, CTX)
+    assert held[0][2] == "ICT held for a swap" and "2.00 ICT" in held[0][5]
+    assert indexer.classify("Balances", "Held", {"reason": {"Other": "x"}, "who": ALICE, "amount": 1}, PROTO, CTX) == []

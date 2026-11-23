@@ -21,7 +21,7 @@ DB_PATH = ""
 WEB_DIR = ""  # optional: also serve the page (for a preview over an SSH tunnel)
 STATIC = {"/": ("index.html", "text/html"), "/index.html": ("index.html", "text/html"),
           "/app.js": ("app.js", "text/javascript"), "/style.css": ("style.css", "text/css")}
-KINDS = {"transfer", "reward", "stake", "vault", "slash", "other", "protocol"}
+KINDS = {"transfer", "reward", "stake", "vault", "swap", "slash", "other", "protocol"}
 AMOUNT_FIELDS = ("free", "reserved", "stake", "unstaking", "bond", "unbonding", "vault_locked",
                  "vault_claimed", "total", "amount", "change_24h", "issued", "vault", "fund", "total_stake")
 
