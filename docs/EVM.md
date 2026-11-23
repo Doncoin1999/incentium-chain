@@ -44,7 +44,7 @@ Key settings (`configs.rs`):
 
 | Setting | Value | Note |
 | --- | --- | --- |
-| `EVM_CHAIN_ID` | 20261118 (`0x13528fe`) | Free in `ethereum-lists/chains` on 22 Nov 2026. Register it before mainnet; cannot change later. |
+| `EVM_CHAIN_ID` | 20261118 (`0x13528fe`) | **The testnet's ID**, being registered in `ethereum-lists/chains` as "Incentium Testnet" (`ict-testnet`). Mainnet must get a different, free ID before the mainnet upgrade: sharing one lets a transaction signed on one chain be replayed on the other. |
 | `NativeToEthRatio` | 10^9 | ICT has 9 decimals, the EVM shows 18 |
 | `AddressMapper` | `AccountId32Mapper` | Existing `5…` accounts unchanged |
 | `AutoMap` | false | Talisman accounts call `revive.map_account` once to get an EVM address |
@@ -341,8 +341,9 @@ pending message relayed by hand, and automatic delivery by the relayer service.
 
 ## Before mainnet
 
-- **Chain ID:** register 20261118 in `ethereum-lists/chains` (`eip155-20261118.json`) now that a
-  public RPC exists.
+- **Chain ID:** 20261118 is the testnet's (registration in `ethereum-lists/chains` submitted 23 Nov
+  2026). Pick a free ID for mainnet, set `EVM_CHAIN_ID` in `runtime/src/configs.rs` to it in the
+  mainnet build, and register it once the mainnet EVM RPC exists.
 - **Validators instead of the trusted relayer:** run Hyperlane validators (3–5, different
   operators) and switch both ISMs to a multisig ISM.
 - **Relayer:** use Hyperlane's Rust relayer agent, which tracks its position and catches up after
