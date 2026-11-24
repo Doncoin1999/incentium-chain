@@ -102,6 +102,10 @@ $DOMAIN {
 	}
 }
 EOF
+# keep the explorer behind Incentium sign-in when the sign-in service is installed (auth/deploy/install-auth.sh)
+if [ -f /etc/caddy/sites/00-auth.caddy ]; then
+  sudo python3 "$(cd "$(dirname "$0")/../.." && pwd)/auth/deploy/protect-caddy.py" /etc/caddy/sites/explorer.caddy --all --no-snippet >/dev/null
+fi
 if ! sudo grep -q "import sites/\*.caddy" /etc/caddy/Caddyfile 2>/dev/null; then
   # A fresh Caddy install ships a demo site on :80; replace it, keep anything else.
   if sudo grep -q "^:80" /etc/caddy/Caddyfile 2>/dev/null; then

@@ -1,0 +1,2 @@
+web3>=7,<9
+substrate-interface>=1.7,<2

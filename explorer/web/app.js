@@ -242,7 +242,7 @@ async function accountView(addr, opts = {}) {
   <section class="panel" aria-labelledby="tx" data-events="${esc(a.addr)}">
     <div class="bar"><h2 id="tx">${opts.mine ? "My transactions and rewards" : "Transactions and rewards"}</h2>
       <div class="pills" role="group" aria-label="Filter by type">
-        ${[["", "All"], ["transfer", "Transfers"], ["reward", "Rewards"], ["stake", "Staking"], ["vault", "Vault"], ["other", "Other"]]
+        ${[["", "All"], ["transfer", "Transfers"], ["reward", "Rewards"], ["stake", "Staking"], ["vault", "Vault"], ["swap", "Swaps"], ["other", "Other"]]
           .map(([k, l]) => `<button class="pill" data-kind="${k}" aria-pressed="${k === ""}">${l}</button>`).join("")}
         <a class="btn" data-csv href="/api/account/${esc(a.addr)}/events?format=csv">Download CSV</a></div></div>
     <div data-rows></div>

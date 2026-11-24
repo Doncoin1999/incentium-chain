@@ -116,6 +116,26 @@ def classify(module: str, name: str, attrs, proto: dict[str, str], ctx: dict) ->
         v = _acct(a.get("validator"))
         if v:
             rows.append((v, "other", "Weights revealed", None, None, f"epoch {a.get('epoch')}"))
+    elif module == "Balances" and name == "TransferOnHold" and "Swap" in str(a.get("reason")):
+        src, dst, amt = _acct(a.get("source")), _acct(a.get("dest")), _amt(a.get("amount"))
+        if src and dst:
+            rows.append((src, "swap", "Swap: ICT delivered", dst, -amt, None))
+            rows.append((dst, "swap", "Swap: ICT received", src, amt, None))
+    elif module == "Balances" and name in ("Held", "Released") and "Swap" in str(a.get("reason")):
+        who, amt = _acct(a.get("who")), _amt(a.get("amount"))
+        if who:
+            title = "ICT held for a swap" if name == "Held" else "ICT released from a swap"
+            rows.append((who, "swap", title, None, None, f"{amt / common.UNIT:,.2f} ICT, still yours"))
+    elif module == "Swap" and name == "SellPlaced":
+        who = _acct(a.get("maker"))
+        if who:
+            rows.append((who, "swap", "Swap: sell order placed", None, None,
+                         f"{_amt(a.get('max_qty')) / common.UNIT:,.2f} ICT at {_amt(a.get('price')) / 1e6:,.4f} USDC"))
+    elif module == "Swap" and name == "Reserved":
+        who = _acct(a.get("recipient"))
+        if who:
+            rows.append((who, "swap", "Swap: fill reserved for you", None, None,
+                         f"{_amt(a.get('qty')) / common.UNIT:,.2f} ICT for {_amt(a.get('usdc')) / 1e6:,.2f} USDC"))
     elif module == "Balances" and name == "Endowed":
         who = _acct(a.get("account"))
         if who and who not in proto:

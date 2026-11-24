@@ -6882,6 +6882,7 @@ dependencies = [
  "ict-economics",
  "pallet-ict-consensus",
  "pallet-ict-emission",
+ "pallet-ict-swap",
  "pallet-subnet-registry",
  "pallet-weights",
  "pallet-work-verify",
@@ -10216,6 +10217,15 @@ name = "pallet-ict-emission"
 version = "0.1.0"
 dependencies = [
  "ict-economics",
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "scale-info",
+]
+
+[[package]]
+name = "pallet-ict-swap"
+version = "0.1.0"
+dependencies = [
  "parity-scale-codec",
  "polkadot-sdk",
  "scale-info",
