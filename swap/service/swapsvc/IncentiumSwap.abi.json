@@ -21,9 +21,40 @@
     "name": "pauseGuardian_",
     "type": "address",
     "internalType": "address"
+   },
+   {
+    "name": "depositArbiter_",
+    "type": "address",
+    "internalType": "address"
    }
   ],
   "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "DEPOSIT_BPS",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
+  "name": "DISPUTE_WINDOW",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "view"
  },
  {
   "type": "function",
@@ -92,6 +123,19 @@
  },
  {
   "type": "function",
+  "name": "MIN_DEPOSIT",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
   "name": "MIN_FILL_USDC",
   "inputs": [],
   "outputs": [
@@ -132,6 +176,19 @@
  {
   "type": "function",
   "name": "RESERVATION_TTL",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
+  "name": "accruedFees",
   "inputs": [],
   "outputs": [
    {
@@ -259,6 +316,38 @@
   ],
   "outputs": [],
   "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "depositArbiter",
+  "inputs": [],
+  "outputs": [
+   {
+    "name": "",
+    "type": "address",
+    "internalType": "address"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
+  "name": "depositFor",
+  "inputs": [
+   {
+    "name": "amount",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "outputs": [
+   {
+    "name": "",
+    "type": "uint256",
+    "internalType": "uint256"
+   }
+  ],
+  "stateMutability": "pure"
  },
  {
   "type": "function",
@@ -494,6 +583,30 @@
  },
  {
   "type": "function",
+  "name": "openByPayee",
+  "inputs": [
+   {
+    "name": "",
+    "type": "bytes32",
+    "internalType": "bytes32"
+   },
+   {
+    "name": "",
+    "type": "address",
+    "internalType": "address"
+   }
+  ],
+  "outputs": [
+   {
+    "name": "",
+    "type": "bool",
+    "internalType": "bool"
+   }
+  ],
+  "stateMutability": "view"
+ },
+ {
+  "type": "function",
   "name": "orderId",
   "inputs": [
    {
@@ -541,6 +654,24 @@
    }
   ],
   "stateMutability": "view"
+ },
+ {
+  "type": "function",
+  "name": "payDepositToMaker",
+  "inputs": [
+   {
+    "name": "id",
+    "type": "bytes32",
+    "internalType": "bytes32"
+   },
+   {
+    "name": "fill",
+    "type": "uint8",
+    "internalType": "uint8"
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
  },
  {
   "type": "function",
@@ -652,6 +783,26 @@
     "name": "amount",
     "type": "uint128",
     "internalType": "uint128"
+   },
+   {
+    "name": "depositor",
+    "type": "address",
+    "internalType": "address"
+   },
+   {
+    "name": "depositState",
+    "type": "uint8",
+    "internalType": "enum IncentiumSwap.DepositState"
+   },
+   {
+    "name": "disputeUntil",
+    "type": "uint64",
+    "internalType": "uint64"
+   },
+   {
+    "name": "deposit",
+    "type": "uint128",
+    "internalType": "uint128"
    }
   ],
   "stateMutability": "view"
@@ -679,6 +830,24 @@
     "name": "payee",
     "type": "address",
     "internalType": "address"
+   }
+  ],
+  "outputs": [],
+  "stateMutability": "nonpayable"
+ },
+ {
+  "type": "function",
+  "name": "returnDeposit",
+  "inputs": [
+   {
+    "name": "id",
+    "type": "bytes32",
+    "internalType": "bytes32"
+   },
+   {
+    "name": "fill",
+    "type": "uint8",
+    "internalType": "uint8"
    }
   ],
   "outputs": [],
@@ -733,6 +902,13 @@
    }
   ],
   "stateMutability": "pure"
+ },
+ {
+  "type": "function",
+  "name": "withdrawFees",
+  "inputs": [],
+  "outputs": [],
+  "stateMutability": "nonpayable"
  },
  {
   "type": "event",
@@ -792,6 +968,100 @@
     "type": "uint64",
     "indexed": false,
     "internalType": "uint64"
+   }
+  ],
+  "anonymous": false
+ },
+ {
+  "type": "event",
+  "name": "DepositHeld",
+  "inputs": [
+   {
+    "name": "orderId",
+    "type": "bytes32",
+    "indexed": true,
+    "internalType": "bytes32"
+   },
+   {
+    "name": "fill",
+    "type": "uint8",
+    "indexed": true,
+    "internalType": "uint8"
+   },
+   {
+    "name": "depositor",
+    "type": "address",
+    "indexed": false,
+    "internalType": "address"
+   },
+   {
+    "name": "deposit",
+    "type": "uint128",
+    "indexed": false,
+    "internalType": "uint128"
+   }
+  ],
+  "anonymous": false
+ },
+ {
+  "type": "event",
+  "name": "DepositPaidToMaker",
+  "inputs": [
+   {
+    "name": "orderId",
+    "type": "bytes32",
+    "indexed": true,
+    "internalType": "bytes32"
+   },
+   {
+    "name": "fill",
+    "type": "uint8",
+    "indexed": true,
+    "internalType": "uint8"
+   },
+   {
+    "name": "amount",
+    "type": "uint128",
+    "indexed": false,
+    "internalType": "uint128"
+   }
+  ],
+  "anonymous": false
+ },
+ {
+  "type": "event",
+  "name": "DepositReturned",
+  "inputs": [
+   {
+    "name": "orderId",
+    "type": "bytes32",
+    "indexed": true,
+    "internalType": "bytes32"
+   },
+   {
+    "name": "fill",
+    "type": "uint8",
+    "indexed": true,
+    "internalType": "uint8"
+   },
+   {
+    "name": "amount",
+    "type": "uint128",
+    "indexed": false,
+    "internalType": "uint128"
+   }
+  ],
+  "anonymous": false
+ },
+ {
+  "type": "event",
+  "name": "FeesWithdrawn",
+  "inputs": [
+   {
+    "name": "amount",
+    "type": "uint256",
+    "indexed": false,
+    "internalType": "uint256"
    }
   ],
   "anonymous": false
@@ -1015,6 +1285,11 @@
  },
  {
   "type": "error",
+  "name": "BadDepositState",
+  "inputs": []
+ },
+ {
+  "type": "error",
   "name": "BadExpiry",
   "inputs": []
  },
@@ -1055,6 +1330,11 @@
  },
  {
   "type": "error",
+  "name": "NotArbiter",
+  "inputs": []
+ },
+ {
+  "type": "error",
   "name": "NotGuardian",
   "inputs": []
  },
@@ -1081,6 +1361,11 @@
  {
   "type": "error",
   "name": "OverCap",
+  "inputs": []
+ },
+ {
+  "type": "error",
+  "name": "PayeeHasOpenReservation",
   "inputs": []
  },
  {

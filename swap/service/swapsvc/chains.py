@@ -105,6 +105,14 @@ class Incentium:
                 store.lock_claimed(con, "inc", hx(a["lock"]), hx(a["secret"]))
             elif name == "LockRefunded":
                 store.lock_refunded(con, "inc", hx(a["lock"]))
+            elif name == "DepositHeld":
+                store.deposit_held(con, "inc", hx(a["order"]), a["fill"], a["depositor"], a["deposit"])
+            elif name == "DepositReturned":
+                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "returned")
+            elif name == "DepositPaidToMaker":
+                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "paid_to_maker")
+            if name == "ReservationExpired":
+                store.deposit_disputable(con, "inc", hx(a["order"]), a["fill"], ts)
             count += 1
         return count
 
@@ -128,6 +136,21 @@ class Incentium:
 
     def order(self, oid: str):
         return self.conn().query("Swap", "SellOrders", [oid]).value
+
+    def reservation_deadline(self, oid: str, fill: int, expiry: int) -> int:
+        """A reservation's deadline including the downtime credit (review fix H1), as the pallet computes it."""
+        s = self.conn()
+        down = int(s.query("Swap", "Downtime").value or 0)
+        last = int(s.query("Swap", "LastBlockTime").value or 0)
+        now, gap_max = self.now(), 120
+        if last and now - last > gap_max:
+            down += now - last - gap_max
+        t = s.query("Swap", "Terms", [oid, fill]).value
+        start = int(t["downtime_at_start"]) if t else 0
+        return int(expiry) + max(0, down - start)
+
+    def free_balance(self, addr: str) -> int:
+        return int(self.conn().query("System", "Account", [addr]).value["data"]["free"])
 
     # ---------------------------------------------------------------- writing
 
@@ -203,6 +226,14 @@ class Base:
             store.lock_claimed(con, "base", hx(a["lockId"]), hx(a["secret"]))
         elif name == "LockRefunded":
             store.lock_refunded(con, "base", hx(a["lockId"]))
+        elif name == "DepositHeld":
+            store.deposit_held(con, "base", hx(a["orderId"]), a["fill"], a["depositor"].lower(), a["deposit"])
+        elif name == "DepositReturned":
+            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "returned")
+        elif name == "DepositPaidToMaker":
+            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "paid_to_maker")
+        if name == "ReservationExpired":
+            store.deposit_disputable(con, "base", hx(a["orderId"]), a["fill"], ts)
 
     def sync(self, con, start: int, step: int = 2000) -> int:
         nxt = store.get_meta(con, "base_next", start)
@@ -235,13 +266,38 @@ class Base:
 
     def reservation(self, oid: str, fill: int):
         r = self.c.functions.reservations(bytes.fromhex(oid[2:]), fill).call()
-        return dict(zip(["state", "expiry", "payee", "qty", "amount"], r))
+        return dict(zip(["state", "expiry", "payee", "qty", "amount", "depositor", "depositState",
+                         "disputeUntil", "deposit"], r))
 
     def order(self, oid: str):
         r = self.c.functions.buyOrders(bytes.fromhex(oid[2:])).call()
         keys = ["maker", "expiry", "open", "openReservations", "usedFills", "ictRecipient", "maxQty", "price",
                 "remainingQty", "freeUsdc"]
         return dict(zip(keys, r))
+
+    ERC20 = [{"type": "function", "name": n, "stateMutability": m, "inputs": i, "outputs": [{"type": t}]}
+             for n, m, i, t in (("balanceOf", "view", [{"type": "address"}], "uint256"),
+                                ("allowance", "view", [{"type": "address"}, {"type": "address"}], "uint256"),
+                                ("approve", "nonpayable", [{"type": "address"}, {"type": "uint256"}], "bool"))]
+
+    def usdc_ok(self, usdc: str, who: str, amount: int) -> bool:
+        """`who` holds `amount` USDC and has approved the contract for it."""
+        from web3 import Web3
+        t = self.w3.eth.contract(address=Web3.to_checksum_address(usdc), abi=self.ERC20)
+        w = Web3.to_checksum_address(who)
+        return (t.functions.balanceOf(w).call() >= amount
+                and t.functions.allowance(w, self.c.address).call() >= amount)
+
+    def ensure_keeper_allowance(self, usdc: str, amount: int):
+        """The keeper pays reservation deposits in USDC: keep the contract approved."""
+        from web3 import Web3
+        t = self.w3.eth.contract(address=Web3.to_checksum_address(usdc), abi=self.ERC20)
+        if t.functions.allowance(self.acct.address, self.c.address).call() < amount:
+            f = t.functions.approve(self.c.address, 2**256 - 1)
+            tx = f.build_transaction({"from": self.acct.address,
+                                      "nonce": self.w3.eth.get_transaction_count(self.acct.address, "pending")})
+            h = self.w3.eth.send_raw_transaction(self.acct.sign_transaction(tx).raw_transaction)
+            self.w3.eth.wait_for_transaction_receipt(h, timeout=180)
 
     def send(self, fn: str, *args):
         if not self.acct:

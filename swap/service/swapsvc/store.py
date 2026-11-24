@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS locks (
   hash TEXT NOT NULL, expiry INTEGER NOT NULL, state TEXT NOT NULL, secret TEXT,
   PRIMARY KEY (chain, id));
 CREATE INDEX IF NOT EXISTS locks_by_order ON locks (order_id, fill);
+CREATE TABLE IF NOT EXISTS deposits (       -- reservation deposits (review fix H2)
+  chain TEXT NOT NULL, order_id TEXT NOT NULL, fill INTEGER NOT NULL,
+  depositor TEXT NOT NULL, amount INTEGER NOT NULL,
+  state TEXT NOT NULL,               -- held, disputable, returned, paid_to_maker
+  dispute_until INTEGER, PRIMARY KEY (chain, order_id, fill));
 CREATE INDEX IF NOT EXISTS orders_by_maker ON orders (maker);
 """
 
@@ -157,3 +162,52 @@ def matching_lock(con, chain, oid, fill):
     return [dict(r) for r in con.execute(
         "SELECT * FROM locks WHERE chain = ? AND order_id = ? AND fill = ? AND state = 'active'",
         (OTHER[chain], oid, int(fill)))]
+
+
+# ------------------------------------------------------------------ reservation deposits (review fix H2)
+
+DISPUTE_WINDOW = 24 * 3600
+
+
+def deposit_held(con, chain, oid, fill, depositor, amount):
+    con.execute("INSERT OR REPLACE INTO deposits VALUES (?,?,?,?,?, 'held', NULL)",
+                (chain, oid, int(fill), depositor, int(amount)))
+
+
+def deposit_disputable(con, chain, oid, fill, now):
+    con.execute("""UPDATE deposits SET state = 'disputable', dispute_until = ?
+                   WHERE chain = ? AND order_id = ? AND fill = ? AND state = 'held'""",
+                (int(now) + DISPUTE_WINDOW, chain, oid, int(fill)))
+
+
+def deposit_settled(con, chain, oid, fill, state):
+    con.execute("UPDATE deposits SET state = ? WHERE chain = ? AND order_id = ? AND fill = ?",
+                (state, chain, oid, int(fill)))
+
+
+def disputable_deposits(con):
+    return [dict(r) for r in con.execute("""SELECT d.*, r.qty, r.usdc, o.recipient AS maker_recipient, o.hashes
+        FROM deposits d JOIN reservations r ON r.chain = d.chain AND r.order_id = d.order_id AND r.fill = d.fill
+        JOIN orders o ON o.chain = d.chain AND o.id = d.order_id WHERE d.state = 'disputable'""")]
+
+
+def taker_paid(con, chain, oid, fill, hash_, maker_recipient, qty, usdc):
+    """Did the taker lock on the other chain for this fill, paying the maker the full amount?
+    A refunded or claimed lock counts too: the taker did pay; only the maker's confirmation (or the
+    relay) was missing."""
+    for l in con.execute("SELECT * FROM locks WHERE chain = ? AND order_id = ? AND fill = ?",
+                         (OTHER[chain], oid, int(fill))):
+        if l["hash"].lower() != hash_.lower() or str(l["payee"]).lower() != str(maker_recipient).lower():
+            continue
+        if chain == "inc" and int(l["amount"]) >= int(usdc):     # USDC locked on Base for an ICT reservation
+            return True
+        if chain == "base" and int(l["qty"]) >= int(qty):        # ICT locked on Incentium for a USDC reservation
+            return True
+    return False
+
+
+def keeper_fronted_open(con, payer):
+    """Open reservations whose deposit the keeper paid for this taker (`payer` noted at reserve time)."""
+    return con.execute("""SELECT COUNT(*) FROM meta m JOIN reservations r
+        ON m.key = 'front:' || r.chain || ':' || r.order_id || ':' || r.fill
+        WHERE r.state = 'active' AND json_extract(m.value, '$') = ?""", (payer,)).fetchone()[0]
