@@ -1,6 +1,6 @@
 # Incentium Node for Windows: one command in PowerShell, no administrator rights.
 #
-#   irm https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.ps1 | iex
+#   irm https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-node.ps1 | iex
 #
 # Everything goes into %USERPROFILE%\.incentium-node:
 #   * Python (through uv) and llama.cpp's llama-server (CUDA on NVIDIA graphics cards, otherwise CPU),
@@ -8,7 +8,7 @@
 #     asks to join the network and mines; it starts by itself when you log in,
 #   * a dashboard at http://127.0.0.1:7777, opened now and from the "Incentium" icon on the desktop.
 # Run the same command again to update; your key, model and settings are kept.
-# Remove:  $env:INCENTIUM_UNINSTALL=1; irm https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.ps1 | iex
+# Remove:  $env:INCENTIUM_UNINSTALL=1; irm https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-node.ps1 | iex
 #
 # Works in Windows PowerShell 5.1 (built into Windows 10 and 11) and PowerShell 7.
 # Everything runs inside a function and errors are thrown, never "exit", so the window stays open.
@@ -18,7 +18,7 @@ function Install-IncentiumNode {
   $ProgressPreference = 'SilentlyContinue'      # the progress bar makes downloads very slow in 5.1
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
 
-  $Repo    = if ($env:INCENTIUM_REPO)    { $env:INCENTIUM_REPO }    else { 'Doncoin1999/incentium-chain' }
+  $Repo    = if ($env:INCENTIUM_REPO)    { $env:INCENTIUM_REPO }    else { 'incentium/incentium-chain' }
   $Branch  = if ($env:INCENTIUM_BRANCH)  { $env:INCENTIUM_BRANCH }  else { 'main' }
   $Network = if ($env:INCENTIUM_NETWORK) { $env:INCENTIUM_NETWORK } else { 'testnet' }
   $D       = Join-Path $env:USERPROFILE '.incentium-node'
@@ -102,7 +102,7 @@ function Install-IncentiumNode {
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ("incentium-" + [guid]::NewGuid())
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {
-    Get-File "https://codeload.github.com/$Repo/zip/refs/heads/$Branch" "$tmp\src.zip"
+    Get-File "https://git.incentium.org/$Repo/archive/$Branch.zip" "$tmp\src.zip"
     Expand-Archive -Force "$tmp\src.zip" $tmp
     $top = Get-ChildItem -Directory $tmp | Select-Object -First 1
     if (Test-Path "$D\src\neuron") { Remove-Item -Recurse -Force "$D\src\neuron" }

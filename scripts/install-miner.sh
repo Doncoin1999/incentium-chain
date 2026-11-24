@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Incentium miner: one-command install on Linux (Ubuntu/Debian, x86_64 or arm64).
 #
-#   curl -sSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-miner.sh | bash
+#   curl -sSL https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-miner.sh | bash
 #
 # What it does, all under ~/.incentium-miner:
 #   1. Installs Python and llama.cpp's llama-server (prebuilt release, or built from source).
@@ -16,7 +16,7 @@ set -euo pipefail
 
 RPC="${INCENTIUM_RPC:-wss://testnet-rpc.incentium.org}"
 REGISTER="${INCENTIUM_REGISTER:-https://register.incentium.org}"
-REPO="${INCENTIUM_REPO:-Doncoin1999/incentium-chain}"
+REPO="${INCENTIUM_REPO:-incentium/incentium-chain}"
 MODEL_URL="${INCENTIUM_MODEL_URL:-https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf}"
 LLAMA_PORT="${INCENTIUM_LLAMA_PORT:-8095}"
 D="$HOME/.incentium-miner"
@@ -56,7 +56,7 @@ say "Installing the Incentium miner"
 "$PY" -m pip install -q --upgrade pip
 "$PY" -m pip install -q substrate-interface
 rm -rf "$D/src/neuron"
-curl -fsSL "https://github.com/$REPO/archive/refs/heads/main.tar.gz" \
+curl -fsSL "https://git.incentium.org/$REPO/archive/main.tar.gz" \
   | tar xz -C "$D/src" --strip-components=1 --wildcards '*/neuron'
 [ -d "$D/src/neuron/incentium_neuron" ] || die "could not download the miner code."
 
