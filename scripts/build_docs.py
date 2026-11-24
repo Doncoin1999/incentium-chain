@@ -213,7 +213,7 @@ def build(slug: str) -> str:
     dl = []
     if pdf:
         dl.append(f'<a class="main" href="{pdf}" download>Download PDF</a>')
-    dl.append(f'<a href="https://github.com/Doncoin1999/incentium-chain/blob/main/{src}">Markdown source</a>')
+    dl.append(f'<a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/{src}">Markdown source</a>')
     page = (TEMPLATE.replace("__TITLE__", html.escape(title)).replace("__DESC__", html.escape(desc))
             .replace("__SITE__", site).replace("__KIND__", kind).replace("__BYLINE__", byline)
             .replace("__DOWNLOADS__", " ".join(dl)).replace("__TOC__", toc).replace("__BODY__", body))

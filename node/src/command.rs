@@ -26,7 +26,7 @@ impl SubstrateCli for Cli {
     }
 
     fn support_url() -> String {
-        "https://github.com/Doncoin1999/incentium-chain/issues".into()
+        "https://git.incentium.org/incentium/incentium-chain/issues".into()
     }
 
     fn copyright_start_year() -> i32 {

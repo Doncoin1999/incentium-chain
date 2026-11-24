@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Incentium Node for Mac: one command, no administrator password, nothing from the App Store.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash
+#   curl -fsSL https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-node.sh | bash
 #
 # Everything goes into ~/.incentium-node:
 #   * Python (through uv) and llama.cpp's llama-server (Metal on Apple Silicon),
@@ -9,10 +9,10 @@
 #     asks to join the network and mines; it starts by itself when you log in,
 #   * a dashboard at http://127.0.0.1:7777, opened now and from the "Incentium" icon on the desktop.
 # Run the same command again to update; your key, model and settings are kept.
-# Remove:  curl -fsSL https://raw.githubusercontent.com/Doncoin1999/incentium-chain/main/scripts/install-node.sh | bash -s -- --uninstall
+# Remove:  curl -fsSL https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-node.sh | bash -s -- --uninstall
 set -euo pipefail
 
-REPO="${INCENTIUM_REPO:-Doncoin1999/incentium-chain}"
+REPO="${INCENTIUM_REPO:-incentium/incentium-chain}"
 BRANCH="${INCENTIUM_BRANCH:-main}"
 NETWORK="${INCENTIUM_NETWORK:-testnet}"
 D="$HOME/.incentium-node"
@@ -63,7 +63,7 @@ PY="$D/venv/bin/python"
 # ---------------------------------------------------------------- node code
 say "Downloading Incentium Node"
 TMP="$(mktemp -d)"
-curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH" | tar xz -C "$TMP" || die "could not download the code"
+curl -fsSL "https://git.incentium.org/$REPO/archive/$BRANCH.tar.gz" | tar xz -C "$TMP" || die "could not download the code"
 rm -rf "$D/src/neuron"
 mv "$TMP"/*/neuron "$D/src/neuron"
 rm -rf "$TMP"
