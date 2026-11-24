@@ -9,6 +9,7 @@ import {IncentiumSwap, IERC20} from "../src/IncentiumSwap.sol";
 ///   GENESIS_TIME    unix time of Incentium mainnet block 1 (explorer: /api/block/1 -> ts)
 ///   FEE_RECIPIENT   governance multisig on Base that receives the 0.1 % fee
 ///   PAUSE_GUARDIAN  multisig that may pause new orders, reservations and locks
+///   DEPOSIT_ARBITER keeper address that may return deposits of unclaimed reservations (24 h window)
 /// forge script script/Deploy.s.sol --rpc-url $BASE_RPC --broadcast --private-key $DEPLOYER_KEY
 contract Deploy is Script {
     function run() external returns (IncentiumSwap swap) {
@@ -16,8 +17,9 @@ contract Deploy is Script {
         uint256 genesis = vm.envUint("GENESIS_TIME");
         address feeRecipient = vm.envAddress("FEE_RECIPIENT");
         address guardian = vm.envAddress("PAUSE_GUARDIAN");
+        address arbiter = vm.envAddress("DEPOSIT_ARBITER");
         vm.startBroadcast();
-        swap = new IncentiumSwap(IERC20(usdc), genesis, feeRecipient, guardian);
+        swap = new IncentiumSwap(IERC20(usdc), genesis, feeRecipient, guardian, arbiter);
         vm.stopBroadcast();
         console.log("IncentiumSwap deployed at", address(swap));
     }
