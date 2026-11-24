@@ -31,8 +31,13 @@ mkdir -p "$D" && chmod 700 "$D"
 if [ ! -s "$D/config.json" ]; then
   TEMPLATE="$HERE/deploy/config.example.json"                      # testnet: Base Sepolia
   case "$NAME" in *mainnet*) TEMPLATE="$HERE/deploy/config.mainnet.example.json" ;; esac   # Base mainnet, port 8096
-  sed -e "s#/home/administrator/incentium-swap-mainnet#$D#g" -e "s#/home/administrator/incentium-swap#$D#g" \
-      -e "s#/home/administrator#$HOME#g" "$TEMPLATE" > "$D/config.json"
+  # the templates name their folder /home/administrator/incentium-swap[-mainnet]: point it at $D, once
+  python3 - "$TEMPLATE" "$D" "$HOME" > "$D/config.json" <<'PY'
+import re, sys
+t, d, home = sys.argv[1:]
+s = re.sub(r"/home/administrator/incentium-swap(-mainnet)?(?=/)", d, open(t).read())
+print(s.replace("/home/administrator", home), end="")
+PY
   echo "Created $D/config.json. Fill in contract, base_start and genesis_time, add the key files, then run this again."
   exit 0
 fi
