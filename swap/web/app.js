@@ -12,7 +12,7 @@ const ABI = [
   "function cancelBuy(bytes32 id)",
   "function lock(bytes32 incOrderId,uint8 fill,bytes32 hash,address payee,uint128 qty,uint128 price,uint64 expiry) returns (bytes32)",
   "function locks(bytes32) view returns (uint8 state,uint64 expiry,address taker,address payee,uint128 qty,uint128 amount,bytes32 hash,bytes32 incOrderId,uint8 fill)",
-  "function reservations(bytes32,uint8) view returns (uint8 state,uint64 expiry,address payee,uint128 qty,uint128 amount)",
+  "function reservations(bytes32,uint8) view returns (uint8 state,uint64 expiry,address payee,uint128 qty,uint128 amount,address depositor,uint8 depositState,uint64 disputeUntil,uint128 deposit)",
   "function orderId(address maker,uint256 nonce) pure returns (bytes32)",
   "function lockId(address taker,bytes32 incOrderId,uint8 fill) pure returns (bytes32)",
   "function maxOrderQty() view returns (uint256)",
@@ -265,6 +265,7 @@ async function fillDialog(chain, id) {
     <p class="muted" style="font-size:14px">Price ${price(o.price)} USDC per ICT · up to ${ict(o.remaining)} ICT.
     ${selling ? "You lock ICT on Incentium; the buyer's USDC is reserved for you on Base. You receive it when the buyer confirms (within 12 h), otherwise your ICT comes back."
               : "You lock USDC on Base; the seller's ICT is reserved for you on Incentium. You receive it when the seller confirms (within 12 h), otherwise your USDC comes back."}</p>
+    <p class="muted" style="font-size:14px">The keeper pays a small reservation deposit for you (2 % of the fill, at least ${selling ? "0.5 USDC" : "2 ICT"}). It is returned when the trade completes, or when you paid and the other side did not confirm. If you reserve and never lock, it goes to the order's maker.</p>
     <form class="fields" data-form="fill" data-chain="${chain}" data-id="${id}">
       <label>Quantity (ICT)<input name="qty" inputmode="decimal" required></label>
       <label>${selling ? "Base address to receive USDC" : "Incentium address to receive ICT"}<input name="recipient" class="mono" required value="${esc(selling ? state.base?.address || "" : state.inc?.address || "")}"></label>
@@ -281,10 +282,18 @@ async function doFill(f, say, step) {
   if (qty % QTY_STEP || qty <= 0n || qty > big(o.remaining)) throw new Error("Quantity must be a multiple of 0.01 ICT and no more than what is left.");
   if (usdcFor(qty, o.price) < MIN_FILL) throw new Error("A fill must be worth at least 5 USDC.");
   const recipient = f.recipient.value.trim();
-  // prepare the wallet that pays before reserving, so a reservation is not left unpaid
-  if (chain === "inc") await baseSigner(); else { if (!state.inc) await connectInc(); }
+  // prepare the wallet that pays before reserving, so a reservation is not left unpaid; the keeper
+  // checks that the payer can pay (USDC held and approved, or ICT held) before it pays the deposit
+  let payer;
+  if (chain === "inc") {
+    const signer = await baseSigner(), me = state.base.address, amount = usdcFor(qty, o.price);
+    const usdc = new E.Contract(cfg.usdc, ERC20, signer);
+    if (await usdc.balanceOf(me) < amount) throw new Error("Your Base wallet does not hold enough USDC for this fill.");
+    if (await usdc.allowance(me, cfg.contract) < amount) { say("Approve USDC…"); await (await usdc.approve(cfg.contract, amount)).wait(); }
+    payer = me;
+  } else { if (!state.inc) await connectInc(); payer = state.inc.address; }
   step(0); say("Reserving…");
-  const { fill } = await post("/api/reserve", { chain, order: id, qty: qty.toString(), recipient });
+  const { fill } = await post("/api/reserve", { chain, order: id, qty: qty.toString(), recipient, payer });
   const h = o.hashes[fill];
   step(1);
   if (chain === "inc") {
