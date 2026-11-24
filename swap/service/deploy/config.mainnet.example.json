@@ -9,7 +9,7 @@
   "incentium_start": 0,
   "incentium_keeper_seed_file": "/home/administrator/incentium-swap-mainnet/incentium-keeper.seed",
 
-  "base_rpc": "https://mainnet.base.org",
+  "base_rpc": "https://base-rpc.publicnode.com",
   "base_rpc_public": "https://mainnet.base.org",
   "base_chain_id": 8453,
   "base_start": 0,

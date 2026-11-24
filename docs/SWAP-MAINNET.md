@@ -3,6 +3,10 @@
 Branch `mainnet-swap` = `main` + the Swap pallet and swap service from branch `swap`. This is the
 rollout of ICT ⇄ USDC atomic swaps to Incentium mainnet and Base mainnet, prepared on 23 Nov 2026.
 
+**Live since 24 Nov 2026:** runtime spec 8 on mainnet from block 38 612; contract
+`0x118B45764555B57c0886D53978de4aa0D0D32e55` on Base (block 61 548 511, genesis time 1795034292);
+keeper `incentium-swap-mainnet` on 156.67.101.75 (port 8096), https://trade.incentium.org.
+
 **Decided (23 Nov 2026):** go to mainnet now, before the external audit, relying on the order caps
 (100 ICT per order until day 90, 1,000 until day 120, 5,000 after) and the pause guardian. The audit
 comes before the caps rise after day 90. Fee recipient and pause guardian on Base:
@@ -120,6 +124,10 @@ nano ~/incentium-swap-mainnet/config.json
 In `config.json`: `contract`, `base_start`, `genesis_time`, and `incentium_rpc` — a mainnet node
 (`ws://127.0.0.1:<port>` if this server runs one, otherwise `wss://rpc.incentium.org`). Set
 `incentium_start` to the block of the runtime upgrade.
+
+`base_rpc` must not be `https://mainnet.base.org`: that public endpoint answers 429 Too Many
+Requests to a keeper polling every few seconds. The template uses `https://base-rpc.publicnode.com`;
+an own key at a provider (e.g. Alchemy, Base Mainnet) is better for the long run.
 
 Keeper keys (they only pay fees; a stolen key cannot move users' funds):
 
