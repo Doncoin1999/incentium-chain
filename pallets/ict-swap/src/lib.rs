@@ -11,8 +11,23 @@
 //!
 //! Funds only ever move to an account fixed when the order, reservation or lock was made, and only
 //! with the secret (before the deadline) or after the deadline. Claims, expiries and refunds can be
-//! sent unsigned, so nobody needs ICT to finish a swap. Deadlines use chain time (`UnixTime`), which
-//! stops when the chain stops.
+//! sent unsigned, so nobody needs ICT to finish a swap.
+//!
+//! **Deadlines across a halt (review finding H1).** Deadlines use chain time (`UnixTime`). While the
+//! chain is halted no blocks are made, but the first block afterwards carries the real wall-clock
+//! time, so every deadline that fell inside the halt would pass at once. For a reservation on a sell
+//! order the claim here is the *second* leg: the seller may already have revealed the secret on Base.
+//! Reservation deadlines are therefore extended by the chain's downtime since the reservation was
+//! made (`Downtime`, gaps between blocks above `MaxBlockGap`). Locks are the *first* leg (the secret
+//! is revealed here, then used on Base), so their deadlines stay on plain chain time.
+//!
+//! **Reservation deposits (review finding H2).** Whoever reserves a fill holds a deposit
+//! (`ReservationDepositPpm` of the quantity, at least `MinReservationDeposit`). It is returned when
+//! the reservation is claimed. If the reservation expires unclaimed, the deposit waits
+//! `DepositDisputeWindow`: the deposit arbiter (the keeper, set by Root) returns it if the taker did
+//! lock on Base and only the maker failed to confirm; otherwise anyone can pay it to the maker after
+//! the window. The arbiter can only move deposits, never order funds. One open reservation per
+//! recipient per order.
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
@@ -90,6 +105,19 @@ pub mod pallet {
         /// Longest taker lock in seconds (12 h).
         #[pallet::constant]
         type LockTtlMax: Get<u64>;
+        /// Reservation deposit as a share of the reserved quantity, in ppm (20,000 = 2 %).
+        #[pallet::constant]
+        type ReservationDepositPpm: Get<u32>;
+        /// Smallest reservation deposit in ICT base units (2 ICT).
+        #[pallet::constant]
+        type MinReservationDeposit: Get<u128>;
+        /// Seconds after an unclaimed reservation expires in which the arbiter may return the
+        /// deposit to its payer (24 h). After that it can be paid to the maker.
+        #[pallet::constant]
+        type DepositDisputeWindow: Get<u64>;
+        /// Gaps between blocks longer than this many seconds count as downtime (120 s).
+        #[pallet::constant]
+        type MaxBlockGap: Get<u64>;
     }
 
     #[derive(Encode, Decode, MaxEncodedLen, TypeInfo, Clone, Copy, PartialEq, Eq, Debug)]
@@ -162,6 +190,59 @@ pub mod pallet {
     #[pallet::storage]
     pub type Locks<T: Config> = StorageMap<_, Identity, H256, LockInfo<T::AccountId>, OptionQuery>;
 
+    /// What happens to a reservation's deposit.
+    #[derive(Encode, Decode, MaxEncodedLen, TypeInfo, Clone, Copy, PartialEq, Eq, Debug)]
+    pub enum DepositState {
+        /// Held while the reservation is active.
+        Held,
+        /// The reservation expired unclaimed; the arbiter may return the deposit until `u64`
+        /// (chain seconds), after which it can be paid to the maker.
+        Disputable(u64),
+        Returned,
+        PaidToMaker,
+    }
+
+    /// Terms of a reservation added by review fixes H1 and H2. Reservations made before the upgrade
+    /// have none: no deposit, and no downtime credit before the upgrade.
+    #[derive(Encode, Decode, MaxEncodedLen, TypeInfo, Clone, PartialEq, Eq, Debug)]
+    pub struct ReservationTerms<AccountId> {
+        /// Who paid the deposit (the taker, or a keeper on the taker's behalf).
+        pub depositor: AccountId,
+        pub deposit: u128,
+        pub deposit_state: DepositState,
+        /// `Downtime` when the reservation was made.
+        pub downtime_at_start: u64,
+    }
+
+    #[pallet::storage]
+    pub type Terms<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        H256,
+        Twox64Concat,
+        u8,
+        ReservationTerms<T::AccountId>,
+        OptionQuery,
+    >;
+
+    /// Open (active) reservation per (order, recipient): at most one.
+    #[pallet::storage]
+    pub type OpenByRecipient<T: Config> =
+        StorageDoubleMap<_, Identity, H256, Blake2_128Concat, T::AccountId, u8, OptionQuery>;
+
+    /// Seconds the chain has been down in total (gaps between blocks above `MaxBlockGap`, minus
+    /// `MaxBlockGap`), counted from the upgrade that introduced it.
+    #[pallet::storage]
+    pub type Downtime<T> = StorageValue<_, u64, ValueQuery>;
+
+    /// Chain time of the last block, for `Downtime`.
+    #[pallet::storage]
+    pub type LastBlockTime<T> = StorageValue<_, u64, ValueQuery>;
+
+    /// Account that may return deposits of unclaimed reservations during the dispute window.
+    #[pallet::storage]
+    pub type DepositArbiter<T: Config> = StorageValue<_, T::AccountId, OptionQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -211,6 +292,28 @@ pub mod pallet {
         LockRefunded {
             lock: H256,
         },
+        /// A reservation deposit was held from `depositor`.
+        DepositHeld {
+            order: H256,
+            fill: u8,
+            depositor: T::AccountId,
+            deposit: u128,
+        },
+        /// A deposit went back to its payer (claimed reservation, or arbiter decision).
+        DepositReturned {
+            order: H256,
+            fill: u8,
+            amount: u128,
+        },
+        /// A deposit of an unclaimed reservation was paid to the order's maker.
+        DepositPaidToMaker {
+            order: H256,
+            fill: u8,
+            amount: u128,
+        },
+        DepositArbiterSet {
+            arbiter: Option<T::AccountId>,
+        },
     }
 
     #[pallet::error]
@@ -232,6 +335,27 @@ pub mod pallet {
         TooEarly,
         LockExists,
         UnknownItem,
+        /// The recipient already has an open reservation on this order.
+        RecipientHasOpenReservation,
+        /// Only the deposit arbiter may do this.
+        NotArbiter,
+        /// The deposit is not in the state this call needs.
+        BadDepositState,
+    }
+
+    // ------------------------------------------------------------------ hooks
+
+    #[pallet::hooks]
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            // Work done in `on_finalize`: two reads, two writes.
+            T::DbWeight::get().reads_writes(2, 2)
+        }
+
+        fn on_finalize(_n: BlockNumberFor<T>) {
+            Downtime::<T>::put(Self::downtime_now());
+            LastBlockTime::<T>::put(Self::now());
+        }
     }
 
     // ------------------------------------------------------------------ calls
@@ -329,7 +453,7 @@ pub mod pallet {
             qty: u128,
             recipient: T::AccountId,
         ) -> DispatchResult {
-            ensure_signed(origin)?;
+            let depositor = ensure_signed(origin)?;
             let now = Self::now();
             let mut o = SellOrders::<T>::get(order).ok_or(Error::<T>::UnknownItem)?;
             ensure!(o.open, Error::<T>::OrderNotOpen);
@@ -348,6 +472,12 @@ pub mod pallet {
             );
             let usdc = Self::usdc_for(qty, o.price);
             ensure!(usdc >= T::MinFillUsdc::get(), Error::<T>::TooSmall);
+            ensure!(
+                !OpenByRecipient::<T>::contains_key(order, &recipient),
+                Error::<T>::RecipientHasOpenReservation
+            );
+            let deposit = Self::deposit_for(qty);
+            T::Currency::hold(&HoldReason::Swap.into(), &depositor, deposit)?;
 
             o.used_fills |= 1u16 << fill;
             o.open_reservations += 1;
@@ -365,6 +495,17 @@ pub mod pallet {
                     expiry,
                 },
             );
+            OpenByRecipient::<T>::insert(order, &recipient, fill);
+            Terms::<T>::insert(
+                order,
+                fill,
+                ReservationTerms {
+                    depositor: depositor.clone(),
+                    deposit,
+                    deposit_state: DepositState::Held,
+                    downtime_at_start: Self::downtime_now(),
+                },
+            );
             Self::deposit_event(Event::Reserved {
                 order,
                 fill,
@@ -372,6 +513,12 @@ pub mod pallet {
                 qty,
                 usdc,
                 expiry,
+            });
+            Self::deposit_event(Event::DepositHeld {
+                order,
+                fill,
+                depositor,
+                deposit,
             });
             Ok(())
         }
@@ -398,6 +545,7 @@ pub mod pallet {
                 Fortitude::Polite,
             )?;
             r.state = State::Claimed;
+            OpenByRecipient::<T>::remove(order, &r.recipient);
             Reservations::<T>::insert(order, fill, r);
             o.open_reservations = o.open_reservations.saturating_sub(1);
             SellOrders::<T>::insert(order, o);
@@ -406,6 +554,11 @@ pub mod pallet {
                 fill,
                 secret,
             });
+            if let Some(mut t) = Terms::<T>::get(order, fill) {
+                if t.deposit_state == DepositState::Held {
+                    Self::do_return_deposit(order, fill, &mut t)?;
+                }
+            }
             Ok(())
         }
 
@@ -424,8 +577,16 @@ pub mod pallet {
                 T::Currency::release(&HoldReason::Swap.into(), &o.maker, r.qty, Precision::Exact)?;
             }
             r.state = State::Expired;
+            OpenByRecipient::<T>::remove(order, &r.recipient);
             Reservations::<T>::insert(order, fill, r);
             SellOrders::<T>::insert(order, o);
+            if let Some(mut t) = Terms::<T>::get(order, fill) {
+                if t.deposit_state == DepositState::Held {
+                    t.deposit_state =
+                        DepositState::Disputable(Self::now() + T::DepositDisputeWindow::get());
+                    Terms::<T>::insert(order, fill, t);
+                }
+            }
             Self::deposit_event(Event::ReservationExpired { order, fill });
             Ok(())
         }
@@ -518,6 +679,68 @@ pub mod pallet {
             Self::deposit_event(Event::LockRefunded { lock });
             Ok(())
         }
+
+        /// The arbiter returns the deposit of an unclaimed reservation to its payer, because the
+        /// taker did lock on Base and only the maker failed to confirm. Only during the window.
+        #[pallet::call_index(9)]
+        #[pallet::weight(T::WeightInfo::expire())]
+        pub fn return_deposit(origin: OriginFor<T>, order: H256, fill: u8) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(
+                DepositArbiter::<T>::get().as_ref() == Some(&who),
+                Error::<T>::NotArbiter
+            );
+            let mut t = Terms::<T>::get(order, fill).ok_or(Error::<T>::UnknownItem)?;
+            match t.deposit_state {
+                DepositState::Disputable(until) if Self::now() < until => {}
+                _ => return Err(Error::<T>::BadDepositState.into()),
+            }
+            Self::do_return_deposit(order, fill, &mut t)
+        }
+
+        /// After the window, anyone (signed or unsigned) pays the deposit of an unclaimed
+        /// reservation to the order's maker.
+        #[pallet::call_index(10)]
+        #[pallet::weight(T::WeightInfo::expire())]
+        pub fn pay_deposit_to_maker(origin: OriginFor<T>, order: H256, fill: u8) -> DispatchResult {
+            Self::ensure_any(origin)?;
+            let mut t = Self::check_pay_deposit(order, fill)?;
+            let o = SellOrders::<T>::get(order).ok_or(Error::<T>::UnknownItem)?;
+            T::Currency::transfer_on_hold(
+                &HoldReason::Swap.into(),
+                &t.depositor,
+                &o.maker,
+                t.deposit,
+                Precision::Exact,
+                Restriction::Free,
+                Fortitude::Polite,
+            )?;
+            t.deposit_state = DepositState::PaidToMaker;
+            let amount = t.deposit;
+            Terms::<T>::insert(order, fill, t);
+            Self::deposit_event(Event::DepositPaidToMaker {
+                order,
+                fill,
+                amount,
+            });
+            Ok(())
+        }
+
+        /// Set or clear the deposit arbiter (Root).
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn set_deposit_arbiter(
+            origin: OriginFor<T>,
+            arbiter: Option<T::AccountId>,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+            match &arbiter {
+                Some(a) => DepositArbiter::<T>::put(a),
+                None => DepositArbiter::<T>::kill(),
+            }
+            Self::deposit_event(Event::DepositArbiterSet { arbiter });
+            Ok(())
+        }
     }
 
     // ------------------------------------------------------------------ unsigned claims and refunds
@@ -558,6 +781,10 @@ pub mod pallet {
                     Self::check_refund_expired(*order).map_err(|_| InvalidTransaction::Call)?;
                     (2, *order, 0)
                 }
+                Call::pay_deposit_to_maker { order, fill } => {
+                    Self::check_pay_deposit(*order, *fill).map_err(|_| InvalidTransaction::Call)?;
+                    (3, *order, *fill)
+                }
                 _ => return InvalidTransaction::Call.into(),
             };
             ValidTransaction::with_tag_prefix("IctSwap")
@@ -591,6 +818,68 @@ pub mod pallet {
 
         pub fn usdc_for(qty: u128, price: u128) -> u128 {
             qty.saturating_mul(price) / ICT_UNIT
+        }
+
+        /// Deposit for reserving `qty`: `ReservationDepositPpm` of it, at least the minimum.
+        pub fn deposit_for(qty: u128) -> u128 {
+            (qty.saturating_mul(T::ReservationDepositPpm::get() as u128) / 1_000_000)
+                .max(T::MinReservationDeposit::get())
+        }
+
+        /// Downtime so far, including a gap still open since the last block (so the first block
+        /// after a halt already counts it).
+        pub fn downtime_now() -> u64 {
+            let last = LastBlockTime::<T>::get();
+            let now = Self::now();
+            let gap = now.saturating_sub(last);
+            let extra = if last > 0 && gap > T::MaxBlockGap::get() {
+                gap - T::MaxBlockGap::get()
+            } else {
+                0
+            };
+            Downtime::<T>::get().saturating_add(extra)
+        }
+
+        /// A reservation's deadline, extended by the downtime since it was made.
+        pub fn reservation_deadline(order: H256, fill: u8, expiry: u64) -> u64 {
+            let credit = Terms::<T>::get(order, fill)
+                .map(|t| Self::downtime_now().saturating_sub(t.downtime_at_start))
+                .unwrap_or_else(Self::downtime_now);
+            expiry.saturating_add(credit)
+        }
+
+        fn do_return_deposit(
+            order: H256,
+            fill: u8,
+            t: &mut ReservationTerms<T::AccountId>,
+        ) -> DispatchResult {
+            T::Currency::release(
+                &HoldReason::Swap.into(),
+                &t.depositor,
+                t.deposit,
+                Precision::Exact,
+            )?;
+            t.deposit_state = DepositState::Returned;
+            let amount = t.deposit;
+            Terms::<T>::insert(order, fill, t.clone());
+            Self::deposit_event(Event::DepositReturned {
+                order,
+                fill,
+                amount,
+            });
+            Ok(())
+        }
+
+        fn check_pay_deposit(
+            order: H256,
+            fill: u8,
+        ) -> Result<ReservationTerms<T::AccountId>, DispatchError> {
+            let t = Terms::<T>::get(order, fill).ok_or(Error::<T>::UnknownItem)?;
+            match t.deposit_state {
+                DepositState::Disputable(until) if Self::now() >= until => Ok(t),
+                DepositState::Disputable(_) => Err(Error::<T>::TooEarly.into()),
+                _ => Err(Error::<T>::BadDepositState.into()),
+            }
         }
 
         pub fn order_id(maker: &T::AccountId, nonce: u64) -> H256 {
@@ -645,7 +934,10 @@ pub mod pallet {
         ) -> Result<Reservation<T::AccountId>, DispatchError> {
             let r = Reservations::<T>::get(order, fill).ok_or(Error::<T>::UnknownItem)?;
             ensure!(r.state == State::Active, Error::<T>::NotActive);
-            ensure!(Self::now() < r.expiry, Error::<T>::TooLate);
+            ensure!(
+                Self::now() < Self::reservation_deadline(order, fill, r.expiry),
+                Error::<T>::TooLate
+            );
             let hashes = OrderHashes::<T>::get(order).ok_or(Error::<T>::UnknownItem)?;
             ensure!(
                 Self::hash_of(secret) == hashes[fill as usize],
@@ -660,7 +952,10 @@ pub mod pallet {
         ) -> Result<Reservation<T::AccountId>, DispatchError> {
             let r = Reservations::<T>::get(order, fill).ok_or(Error::<T>::UnknownItem)?;
             ensure!(r.state == State::Active, Error::<T>::NotActive);
-            ensure!(Self::now() >= r.expiry, Error::<T>::TooEarly);
+            ensure!(
+                Self::now() >= Self::reservation_deadline(order, fill, r.expiry),
+                Error::<T>::TooEarly
+            );
             Ok(r)
         }
 

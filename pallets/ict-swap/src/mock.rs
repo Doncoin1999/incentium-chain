@@ -43,6 +43,10 @@ parameter_types! {
     pub const OrderTtlMax: u64 = 24 * 3600;
     pub const ReservationTtl: u64 = 19 * 3600;
     pub const LockTtlMax: u64 = 12 * 3600;
+    pub const ReservationDepositPpm: u32 = 20_000;
+    pub const MinReservationDeposit: u128 = 2 * ICT;
+    pub const DepositDisputeWindow: u64 = 24 * 3600;
+    pub const MaxBlockGap: u64 = 120;
 }
 
 impl pallet_ict_swap::Config for Test {
@@ -58,6 +62,10 @@ impl pallet_ict_swap::Config for Test {
     type OrderTtlMax = OrderTtlMax;
     type ReservationTtl = ReservationTtl;
     type LockTtlMax = LockTtlMax;
+    type ReservationDepositPpm = ReservationDepositPpm;
+    type MinReservationDeposit = MinReservationDeposit;
+    type DepositDisputeWindow = DepositDisputeWindow;
+    type MaxBlockGap = MaxBlockGap;
 }
 
 pub const ICT: u128 = 1_000_000_000;
