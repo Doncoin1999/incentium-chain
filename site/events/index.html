@@ -102,13 +102,16 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <div class="wrap">
   <div class="kind">Incentium</div>
   <h1>Events &amp; Presentations</h1>
-  <p class="lede">Where to meet the people building and mining the network, and talks and slides that explain how Incentium works.</p>
+  <p class="lede">Where to meet the people building and mining the network, and talks, slides and videos that explain how Incentium works.</p>
 
   <h2 id="upcoming">Upcoming events</h2>
   <div class="list" id="upcoming-list"><p class="none">None.</p></div>
 
   <h2 id="presentations">Presentations</h2>
   <div class="list" id="talks-list"><div class="empty">Slides and recordings will be published here. Until then, the <a href="/whitepaper/">whitepaper</a> and the <a href="/spec/">technical specification</a> explain the network in full.</div></div>
+
+  <h2 id="videos">Videos</h2>
+  <div class="list" id="videos-list"><p class="none">None.</p></div>
 
   <h2 id="past">Past events</h2>
   <div class="list past" id="past-list"><p class="none">None.</p></div>
@@ -221,6 +224,8 @@ fetch("events.json", {cache: "no-store"}).then((r) => r.json()).then((data) => {
   const evLinks = (e) => [["Details & sign-up", e.url], ["Recording", e.video], ["Slides", e.slides]];
   if (upcoming.length) document.getElementById("upcoming-list").innerHTML = upcoming.map((e) => card(e, evLinks(e))).join("");
   if (talks.length) document.getElementById("talks-list").innerHTML = talks.map((t) => card(t, [["Download PDF", t.slides], ["PowerPoint", t.pptx], ["Video", t.video], ["More", t.url]])).join("");
+  const videos = (data.videos || []).map(dated).filter((v) => v.date && v.title && v.film).sort((a, b) => b.date.localeCompare(a.date));
+  if (videos.length) document.getElementById("videos-list").innerHTML = videos.map((v) => card(v, [["Download video", v.film.file]])).join("");
   if (past.length) document.getElementById("past-list").innerHTML = past.map((e) => card(e, evLinks(e))).join("");
 }).catch(() => {});
 </script>

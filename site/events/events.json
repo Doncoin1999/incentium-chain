@@ -1,5 +1,5 @@
 {
-  "_help": "Add events and presentations here; the page sorts them by date. Dates are YYYY-MM-DD, or \"today\" to always show the visitor's current date. Every field except date and title can be left out. kind: conference, meetup, online, workshop or talk. A presentation can name its slide pictures with 'images' (a folder and a count: folder/slide-01.jpg …), so it can be paged through on the page, and its files with 'slides' (PDF) and 'pptx'. 'film' plays a video under it: {\"file\": \"folder/name.mp4\", \"poster\": \"folder/name.jpg\", \"title\": \"…\"}.",
+  "_help": "Add events and presentations here; the page sorts them by date. Dates are YYYY-MM-DD, or \"today\" to always show the visitor's current date. Every field except date and title can be left out. kind: conference, meetup, online, workshop or talk. A presentation can name its slide pictures with 'images' (a folder and a count: folder/slide-01.jpg …), so it can be paged through on the page, and its files with 'slides' (PDF) and 'pptx'. 'film' plays a video under it (presentations and videos): {\"file\": \"folder/name.mp4\", \"poster\": \"folder/name.jpg\", \"title\": \"…\"}. Videos go in 'videos', each with a 'film'.",
   "events": [],
   "presentations": [
     {
@@ -12,11 +12,18 @@
         "count": 14
       },
       "slides": "incentium-introduction/incentium-introduction.pdf",
-      "pptx": "incentium-introduction/incentium-introduction.pptx",
+      "pptx": "incentium-introduction/incentium-introduction.pptx"
+    }
+  ],
+  "videos": [
+    {
+      "date": "today",
+      "title": "Incentium in under five minutes",
+      "kind": "video",
+      "summary": "A short film about what Incentium is, how mining and trading ICT work, and where the network is heading.",
       "film": {
-        "file": "incentium-introduction/incentium-video-v4.mp4",
-        "poster": "incentium-introduction/incentium-video-v4-poster.jpg",
-        "title": "Incentium in under five minutes (video, 4:44)"
+        "file": "videos/incentium-video-v4.mp4",
+        "poster": "videos/incentium-video-v4-poster.jpg"
       }
     }
   ]
