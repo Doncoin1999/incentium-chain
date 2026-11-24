@@ -17,7 +17,7 @@ contract MockUSDC is IERC20 {
         return true;
     }
 
-    function transfer(address to, uint256 a) external returns (bool) {
+    function transfer(address to, uint256 a) public virtual returns (bool) {
         require(balanceOf[msg.sender] >= a, "balance");
         balanceOf[msg.sender] -= a;
         balanceOf[to] += a;
@@ -42,6 +42,7 @@ contract IncentiumSwapTest is Test {
     address keeper = address(0x4EE9);
     address fees = address(0xFEE);
     address guardian = address(0x6A2D);
+    address arbiter = address(0xA2B1);
     bytes32 constant ICT_RECIPIENT = bytes32(uint256(0x1234));
     uint256 constant GENESIS = 1_795_000_000;
     uint128 constant ICT = 1e9;
@@ -50,9 +51,15 @@ contract IncentiumSwapTest is Test {
     function setUp() public {
         vm.warp(GENESIS + 2 days);
         usdc = new MockUSDC();
-        swap = new IncentiumSwap(usdc, GENESIS, fees, guardian);
+        swap = new IncentiumSwap(usdc, GENESIS, fees, guardian, arbiter);
         usdc.mint(buyer, 1_000_000e6);
         vm.prank(buyer);
+        usdc.approve(address(swap), type(uint256).max);
+        // whoever reserves pays the deposit (review fix H2): the keeper and this test contract
+        usdc.mint(keeper, 1_000e6);
+        vm.prank(keeper);
+        usdc.approve(address(swap), type(uint256).max);
+        usdc.mint(address(this), 1_000e6);
         usdc.approve(address(swap), type(uint256).max);
     }
 
@@ -61,7 +68,9 @@ contract IncentiumSwapTest is Test {
     }
 
     function hashesFor() internal pure returns (bytes32[16] memory h) {
-        for (uint256 i = 0; i < 16; i++) h[i] = sha256(abi.encodePacked(secret(i)));
+        for (uint256 i = 0; i < 16; i++) {
+            h[i] = sha256(abi.encodePacked(secret(i)));
+        }
     }
 
     function place(uint128 qty) internal returns (bytes32 id) {
@@ -137,7 +146,10 @@ contract IncentiumSwapTest is Test {
         vm.prank(keeper);
         swap.claimReservation(id, 0, secret(0));
         assertEq(usdc.balanceOf(seller), 10e6 - 10_000); // 0.1 % fee
+        assertEq(swap.accruedFees(), 10_000); // fees accrue (review fix M8)
+        swap.withdrawFees();
         assertEq(usdc.balanceOf(fees), 10_000);
+        assertEq(usdc.balanceOf(keeper), 1_000e6); // deposit returned
         assertEq(usdc.balanceOf(address(swap)), 0);
     }
 
@@ -153,6 +165,7 @@ contract IncentiumSwapTest is Test {
         vm.prank(keeper);
         swap.claimReservation(id, 3, secret(3));
         assertEq(usdc.balanceOf(seller), 15e6 - 15_000);
+        swap.withdrawFees();
         assertEq(usdc.balanceOf(fees), 15_000);
         vm.expectRevert(IncentiumSwap.NotActive.selector);
         swap.claimReservation(id, 3, secret(3));
@@ -173,13 +186,14 @@ contract IncentiumSwapTest is Test {
 
     function test_max_open_reservations() public {
         bytes32 id = place(100 * ICT);
+        // one open reservation per payee (review fix H2), so three sellers
         swap.reserve(id, 0, 20 * ICT, seller);
-        swap.reserve(id, 1, 20 * ICT, seller);
-        swap.reserve(id, 2, 20 * ICT, seller);
+        swap.reserve(id, 1, 20 * ICT, address(0x5E12));
+        swap.reserve(id, 2, 20 * ICT, address(0x5E13));
         vm.expectRevert(IncentiumSwap.TooManyOpenReservations.selector);
-        swap.reserve(id, 3, 20 * ICT, seller);
+        swap.reserve(id, 3, 20 * ICT, address(0x5E14));
         swap.claimReservation(id, 1, secret(1));
-        swap.reserve(id, 3, 20 * ICT, seller);
+        swap.reserve(id, 3, 20 * ICT, address(0x5E12));
     }
 
     function test_reservation_deadlines() public {
@@ -206,7 +220,7 @@ contract IncentiumSwapTest is Test {
         uint256 before = usdc.balanceOf(buyer);
         swap.expireReservation(id, 0); // 10 USDC back to the maker
         assertEq(usdc.balanceOf(buyer) - before, 10e6);
-        assertEq(usdc.balanceOf(address(swap)), 0);
+        assertEq(usdc.balanceOf(address(swap)), 5e5); // only the disputable deposit is left
     }
 
     function test_no_reserve_after_expiry_or_over_remaining() public {
@@ -284,6 +298,7 @@ contract IncentiumSwapTest is Test {
         swap.claimLock(l, secret(5));
         vm.prank(buyer);
         swap.cancelBuy(id);
+        swap.withdrawFees();
         assertEq(usdc.balanceOf(address(swap)), 0);
     }
 
@@ -308,7 +323,16 @@ contract IncentiumSwapTest is Test {
         vm.warp(block.timestamp + 48 hours);
         (,, bool open,,,,,,,) = swap.buyOrders(id);
         if (open) swap.refundExpired(id);
-        assertEq(usdc.balanceOf(seller) + usdc.balanceOf(fees) + usdc.balanceOf(buyer), 1_000_000e6);
+        // unclaimed reservations' deposits go to the maker after the dispute window
+        for (uint8 i = 0; i < nFills; i++) {
+            (,,,,,, IncentiumSwap.DepositState ds,,) = swap.reservations(id, i);
+            if (ds == IncentiumSwap.DepositState.Disputable) swap.payDepositToMaker(id, i);
+        }
+        swap.withdrawFees();
+        assertEq(
+            usdc.balanceOf(seller) + usdc.balanceOf(fees) + usdc.balanceOf(buyer) + usdc.balanceOf(address(this)),
+            1_000_000e6 + 1_000e6
+        );
         assertEq(usdc.balanceOf(address(swap)), 0);
     }
 }
