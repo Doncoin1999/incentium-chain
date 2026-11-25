@@ -303,6 +303,16 @@ Settlement is spread over the epoch: the epoch's first block shares the pot and 
 - The pool records each account's net daily flow, for the fee metric in Section 8.
 - **Removed subnet:** bonus and injection stop for good; `sell`, `buy` against existing reserves and `remove_liquidity` keep working.
 
+**Runtime API for clients (`SubnetPoolsApi`, fixed 25 Nov 2026).** incentium.org/pools reads only this API, so the page needs no change when the modules go live. All amounts are base units (9 decimals); prices are ICT base units per whole Alpha.
+
+| Call | Returns |
+| --- | --- |
+| `pools()` | `Vec<PoolSummary>` in netuid order: `netuid: u16`, `name: Vec<u8>`, `open: bool` (false once the subnet is removed), `price: u128`, `ict_reserve: u128` (real ICT only), `alpha_reserve: u128` (real Alpha only), `alpha_issued: u128`, `alpha_staked: u128`, `bonus_today: u128`, `bonus_minted: u128`, `allowance_today: u128` (purchase allowance left today), `sold_today: u128`, `fee_ppm: u32` |
+| `quote_buy(netuid: u16, ict_in: u128)` | `Option<u128>`: Alpha out after fee and injection, or none if no pool |
+| `quote_sell(netuid: u16, alpha_in: u128)` | `Option<u128>`: ICT out after fee, or none if no pool or not enough real ICT |
+
+Trades are the calls `amm.buy(netuid, ict_in, min_alpha_out)` and `amm.sell(netuid, alpha_in, min_ict_out)`; the page fills the minimum from the quote and a slippage limit the user chooses.
+
 **Revenue buyback (`buyback`, Phase 3)**
 
 1. Settled user revenue for the subnet (Section 8, `payments`) forms the block's budget B; issuance never adds to it.

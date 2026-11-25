@@ -1,0 +1,44 @@
+// Checks the decoder on incentium.org/pools against the PoolSummary layout in the
+// technical specification, Section 7 (SubnetPoolsApi). Run: node scripts/test_pools_page.js
+const fs = require("fs");
+const path = require("path");
+const assert = require("assert");
+
+const page = fs.readFileSync(path.join(__dirname, "..", "site", "pools", "index.html"), "utf8");
+const lib = page.slice(page.indexOf("/*ic:lib*/"), page.indexOf("/*ic:endlib*/"));
+const IC = new Function(lib + "\nreturn IC;")();
+
+const le = (v, n) => { let s = ""; v = BigInt(v); for (let i = 0; i < n; i++) { s += Number(v & 255n).toString(16).padStart(2, "0"); v >>= 8n; } return s; };
+const compact = (n) => le(n << 2, 1);                       // single-byte mode, n < 64
+const str = (t) => compact(Buffer.byteLength(t)) + Buffer.from(t).toString("hex");
+const U = 1000000000n;
+const pool = (netuid, name, open, f) =>
+  le(netuid, 2) + str(name) + (open ? "01" : "00") +
+  [f.price, f.ict, f.alpha, f.issued, f.staked, f.bonusToday, f.bonusMinted, f.allowance, f.sold].map((x) => le(x, 16)).join("") +
+  le(5000, 4);
+
+const hex = "0x" + compact(2) +
+  pool(1, "Compute", true, { price: 12n * U / 1000n, ict: 4200n * U, alpha: 350000n * U, issued: 900000n * U, staked: 120000n * U,
+    bonusToday: 3600n * U, bonusMinted: 540000n * U, allowance: 1200n * U, sold: 2400n * U }) +
+  pool(2, "Søk", false, { price: 2n * U, ict: 1n, alpha: 2n, issued: 3n, staked: 4n, bonusToday: 0n, bonusMinted: 6n, allowance: 0n, sold: 0n });
+
+const p = IC.decode.pools(hex);
+assert.strictEqual(p.length, 2);
+assert.strictEqual(p[0].netuid, 1);
+assert.strictEqual(p[0].name, "Compute");
+assert.strictEqual(p[0].open, true);
+assert.strictEqual(p[0].price, 12000000n);
+assert.strictEqual(p[0].ictReserve, 4200n * U);
+assert.strictEqual(p[0].alphaReserve, 350000n * U);
+assert.strictEqual(p[0].alphaIssued, 900000n * U);
+assert.strictEqual(p[0].alphaStaked, 120000n * U);
+assert.strictEqual(p[0].bonusToday, 3600n * U);
+assert.strictEqual(p[0].bonusMinted, 540000n * U);
+assert.strictEqual(p[0].allowanceToday, 1200n * U);
+assert.strictEqual(p[0].soldToday, 2400n * U);
+assert.strictEqual(p[0].feePpm, 5000);
+assert.strictEqual(p[1].name, "Søk");
+assert.strictEqual(p[1].open, false);
+assert.strictEqual(p[1].bonusMinted, 6n);
+assert.strictEqual(IC.decode.pools("0x00").length, 0);
+console.log("pools page decoder: ok");

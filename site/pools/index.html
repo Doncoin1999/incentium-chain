@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subnet pools · Incentium</title>
+<link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
+<meta name="description" content="Incentium subnet pools: every subnet's Alpha token and its pool against ICT, read straight from the chain.">
+<style>
+  :root {
+    --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4; --lamp: #e8a33d;
+    --good: #6fbf8a; --bad: #d9776b;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--slate); color: var(--text); }
+  body { margin: 0; font: 17px/1.6 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  a:hover { color: var(--lamp); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+  h1 { font: 500 clamp(36px, 6vw, 60px)/1.05 var(--serif); letter-spacing: -.015em; margin: 40px 0 18px; }
+  h2 { font: 500 28px/1.2 var(--serif); margin: 56px 0 8px; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 36em; margin: 0 0 18px; }
+  .note { color: var(--muted); font-size: 15px; }
+  .status { display: inline-block; border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; font-size: 15px; margin: 8px 0 0; }
+  .status b { color: var(--lamp); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; margin: 18px 0; }
+  .crit { display: grid; grid-template-columns: 1fr auto; gap: 6px 18px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .crit:last-child { border-bottom: 0; }
+  .crit h3 { margin: 0; font: 600 17px/1.3 var(--sans); }
+  .crit .val { font: 15px var(--mono); color: var(--muted); text-align: right; }
+  .crit .val.ok { color: var(--good); }
+  .crit p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 15px; }
+  .bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: #1a2030; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--lamp); transition: width .6s; }
+  .bar i.full { background: var(--good); }
+  .big { font: 500 44px/1.1 var(--serif); margin: 4px 0 2px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 16px 0 0; }
+  .grid3 div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .grid3 span { display: block; color: var(--muted); font-size: 14px; }
+  .grid3 b { font: 500 20px var(--serif); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  code { font: 14px var(--mono); background: #1a2030; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  .scroll { overflow-x: auto; }
+  .tag { font-size: 13px; border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
+  .tag.dead { color: var(--bad); border-color: var(--bad); }
+  ol.how { padding-left: 22px; color: var(--muted); } ol.how li { margin: 6px 0; }
+  .notice { border-left: 3px solid var(--lamp); }
+  .notice h3 { margin: 0 0 6px; font: 600 18px/1.3 var(--sans); }
+  .notice p { margin: 6px 0; color: var(--muted); }
+  ul.rules { padding-left: 20px; } ul.rules li { margin: 8px 0; } ul.rules b { color: var(--text); }
+  th.num { font-family: var(--sans); }
+  td small { display: block; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body data-site="pools">
+<!-- ic:topbar -->
+<style>
+/* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
+.ic-brand img { width: 30px; height: 28px; display: block; }
+.ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
+.ic-brand:hover span { color: #e8a33d; }
+.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.ic-nav::-webkit-scrollbar { display: none; }
+.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
+.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav .ic-short { display: none; }
+@media (max-width: 1320px) { .ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; } .ic-nav a { padding: 7px 9px; } .ic-top .ic-in { gap: 18px; } }
+@media (max-width: 1120px) { .ic-nav { gap: 0; } .ic-nav a { padding: 7px 7px; font-size: 14px; } }
+.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
+.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
+body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
+body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
+body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"] .ic-nav a[data-site="pools"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
+@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+</style>
+<header class="ic-top">
+  <div class="ic-in">
+    <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
+      <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
+    </a>
+    <nav class="ic-nav" aria-label="Incentium">
+      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
+      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
+      <a href="https://incentium.org/pools/" data-site="pools">Subnet-pools</a>
+      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
+      <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
+      <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
+      <a href="https://incentium.org/events/" data-site="events"><span class="ic-long">Events &amp; Presentations</span><span class="ic-short">Events</span></a>
+      <a href="https://git.incentium.org/incentium/incentium-chain">Code</a>
+      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+<!-- /ic:topbar -->
+<main class="wrap">
+  <h1>Subnet pools</h1>
+  <p class="lede">Every subnet has its own token, Alpha, traded against ICT in a pool that nobody owns. This page lists every pool, read straight from the chain as you watch.</p>
+  <span class="status" id="status">Connecting to the chain…</span>
+
+  <div class="card notice" id="notice">
+    <h3>There are no subnets yet</h3>
+    <p>Subnet registration opens by itself once four criteria are met on the chain, at the earliest on day 180 (about 17 May 2027). You can follow them on the <a href="/subnets/">Subnets page</a>.</p>
+    <p>When the first subnet has been bought and the Alpha module is live, its pool appears below by itself. Nothing on this page has to change for that to happen.</p>
+  </div>
+
+  <h2>Pools</h2>
+  <div class="card scroll" id="pools"><p class="note">Waiting for the chain…</p></div>
+
+  <h2>Buy and sell</h2>
+  <div class="card" id="trade">
+    <p class="note">Buying and selling Alpha straight from Talisman or SubWallet opens here when the Alpha module is live, first on the testnet. You sign in your own wallet; no server stands in between, and the page shows what you get before you sign.</p>
+  </div>
+
+  <h2>How the pools work</h2>
+  <div class="card">
+    <ul class="rules">
+      <li><b>One token per subnet.</b> Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. At most 21,000,000 per subnet and at most 7,200 new a day, halving like ICT. No owner or DAO can change this.</li>
+      <li><b>A bonus for the work.</b> Half of each day's new Alpha goes to the subnet's miners, validators and owner, 50/38/12, on top of their pay in ICT. The owner's part is released over 6 months.</li>
+      <li><b>For sale in the pool.</b> The other half is created only when someone buys it with ICT here. The ICT goes into the pool, and that ICT is what lets others sell.</li>
+      <li><b>No deposit, no owner.</b> A pool opens at a fixed low start price with no ICT in it. Its account has no key: only buying and selling moves what is in it. You can always sell Alpha back for the ICT in the pool.</li>
+      <li><b>Fees.</b> 0.5 % per trade, half of it burned. Alpha staked in the subnet shares in what user revenue buys from Phase 3.</li>
+      <li><b>When a subnet ends.</b> No more Alpha is created, but the pool stays open for selling.</li>
+    </ul>
+    <p class="note">Full rules: <a href="/whitepaper/#65-alpha-tokens-and-pools">whitepaper, Section 6.5</a> and the <a href="/spec/">technical specification</a>, Section 7.</p>
+  </div>
+  <p class="note">Data from <code>wss://rpc.incentium.org</code> through the runtime API <code>SubnetPoolsApi</code>. Any Incentium node gives the same answers. Nothing here is an offer to sell or a solicitation to buy.</p>
+</main>
+<!-- ic:footer -->
+<style>
+/* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
+   python3 scripts/sync_topbar.py. */
+.ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+.ic-foot .ic-fbrand img { width: 24px; height: 22px; }
+.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav a { color: #c3cad8; text-decoration: none; }
+.ic-foot nav a:hover { color: #e8a33d; }
+.ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+</style>
+<footer class="ic-foot">
+  <div class="ic-in">
+    <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
+    <nav aria-label="Incentium sites">
+      <a href="https://incentium.org/">Home</a>
+      <a href="https://incentium.org/mine/">Mine ICT</a>
+      <a href="https://chat.incentium.org/">Chat</a>
+      <a href="https://explorer.incentium.org/">Explorer</a>
+      <a href="https://incentium.org/subnets/">Subnets</a>
+      <a href="https://incentium.org/pools/">Subnet-pools</a>
+      <a href="https://faucet.incentium.org/">Faucet</a>
+      <a href="https://incentium.org/whitepaper/">Whitepaper</a>
+      <a href="https://incentium.org/spec/">Technical specification</a>
+      <a href="https://incentium.org/events/">Events &amp; Presentations</a>
+      <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
+      <a href="https://auth.incentium.org/admin">Admin</a>
+    </nav>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+  </div>
+</footer>
+<!-- /ic:footer -->
+<script>
+/*ic:lib*/
+const IC = (() => {
+  const UNIT = 1000000000n;
+
+  // ---- SCALE decoding (little endian)
+  class Reader {
+    constructor(hex) {
+      const h = hex.startsWith("0x") ? hex.slice(2) : hex;
+      this.b = new Uint8Array(h.length / 2);
+      for (let i = 0; i < this.b.length; i++) this.b[i] = parseInt(h.substr(2 * i, 2), 16);
+      this.i = 0;
+    }
+    u8() { return this.b[this.i++]; }
+    bool() { return this.u8() === 1; }
+    uint(n) { let x = 0n; for (let k = 0; k < n; k++) x |= BigInt(this.b[this.i + k]) << BigInt(8 * k); this.i += n; return x; }
+    u16() { return Number(this.uint(2)); }
+    u32() { return Number(this.uint(4)); }
+    u128() { return this.uint(16); }
+    compact() {
+      const m = this.b[this.i] & 3;
+      if (m === 0) return this.u8() >> 2;
+      if (m === 1) return this.u16() >> 2;
+      if (m === 2) return this.u32() >>> 2;
+      const len = (this.u8() >> 2) + 4;
+      return Number(this.uint(len));
+    }
+    bytes(n) { const out = this.b.slice(this.i, this.i + n); this.i += n; return out; }
+    vecBytes() { return this.bytes(this.compact()); }
+    option(f) { return this.u8() === 1 ? f() : null; }
+    vec(f) { const n = this.compact(), out = []; for (let k = 0; k < n; k++) out.push(f()); return out; }
+  }
+
+  const decode = {
+    unlockStatus(hex) {
+      const r = new Reader(hex);
+      return {
+        unlocked: r.bool(), block: r.u32(), minBlock: r.u32(),
+        minersAvg: r.option(() => r.u32()), minerDays: r.u32(), minMiners: r.u32(),
+        sudoRemoved: r.bool(), approvedReferenda: r.u32(), minReferenda: r.u32(),
+        swapAttested: r.bool(),
+      };
+    },
+    auction(hex) {
+      const r = new Reader(hex);
+      return {
+        now: r.u32(), price: r.option(() => r.u128()), startBlock: r.option(() => r.u32()),
+        startPrice: r.u128(), floor: r.u128(), nextSale: r.u32(), subnetCount: r.u16(),
+        maxSubnets: r.u16(), minSpacing: r.u32(), fullSince: r.option(() => r.u32()),
+        lastCapRaise: r.option(() => r.u32()),
+      };
+    },
+    optionU128(hex) { const r = new Reader(hex); return r.option(() => r.u128()); },
+    pools(hex) {
+      const r = new Reader(hex);
+      const td = new TextDecoder();
+      return r.vec(() => ({
+        netuid: r.u16(), name: td.decode(r.vecBytes()), open: r.bool(),
+        price: r.u128(), ictReserve: r.u128(), alphaReserve: r.u128(),
+        alphaIssued: r.u128(), alphaStaked: r.u128(),
+        bonusToday: r.u128(), bonusMinted: r.u128(),
+        allowanceToday: r.u128(), soldToday: r.u128(), feePpm: r.u32(),
+      }));
+    },
+    subnets(hex) {
+      const r = new Reader(hex);
+      const td = new TextDecoder();
+      return r.vec(() => ({
+        netuid: r.u16(), owner: r.option(() => r.bytes(32)),
+        control: ["Key", "Multisig", "DAO"][r.u8()] || "?",
+        created: r.u32(), pricePaid: r.u128(),
+        name: td.decode(r.vecBytes()), description: td.decode(r.vecBytes()),
+        codeHash: r.bytes(32), neurons: r.u16(), stake: r.u128(), emissionPpm: r.u32(),
+        immuneUntil: r.u32(), minersAvg: r.option(() => r.u32()), dead: r.bool(),
+      }));
+    },
+  };
+
+  // ---- BLAKE2b (RFC 7693), for SS58 checksums
+  function blake2b(input, outlen) {
+    const MASK = (1n << 64n) - 1n;
+    const IV = [0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+      0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n];
+    const S = [[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],[14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+      [11,8,12,0,5,2,15,13,10,14,3,6,7,1,9,4],[7,9,3,1,13,12,11,14,2,6,5,10,4,0,15,8],
+      [9,0,5,7,2,4,10,15,14,1,11,12,6,8,3,13],[2,12,6,10,0,11,8,3,4,13,7,5,15,14,1,9],
+      [12,5,1,15,14,13,4,10,0,7,6,3,9,2,8,11],[13,11,7,14,12,1,3,9,5,0,15,4,8,6,2,10],
+      [6,15,14,9,11,3,0,8,12,2,13,7,1,4,10,5],[10,2,8,4,7,6,1,5,15,11,9,14,3,12,13,0]];
+    const rotr = (x, n) => ((x >> BigInt(n)) | (x << BigInt(64 - n))) & MASK;
+    const h = IV.slice();
+    h[0] ^= 0x01010000n ^ BigInt(outlen);
+    const blocks = Math.max(1, Math.ceil(input.length / 128));
+    let t = 0n;
+    for (let b = 0; b < blocks; b++) {
+      const chunk = new Uint8Array(128);
+      chunk.set(input.subarray(b * 128, b * 128 + 128));
+      t += BigInt(Math.max(0, Math.min(128, input.length - b * 128)));
+      const m = [];
+      for (let i = 0; i < 16; i++) {
+        let w = 0n;
+        for (let j = 7; j >= 0; j--) w = (w << 8n) | BigInt(chunk[i * 8 + j]);
+        m.push(w);
+      }
+      const v = h.concat(IV);
+      v[12] ^= t & MASK; v[13] ^= t >> 64n;
+      if (b === blocks - 1) v[14] ^= MASK;
+      const G = (a, bb, c, d, x, y) => {
+        v[a] = (v[a] + v[bb] + x) & MASK; v[d] = rotr(v[d] ^ v[a], 32);
+        v[c] = (v[c] + v[d]) & MASK; v[bb] = rotr(v[bb] ^ v[c], 24);
+        v[a] = (v[a] + v[bb] + y) & MASK; v[d] = rotr(v[d] ^ v[a], 16);
+        v[c] = (v[c] + v[d]) & MASK; v[bb] = rotr(v[bb] ^ v[c], 63);
+      };
+      for (let r = 0; r < 12; r++) {
+        const s = S[r % 10];
+        G(0, 4, 8, 12, m[s[0]], m[s[1]]); G(1, 5, 9, 13, m[s[2]], m[s[3]]);
+        G(2, 6, 10, 14, m[s[4]], m[s[5]]); G(3, 7, 11, 15, m[s[6]], m[s[7]]);
+        G(0, 5, 10, 15, m[s[8]], m[s[9]]); G(1, 6, 11, 12, m[s[10]], m[s[11]]);
+        G(2, 7, 8, 13, m[s[12]], m[s[13]]); G(3, 4, 9, 14, m[s[14]], m[s[15]]);
+      }
+      for (let i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
+    }
+    const out = new Uint8Array(outlen);
+    for (let i = 0; i < outlen; i++) out[i] = Number((h[i >> 3] >> BigInt(8 * (i & 7))) & 0xffn);
+    return out;
+  }
+
+  // ---- SS58 address (generic prefix 42: addresses start with 5)
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  function base58(bytes) {
+    let x = 0n;
+    for (const b of bytes) x = (x << 8n) | BigInt(b);
+    let s = "";
+    while (x > 0n) { s = B58[Number(x % 58n)] + s; x /= 58n; }
+    for (const b of bytes) { if (b === 0) s = "1" + s; else break; }
+    return s;
+  }
+  function ss58(pubkey, prefix = 42) {
+    const payload = new Uint8Array(33);
+    payload[0] = prefix; payload.set(pubkey, 1);
+    const pre = new TextEncoder().encode("SS58PRE");
+    const msg = new Uint8Array(pre.length + payload.length);
+    msg.set(pre); msg.set(payload, pre.length);
+    const sum = blake2b(msg, 64);
+    const full = new Uint8Array(35);
+    full.set(payload); full[33] = sum[0]; full[34] = sum[1];
+    return base58(full);
+  }
+
+  // ---- formatting
+  function ict(x, digits = 0) {
+    const neg = x < 0n; if (neg) x = -x;
+    const whole = x / UNIT, frac = x % UNIT;
+    let s = whole.toLocaleString("en-US");
+    if (digits > 0) s += "." + frac.toString().padStart(9, "0").slice(0, digits);
+    return (neg ? "-" : "") + s;
+  }
+  function u32hex(n) {
+    let s = "0x";
+    for (let i = 0; i < 4; i++) s += ((n >>> (8 * i)) & 255).toString(16).padStart(2, "0");
+    return s;
+  }
+  return { Reader, decode, blake2b, ss58, ict, u32hex, UNIT };
+})();
+/*ic:endlib*/
+
+(() => {
+  if (typeof document === "undefined") return;
+  const RPC = "wss://rpc.incentium.org";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  let ws, nextId = 1, pending = new Map(), busy = false, lastRun = 0;
+
+  const call = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ id, jsonrpc: "2.0", method, params }));
+  });
+  const state = (fn) => call("state_call", [fn, "0x"]);
+  const a = (x, d = 0) => IC.ict(x, d);           // Alpha has 9 decimals, like ICT
+
+  function price(x) {                               // ICT per Alpha, enough digits for small prices
+    if (x >= IC.UNIT) return IC.ict(x, 2);
+    const s = (Number(x) / 1e9).toPrecision(3);
+    return s;
+  }
+
+  function showPools(list) {
+    const live = list.filter((p) => p.netuid !== 0);
+    $("notice").hidden = live.length > 0;
+    if (!live.length) {
+      $("pools").innerHTML = '<p class="note">No pools yet. The first appears here when SN1 has been bought and the Alpha module is live.</p>';
+      return;
+    }
+    const rows = live.map((p) => `<tr>
+      <td>SN${p.netuid}<small>${esc(p.name || "Unnamed")}</small></td>
+      <td class="num">${price(p.price)}</td>
+      <td class="num">${a(p.ictReserve)}</td>
+      <td class="num">${a(p.alphaIssued)}<small>${a(p.alphaStaked)} staked</small></td>
+      <td class="num">${a(p.soldToday)}<small>${a(p.allowanceToday)} left</small></td>
+      <td class="num">${a(p.bonusToday)}</td>
+      <td>${p.open ? '<span class="tag">open</span>' : '<span class="tag dead">subnet removed: selling only</span>'}</td>
+    </tr>`).join("");
+    $("pools").innerHTML = `<table>
+      <tr><th>Subnet</th><th class="num">Price, ICT per Alpha</th><th class="num">ICT in pool</th><th class="num">Alpha issued</th><th class="num">Sold from pool today</th><th class="num">Bonus today</th><th></th></tr>
+      ${rows}</table>`;
+  }
+
+  async function subnetCount() {
+    try {
+      const r = new IC.Reader(await state("SubnetRegistryApi_subnets"));
+      return r.compact();
+    } catch (e) { return null; }
+  }
+
+  async function refresh() {
+    if (busy || Date.now() - lastRun < 30000) return;
+    busy = true; lastRun = Date.now();
+    try {
+      const pools = IC.decode.pools(await state("SubnetPoolsApi_pools"));
+      $("status").innerHTML = `<b>${pools.filter((p) => p.netuid !== 0).length}</b> pools live`;
+      showPools(pools);
+    } catch (e) {
+      const n = await subnetCount();
+      const others = n === null ? 0 : Math.max(0, n - 1);
+      $("status").innerHTML = others > 0
+        ? `<b>${others}</b> subnet${others > 1 ? "s" : ""} registered; pools open when the Alpha module is live`
+        : "The Alpha module is not live yet";
+      showPools([]);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function connect() {
+    try { ws = new WebSocket(RPC); } catch (e) { return down(); }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ id: 0, jsonrpc: "2.0", method: "chain_subscribeNewHeads", params: [] }));
+      refresh();
+    };
+    ws.onmessage = (m) => {
+      const d = JSON.parse(m.data);
+      if (d.id && pending.has(d.id)) {
+        const p = pending.get(d.id); pending.delete(d.id);
+        return d.error ? p.reject(d.error) : p.resolve(d.result);
+      }
+      if (d.params && d.params.result && d.params.result.number) refresh();
+    };
+    ws.onerror = down;
+    ws.onclose = () => { for (const p of pending.values()) p.reject("closed"); pending.clear(); setTimeout(connect, 10000); };
+  }
+  function down() { $("status").textContent = "The chain cannot be reached right now. This page tries again every 10 seconds."; }
+  connect();
+})();
+</script>
+</body>
+</html>

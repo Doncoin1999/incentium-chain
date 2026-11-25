@@ -78,14 +78,15 @@
 .ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
 .ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
 .ic-nav .ic-short { display: none; }
-@media (max-width: 1180px) { .ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; } }
+@media (max-width: 1320px) { .ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; } .ic-nav a { padding: 7px 9px; } .ic-top .ic-in { gap: 18px; } }
+@media (max-width: 1120px) { .ic-nav { gap: 0; } .ic-nav a { padding: 7px 7px; font-size: 14px; } }
 .ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
 .ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
 body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
 body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
 body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
 body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
-body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"] .ic-nav a[data-site="pools"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
 @media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
 @media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
 </style>
@@ -99,6 +100,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
       <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
       <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
       <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
+      <a href="https://incentium.org/pools/" data-site="pools">Subnet-pools</a>
       <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
       <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
       <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
@@ -796,6 +798,30 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <li>The pool records each account's net daily flow, for the fee metric in Section 8.</li>
 <li><strong>Removed subnet:</strong> bonus and injection stop for good; <code>sell</code>, <code>buy</code> against existing reserves and <code>remove_liquidity</code> keep working.</li>
 </ul>
+<p><strong>Runtime API for clients (<code>SubnetPoolsApi</code>, fixed 25 Nov 2026).</strong> incentium.org/pools reads only this API, so the page needs no change when the modules go live. All amounts are base units (9 decimals); prices are ICT base units per whole Alpha.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pools()</code></td>
+<td><code>Vec&lt;PoolSummary&gt;</code> in netuid order: <code>netuid: u16</code>, <code>name: Vec&lt;u8&gt;</code>, <code>open: bool</code> (false once the subnet is removed), <code>price: u128</code>, <code>ict_reserve: u128</code> (real ICT only), <code>alpha_reserve: u128</code> (real Alpha only), <code>alpha_issued: u128</code>, <code>alpha_staked: u128</code>, <code>bonus_today: u128</code>, <code>bonus_minted: u128</code>, <code>allowance_today: u128</code> (purchase allowance left today), <code>sold_today: u128</code>, <code>fee_ppm: u32</code></td>
+</tr>
+<tr>
+<td><code>quote_buy(netuid: u16, ict_in: u128)</code></td>
+<td><code>Option&lt;u128&gt;</code>: Alpha out after fee and injection, or none if no pool</td>
+</tr>
+<tr>
+<td><code>quote_sell(netuid: u16, alpha_in: u128)</code></td>
+<td><code>Option&lt;u128&gt;</code>: ICT out after fee, or none if no pool or not enough real ICT</td>
+</tr>
+</tbody>
+</table></div>
+<p>Trades are the calls <code>amm.buy(netuid, ict_in, min_alpha_out)</code> and <code>amm.sell(netuid, alpha_in, min_ict_out)</code>; the page fills the minimum from the quote and a slippage limit the user chooses.</p>
 <p><strong>Revenue buyback (<code>buyback</code>, Phase 3)</strong></p>
 <ol>
 <li>Settled user revenue for the subnet (Section 8, <code>payments</code>) forms the block's budget B; issuance never adds to it.</li>
@@ -1670,6 +1696,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
       <a href="https://chat.incentium.org/">Chat</a>
       <a href="https://explorer.incentium.org/">Explorer</a>
       <a href="https://incentium.org/subnets/">Subnets</a>
+      <a href="https://incentium.org/pools/">Subnet-pools</a>
       <a href="https://faucet.incentium.org/">Faucet</a>
       <a href="https://incentium.org/whitepaper/">Whitepaper</a>
       <a href="https://incentium.org/spec/">Technical specification</a>
