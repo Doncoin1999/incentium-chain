@@ -7,6 +7,7 @@ members = [
     "pallets/weights",
     "pallets/work-verify",
     "pallets/ict-consensus",
+    "pallets/subnet-pools",
     "runtime",
     "node",
 ]
