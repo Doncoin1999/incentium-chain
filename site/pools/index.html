@@ -55,6 +55,8 @@
   .notice p { margin: 6px 0; color: var(--muted); }
   ul.rules { padding-left: 20px; } ul.rules li { margin: 8px 0; } ul.rules b { color: var(--text); }
   th.num { font-family: var(--sans); }
+  .notice-risk { border: 1px solid var(--bad); border-radius: 10px; padding: 12px 16px; color: var(--text); font-size: 15px; }
+  .notice-risk b { color: var(--bad); }
   td small { display: block; color: var(--muted); font-size: 13px; }
 </style>
 </head>
@@ -109,7 +111,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
 <!-- /ic:topbar -->
 <main class="wrap">
   <h1>Subnet pools</h1>
-  <p class="lede">Every subnet has its own token, Alpha, traded against ICT in a pool that nobody owns. This page lists every pool, read straight from the chain as you watch.</p>
+  <p class="lede">Every subnet has its own token, Alpha, issued like ICT. Staking on a subnet means buying its Alpha in a pool that nobody owns. This page lists every pool, read straight from the chain as you watch.</p>
   <span class="status" id="status">Connecting to the chain…</span>
 
   <div class="card notice" id="notice">
@@ -121,21 +123,23 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
   <h2>Pools</h2>
   <div class="card scroll" id="pools"><p class="note">Waiting for the chain…</p></div>
 
-  <h2>Buy and sell</h2>
+  <h2>Stake and unstake</h2>
   <div class="card" id="trade">
-    <p class="note">Buying and selling Alpha straight from Talisman or SubWallet opens here when the Alpha module is live, first on the testnet. You sign in your own wallet; no server stands in between, and the page shows what you get before you sign.</p>
+    <p class="note">Staking (buying Alpha) and unstaking (selling it) straight from Talisman or SubWallet opens here when the Alpha module is live, first on the testnet. You sign in your own wallet; no server stands in between, and the page shows what you get before you sign.</p>
   </div>
 
   <h2>How the pools work</h2>
   <div class="card">
     <ul class="rules">
-      <li><b>One token per subnet.</b> Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. At most 21,000,000 per subnet and at most 7,200 new a day, halving like ICT. No owner or DAO can change this.</li>
-      <li><b>A bonus for the work.</b> Half of each day's new Alpha goes to the subnet's miners, validators and owner, 50/38/12, on top of their pay in ICT. The owner's part is released over 6 months.</li>
-      <li><b>For sale in the pool.</b> The other half is created only when someone buys it with ICT here. The ICT goes into the pool, and that ICT is what lets others sell.</li>
-      <li><b>No deposit, no owner.</b> A pool opens at a fixed low start price with no ICT in it. Its account has no key: only buying and selling moves what is in it. You can always sell Alpha back for the ICT in the pool.</li>
-      <li><b>Fees.</b> 0.5 % per trade, half of it burned. Alpha staked in the subnet shares in what user revenue buys from Phase 3.</li>
-      <li><b>When a subnet ends.</b> No more Alpha is created, but the pool stays open for selling.</li>
+      <li><b>Issued like ICT.</b> Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. None exists when a subnet opens; then exactly 7,200 are issued a day, halving on ICT's curve from the subnet's own first day, up to 21,000,000. No owner or DAO can change this.</li>
+      <li><b>Half is a bonus for the work.</b> 3,600 a day go to the subnet's miners, validators and owner, 50/38/12, on top of their pay in ICT. The owner's part is released over 6 months.</li>
+      <li><b>Half goes to the pool's stock.</b> It is sold only to buyers, at the pool's price, and at most one day's issuance a day.</li>
+      <li><b>Staking is buying.</b> Staking ICT on a subnet puts it in the pool and gives you Alpha, staked with a validator you choose. Unstaking sells the Alpha back. The subnet's share of issuance follows the ICT in its pool.</li>
+      <li><b>No deposit, no owner.</b> A pool starts at the slot's auction price ÷ 1,000,000 per Alpha, with no ICT in it. Its account has no key: only trades move what is in it.</li>
+      <li><b>Fees.</b> 0.5 % per trade, half burned and half left in the pool. From Phase 3, user revenue buys Alpha for the stakers.</li>
+      <li><b>When a subnet ends.</b> No more Alpha is issued, but the pool stays open for unstaking.</li>
     </ul>
+    <p class="notice-risk"><b>Staking on a subnet carries price risk.</b> If you stake 1,000 ICT you do not necessarily get 1,000 ICT back: you get what your Alpha is worth when you unstake. In a subnet with few users the daily stock pushes the price down, and many stakers leaving at once push it further.</p>
     <p class="note">Full rules: <a href="/whitepaper/#65-alpha-tokens-and-pools">whitepaper, Section 6.5</a> and the <a href="/spec/">technical specification</a>, Section 7.</p>
   </div>
   <p class="note">Data from <code>wss://rpc.incentium.org</code> through the runtime API <code>SubnetPoolsApi</code>. Any Incentium node gives the same answers. Nothing here is an offer to sell or a solicitation to buy.</p>
@@ -235,7 +239,7 @@ const IC = (() => {
         price: r.u128(), ictReserve: r.u128(), alphaReserve: r.u128(),
         alphaIssued: r.u128(), alphaStaked: r.u128(),
         bonusToday: r.u128(), bonusMinted: r.u128(),
-        allowanceToday: r.u128(), soldToday: r.u128(), feePpm: r.u32(),
+        stock: r.u128(), soldToday: r.u128(), feePpm: r.u32(),
       }));
     },
     subnets(hex) {
@@ -372,7 +376,7 @@ const IC = (() => {
       <td class="num">${price(p.price)}</td>
       <td class="num">${a(p.ictReserve)}</td>
       <td class="num">${a(p.alphaIssued)}<small>${a(p.alphaStaked)} staked</small></td>
-      <td class="num">${a(p.soldToday)}<small>${a(p.allowanceToday)} left</small></td>
+      <td class="num">${a(p.soldToday)}<small>${a(p.stock)} in stock</small></td>
       <td class="num">${a(p.bonusToday)}</td>
       <td>${p.open ? '<span class="tag">open</span>' : '<span class="tag dead">subnet removed: selling only</span>'}</td>
     </tr>`).join("");
