@@ -9,6 +9,7 @@ members = [
     "pallets/ict-consensus",
     "pallets/ict-swap",
     "pallets/block-producers",
+    "pallets/subnet-pools",
     "runtime",
     "node",
 ]

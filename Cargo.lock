@@ -11306,6 +11306,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-subnet-pools"
+version = "0.1.0"
+dependencies = [
+ "ict-economics",
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-subnet-registry"
 version = "0.1.0"
 dependencies = [
