@@ -65,6 +65,7 @@ pallet-work-verify = { path = "../pallets/work-verify", default-features = false
 pallet-ict-consensus = { path = "../pallets/ict-consensus", default-features = false }
 pallet-ict-swap = { path = "../pallets/ict-swap", default-features = false }
 pallet-block-producers = { path = "../pallets/block-producers", default-features = false }
+pallet-subnet-pools = { path = "../pallets/subnet-pools", default-features = false }
 
 [build-dependencies]
 substrate-wasm-builder = { version = "35.0.0", optional = true }
@@ -84,6 +85,7 @@ std = [
     "pallet-ict-consensus/std",
     "pallet-ict-swap/std",
     "pallet-block-producers/std",
+    "pallet-subnet-pools/std",
     "substrate-wasm-builder",
 ]
 metadata-hash = ["substrate-wasm-builder/metadata-hash"]
@@ -98,4 +100,5 @@ runtime-benchmarks = [
     "pallet-work-verify/runtime-benchmarks",
     "pallet-ict-consensus/runtime-benchmarks",
     "pallet-ict-swap/runtime-benchmarks",
+    "pallet-subnet-pools/runtime-benchmarks",
 ]
