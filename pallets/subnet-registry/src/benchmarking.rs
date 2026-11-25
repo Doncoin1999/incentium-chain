@@ -16,9 +16,7 @@ const SEED: u32 = 0;
 
 fn funded<T: Config>(name: &'static str, i: u32) -> T::AccountId {
     let who: T::AccountId = account(name, i, SEED);
-    let amount = T::DepositFloor::get()
-        .saturating_mul(100)
-        .saturating_add(T::NeuronFee::get() * 100);
+    let amount = 100_000_000u128 * 1_000_000_000 + T::NeuronFee::get() * 100;
     let _ = T::Currency::mint_into(&who, amount);
     who
 }
@@ -51,17 +49,23 @@ mod benchmarks {
     #[benchmark]
     fn register_subnet() {
         Phase2Enabled::<T>::put(true);
+        AuctionStart::<T>::put(0);
         let max = MaxSubnets::<T>::get();
         for n in 1..max {
             add_subnet::<T>(n, None, 0);
         }
         SubnetCount::<T>::put(max - 1);
-        LastRegPrice::<T>::put(T::DepositFloor::get());
-        LastRegBlock::<T>::put(polkadot_sdk::frame_system::Pallet::<T>::block_number());
+        let _ = T::Currency::mint_into(&T::TreasuryAccount::get(), 1_000_000_000);
         let caller = funded::<T>("caller", 0);
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(caller.clone()), u128::MAX);
+        _(
+            RawOrigin::Signed(caller.clone()),
+            u128::MAX,
+            vec![b'n'; 64],
+            vec![b'd'; 512],
+            [7u8; 32],
+        );
 
         assert_eq!(SubnetCount::<T>::get(), max);
     }
@@ -70,9 +74,7 @@ mod benchmarks {
     #[benchmark]
     fn deregister_subnet(n: Linear<0, { T::MaxNeurons::get() as u32 }>) {
         let owner = funded::<T>("owner", 0);
-        let deposit = T::DepositFloor::get();
-        let _ = T::Currency::mint_into(&Pallet::<T>::account_id(), deposit * 2);
-        add_subnet::<T>(1, Some(owner), deposit);
+        add_subnet::<T>(1, Some(owner), 0);
         SubnetCount::<T>::put(1);
         for i in 0..n {
             let who: T::AccountId = account("neuron", i, SEED);
@@ -80,6 +82,11 @@ mod benchmarks {
             Endpoints::<T>::insert(1, &who, BoundedVec::truncate_from(vec![b'x'; 128]));
             NeuronTier::<T>::insert(1, &who, 1);
         }
+        polkadot_sdk::frame_system::Pallet::<T>::set_block_number(
+            polkadot_sdk::sp_runtime::SaturatedConversion::saturated_into(
+                IMMUNITY_BLOCKS as u64 + 1,
+            ),
+        );
 
         #[extrinsic_call]
         _(RawOrigin::Root, 1);
@@ -152,14 +159,6 @@ mod benchmarks {
         );
 
         assert!(Tiers::<T>::get(3).map(|t| t.open).unwrap_or(false));
-    }
-
-    #[benchmark]
-    fn enable_phase2() {
-        #[extrinsic_call]
-        _(RawOrigin::Root);
-
-        assert!(Phase2Enabled::<T>::get());
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(false), crate::mock::Test);

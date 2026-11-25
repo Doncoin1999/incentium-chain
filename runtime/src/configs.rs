@@ -156,9 +156,6 @@ parameter_types! {
     pub SubnetPot: AccountId = PotPalletId::get().into_account_truncating();
     pub InsuranceFund: AccountId = InsurancePalletId::get().into_account_truncating();
 
-    pub const DepositFloor: Balance = 1_000 * UNIT;
-    pub const DecayBlocks: u32 = 14 * super::DAYS;
-    pub const ReturnPpm: u32 = 900_000;
     pub const NeuronFee: Balance = UNIT;
     pub const MaxNeurons: u16 = 256;
 
@@ -206,9 +203,8 @@ impl pallet_subnet_registry::Config for Runtime {
     type WeightInfo = crate::weights::pallet_subnet_registry::WeightInfo<Runtime>;
     type Currency = Balances;
     type PalletId = RegistryPalletId;
-    type DepositFloor = DepositFloor;
-    type DecayBlocks = DecayBlocks;
-    type ReturnPpm = ReturnPpm;
+    type TreasuryAccount = FundAccount;
+    type Unlock = crate::governance::GovernanceSignals;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }

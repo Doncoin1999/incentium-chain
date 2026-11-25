@@ -412,7 +412,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </ul>
 <p><strong>Calls:</strong> none for users. Governance can change the fund share and the fund account.</p>
 <h2 id="4-module-subnet-registry">4. Module <code>subnet-registry</code><a class="anchor" href="#4-module-subnet-registry" aria-label="Link to this section">#</a></h2>
-<p>Opens and closes subnets against a locked deposit, registers miner and validator keys, and seeds each new subnet's pool.</p>
+<p>Sells subnet slots by Dutch auction once registration has unlocked, registers miner and validator keys, and closes subnets. Rules decided 25 Nov 2026 (subnet registration specification); in the runtime from spec version 10.</p>
 <p><strong>State</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -426,17 +426,42 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <tr>
 <td><code>Subnets</code></td>
 <td>map netuid → SubnetInfo</td>
-<td>Owner, created block, deposit, status</td>
+<td>Owner, created block, price paid</td>
 </tr>
 <tr>
-<td><code>LastRegPrice</code>, <code>LastRegBlock</code></td>
-<td>u128, BlockNumber</td>
-<td>Basis for the dynamic deposit price</td>
+<td><code>Metadata</code></td>
+<td>map netuid → SubnetMetadata</td>
+<td>Name (≤ 64 bytes), description (≤ 512 bytes), hash of the incentive code</td>
+</tr>
+<tr>
+<td><code>Phase2Enabled</code></td>
+<td>bool</td>
+<td>Registration has unlocked; never locks again</td>
+</tr>
+<tr>
+<td><code>AuctionStart</code>, <code>Sales</code>, <code>LastSalePrice</code></td>
+<td>BlockNumber, u32, u128</td>
+<td>Current auction and price basis</td>
 </tr>
 <tr>
 <td><code>MaxSubnets</code></td>
 <td>u16</td>
-<td>32 (<em>proposed</em>); SN0 does not count</td>
+<td>8 until governance raises it; SN0 does not count</td>
+</tr>
+<tr>
+<td><code>MinSpacing</code></td>
+<td>u32</td>
+<td>60 days from a sale to the next auction; governance may lower it to 30</td>
+</tr>
+<tr>
+<td><code>MinerHistory</code>, <code>MinerDay</code></td>
+<td>30 daily averages, running tally</td>
+<td>Active SN0 miners for the unlock criterion</td>
+</tr>
+<tr>
+<td><code>SwapAttested</code></td>
+<td>contract, audit hash</td>
+<td>Governance's attestation of the audited, immutable Base swap contract</td>
 </tr>
 <tr>
 <td><code>Neurons</code></td>
@@ -445,8 +470,16 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </tr>
 </tbody>
 </table></div>
-<p><strong>Deposit price</strong></p>
-<p>Price now = max(1,000 ICT, 2 × last price × (1 − days since last registration / 14)). Each registration doubles the price, which then decays linearly back to the floor over 14 days.</p>
+<p><strong>Unlock.</strong> Registration unlocks by itself in the first daily check (every 7,200 blocks) where all of these hold; anyone may also call <code>try_unlock</code>:</p>
+<ol>
+<li>Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).</li>
+<li>At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.</li>
+<li>Sudo removed and at least 3 approved referenda.</li>
+<li><code>attest_swap</code> passed by referendum: the Base swap contract is audited and has no pause guardian.</li>
+</ol>
+<p><strong>Auction price.</strong> The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.</p>
+<p><strong>Payment.</strong> Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When <code>alpha-assets</code> and <code>amm</code> arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.</p>
+<p><strong>Pace.</strong> One slot at a time. After a sale the next auction starts <code>MinSpacing</code> later, and only while fewer than <code>MaxSubnets</code> exist. When a slot frees up (deregistration or a higher cap) a waiting auction starts at once.</p>
 <p><strong>Calls</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -458,30 +491,38 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </thead>
 <tbody>
 <tr>
-<td><code>register_subnet(max_deposit)</code></td>
-<td>Anyone (Phase ≥ 2)</td>
-<td>Locks the deposit, creates the subnet and seeds its pool; fails if the price exceeds <code>max_deposit</code></td>
+<td><code>register_subnet(max_price, name, description, code_hash)</code></td>
+<td>Anyone, while an auction runs</td>
+<td>Pays the current price, creates the subnet and publishes its metadata; fails if the price exceeds <code>max_price</code></td>
+</tr>
+<tr>
+<td><code>try_unlock()</code></td>
+<td>Anyone</td>
+<td>Unlocks now if every criterion holds</td>
 </tr>
 <tr>
 <td><code>deregister_subnet(netuid)</code></td>
-<td>Protocol</td>
-<td>Closes a subnet; see below</td>
+<td>Governance</td>
+<td>Closes a subnet after its 180-day immunity; nothing is refunded</td>
+</tr>
+<tr>
+<td><code>attest_swap(contract, audit_hash)</code></td>
+<td>Governance, once</td>
+<td>Unlock criterion 4</td>
+</tr>
+<tr>
+<td><code>set_min_spacing(blocks)</code>, <code>set_max_subnets(max)</code></td>
+<td>Governance</td>
+<td>Pace and cap, within bounds</td>
 </tr>
 <tr>
 <td><code>register_neuron(netuid, hotkey)</code></td>
 <td>Anyone</td>
-<td>Burns the registration fee and assigns a uid; replaces the lowest-scoring neuron when the subnet is full</td>
-</tr>
-<tr>
-<td><code>set_subnet_identity(netuid, meta)</code></td>
-<td>Owner</td>
-<td>Name, URL, description</td>
+<td>Burns the registration fee and assigns a uid</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Pool seeding:</strong> The locked deposit becomes the ICT side of the new pool, and an equal amount of Alpha is minted for the other side, so the opening price is 1 ICT per Alpha. The seed position is owned by the protocol on the owner's behalf and cannot be withdrawn while the subnet is live.</p>
-<p><strong>Deregistration:</strong> After a 30-day immunity period, when <code>MaxSubnets</code> is reached and a new subnet registers, the subnet with the lowest 30-day utility score is closed. Its seed position is withdrawn from the pool; 90% of the ICT is returned to the owner and 10% is burned. Remaining Alpha stakers are paid out in ICT from the pool at the closing price, and the Alpha supply is retired.</p>
-<p><strong>Open point:</strong> The returned deposit can be worth more or less than the original 1,000+ ICT, depending on the pool price at closing. Decided (14 Nov 2026): the ICT side is returned as it stands in the pool at closing; no nominal guarantee.</p>
+<p><strong>Open points:</strong> how "the weakest subnet" is measured for automatic deregistration when the cap is reached; bounds for subnet hyperparameters; whether Incentium gets subnet tokens (Alpha).</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
 <p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
@@ -704,7 +745,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <tr>
 <td><code>Phase2</code></td>
 <td><code>register_subnet</code>, Alpha, AMM, buyback</td>
-<td>Gate 1 criteria (whitepaper Section 5) and a passed referendum</td>
+<td><code>register_subnet</code>: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha, AMM, buyback: Gate 1 criteria (whitepaper Section 5) and a passed referendum</td>
 </tr>
 <tr>
 <td><code>Phase3</code></td>
@@ -752,7 +793,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </thead>
 <tbody>
 <tr>
-<td><code>ict-economics</code> (issuance, AMM, buyback with price-aware injection, allocation, deposit price, Yuma-lite)</td>
+<td><code>ict-economics</code> (issuance, AMM, buyback with price-aware injection, allocation, auction price, Yuma-lite)</td>
 <td>Done</td>
 <td>27 passing; matches the simulation (10,506,000 ICT after 4 years)</td>
 </tr>
@@ -762,9 +803,9 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <td>Passing</td>
 </tr>
 <tr>
-<td><code>pallet-subnet-registry</code> (SN0, Phase 2 gate, deposits, neuron fee, deregistration, on-chain endpoints)</td>
+<td><code>pallet-subnet-registry</code> (SN0, automatic unlock, Dutch auction, metadata, neuron fee, deregistration with immunity, on-chain endpoints)</td>
 <td>Done</td>
-<td>Passing</td>
+<td>19 passing</td>
 </tr>
 <tr>
 <td><code>pallet-weights</code> (hash commit-reveal per epoch)</td>

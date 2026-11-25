@@ -29,9 +29,7 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const RegistryPalletId: PalletId = PalletId(*b"regipall");
-    pub const DepositFloor: u128 = 1_000;
-    pub const DecayBlocks: u32 = 100;
-    pub const ReturnPpm: u32 = 900_000;
+    pub const RegistryTreasury: u64 = 999;
     pub const NeuronFee: u128 = 1;
     pub const MaxNeurons: u16 = 16;
     pub const EpochLength: u32 = 10;
@@ -43,9 +41,8 @@ impl pallet_subnet_registry::Config for Test {
     type WeightInfo = ();
     type Currency = Balances;
     type PalletId = RegistryPalletId;
-    type DepositFloor = DepositFloor;
-    type DecayBlocks = DecayBlocks;
-    type ReturnPpm = ReturnPpm;
+    type TreasuryAccount = RegistryTreasury;
+    type Unlock = ();
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }

@@ -103,35 +103,47 @@ Issues ICT every block and splits it between the development fund and subnets; t
 
 ## 4. Module `subnet-registry`
 
-Opens and closes subnets against a locked deposit, registers miner and validator keys, and seeds each new subnet's pool.
+Sells subnet slots by Dutch auction once registration has unlocked, registers miner and validator keys, and closes subnets. Rules decided 25 Nov 2026 (subnet registration specification); in the runtime from spec version 10.
 
 **State**
 
 | Item | Type | Meaning |
 | --- | --- | --- |
-| `Subnets` | map netuid → SubnetInfo | Owner, created block, deposit, status |
-| `LastRegPrice`, `LastRegBlock` | u128, BlockNumber | Basis for the dynamic deposit price |
-| `MaxSubnets` | u16 | 32 (*proposed*); SN0 does not count |
+| `Subnets` | map netuid → SubnetInfo | Owner, created block, price paid |
+| `Metadata` | map netuid → SubnetMetadata | Name (≤ 64 bytes), description (≤ 512 bytes), hash of the incentive code |
+| `Phase2Enabled` | bool | Registration has unlocked; never locks again |
+| `AuctionStart`, `Sales`, `LastSalePrice` | BlockNumber, u32, u128 | Current auction and price basis |
+| `MaxSubnets` | u16 | 8 until governance raises it; SN0 does not count |
+| `MinSpacing` | u32 | 60 days from a sale to the next auction; governance may lower it to 30 |
+| `MinerHistory`, `MinerDay` | 30 daily averages, running tally | Active SN0 miners for the unlock criterion |
+| `SwapAttested` | contract, audit hash | Governance's attestation of the audited, immutable Base swap contract |
 | `Neurons` | map (netuid, uid) → hotkey | Registered miners and validators |
 
-**Deposit price**
+**Unlock.** Registration unlocks by itself in the first daily check (every 7,200 blocks) where all of these hold; anyone may also call `try_unlock`:
 
-Price now = max(1,000 ICT, 2 × last price × (1 − days since last registration / 14)). Each registration doubles the price, which then decays linearly back to the floor over 14 days.
+1. Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).
+2. At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.
+3. Sudo removed and at least 3 approved referenda.
+4. `attest_swap` passed by referendum: the Base swap contract is audited and has no pause guardian.
+
+**Auction price.** The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.
+
+**Payment.** Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When `alpha-assets` and `amm` arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.
+
+**Pace.** One slot at a time. After a sale the next auction starts `MinSpacing` later, and only while fewer than `MaxSubnets` exist. When a slot frees up (deregistration or a higher cap) a waiting auction starts at once.
 
 **Calls**
 
 | Call | Who | Effect |
 | --- | --- | --- |
-| `register_subnet(max_deposit)` | Anyone (Phase ≥ 2) | Locks the deposit, creates the subnet and seeds its pool; fails if the price exceeds `max_deposit` |
-| `deregister_subnet(netuid)` | Protocol | Closes a subnet; see below |
-| `register_neuron(netuid, hotkey)` | Anyone | Burns the registration fee and assigns a uid; replaces the lowest-scoring neuron when the subnet is full |
-| `set_subnet_identity(netuid, meta)` | Owner | Name, URL, description |
+| `register_subnet(max_price, name, description, code_hash)` | Anyone, while an auction runs | Pays the current price, creates the subnet and publishes its metadata; fails if the price exceeds `max_price` |
+| `try_unlock()` | Anyone | Unlocks now if every criterion holds |
+| `deregister_subnet(netuid)` | Governance | Closes a subnet after its 180-day immunity; nothing is refunded |
+| `attest_swap(contract, audit_hash)` | Governance, once | Unlock criterion 4 |
+| `set_min_spacing(blocks)`, `set_max_subnets(max)` | Governance | Pace and cap, within bounds |
+| `register_neuron(netuid, hotkey)` | Anyone | Burns the registration fee and assigns a uid |
 
-**Pool seeding:** The locked deposit becomes the ICT side of the new pool, and an equal amount of Alpha is minted for the other side, so the opening price is 1 ICT per Alpha. The seed position is owned by the protocol on the owner's behalf and cannot be withdrawn while the subnet is live.
-
-**Deregistration:** After a 30-day immunity period, when `MaxSubnets` is reached and a new subnet registers, the subnet with the lowest 30-day utility score is closed. Its seed position is withdrawn from the pool; 90% of the ICT is returned to the owner and 10% is burned. Remaining Alpha stakers are paid out in ICT from the pool at the closing price, and the Alpha supply is retired.
-
-**Open point:** The returned deposit can be worth more or less than the original 1,000+ ICT, depending on the pool price at closing. Decided (14 Nov 2026): the ICT side is returned as it stands in the pool at closing; no nominal guarantee.
+**Open points:** how "the weakest subnet" is measured for automatic deregistration when the cap is reached; bounds for subnet hyperparameters; whether Incentium gets subnet tokens (Alpha).
 
 ## 5. Module `work-verify` (SN0)
 
@@ -280,7 +292,7 @@ Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and
 
 | Switch | Turns on | Requires |
 | --- | --- | --- |
-| `Phase2` | `register_subnet`, Alpha, AMM, buyback | Gate 1 criteria (whitepaper Section 5) and a passed referendum |
+| `Phase2` | `register_subnet`, Alpha, AMM, buyback | `register_subnet`: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha, AMM, buyback: Gate 1 criteria (whitepaper Section 5) and a passed referendum |
 | `Phase3` | Phase 3 allocation formula, revenue-funded buybacks | Gate 2 criteria (whitepaper Section 11) and a passed referendum |
 
 Switches can only move forward. Each switch takes effect at the start of the epoch after a 14-day enactment delay.
@@ -318,9 +330,9 @@ Simulate the revenue cap (Section 8) with self-paid revenue at several sizes, an
 
 | Component | Status | Tests |
 | --- | --- | --- |
-| `ict-economics` (issuance, AMM, buyback with price-aware injection, allocation, deposit price, Yuma-lite) | Done | 27 passing; matches the simulation (10,506,000 ICT after 4 years) |
+| `ict-economics` (issuance, AMM, buyback with price-aware injection, allocation, auction price, Yuma-lite) | Done | 27 passing; matches the simulation (10,506,000 ICT after 4 years) |
 | `pallet-ict-emission` | Done | Passing |
-| `pallet-subnet-registry` (SN0, Phase 2 gate, deposits, neuron fee, deregistration, on-chain endpoints) | Done | Passing |
+| `pallet-subnet-registry` (SN0, automatic unlock, Dutch auction, metadata, neuron fee, deregistration with immunity, on-chain endpoints) | Done | 19 passing |
 | `pallet-weights` (hash commit-reveal per epoch) | Done | Passing, including a hash test vector shared with the Python validator |
 | `pallet-work-verify` (bonds, spot-check quorum, slashing, three-strike ban, pools) | Done | Passing |
 | `pallet-ict-consensus` (validator staking, Yuma-lite, epoch payout) | Done | Passing |

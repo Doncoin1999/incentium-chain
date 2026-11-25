@@ -428,3 +428,37 @@ fn devnet_without_a_launch_period_never_runs_the_end_of_launch() {
         assert!(pallet_sudo::Key::<Runtime>::get().is_some());
     });
 }
+
+#[test]
+fn subnet_unlock_sees_sudo_and_approved_referenda() {
+    use genesis_config_presets::BOOTSTRAP_PRESET;
+    use pallet_subnet_registry::UnlockSignals;
+    type S = governance::GovernanceSignals;
+    ext_from_preset(BOOTSTRAP_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        assert!(!S::sudo_removed());
+        assert_eq!(S::approved_referenda(3), 0);
+        let status = Registry::unlock_status();
+        assert!(!status.unlocked && !status.sudo_removed && !status.swap_attested);
+        assert_eq!(status.min_block, 180 * DAYS);
+
+        governance::pallet_launch::Pallet::<Runtime>::end_launch();
+        assert!(S::sudo_removed());
+
+        // Three approved referenda (as the referenda pallet stores them) are counted.
+        for i in 0..3u32 {
+            pallet_referenda::ReferendumInfoFor::<Runtime>::insert(
+                i,
+                pallet_referenda::ReferendumInfo::Approved(1, None, None),
+            );
+        }
+        pallet_referenda::ReferendumInfoFor::<Runtime>::insert(
+            3,
+            pallet_referenda::ReferendumInfo::Rejected(1, None, None),
+        );
+        assert_eq!(S::approved_referenda(10), 3);
+        assert_eq!(S::approved_referenda(2), 2);
+        // Still locked: day 180, the miners and the swap attestation are missing.
+        assert!(!Registry::criteria_met(&Registry::unlock_status()));
+    });
+}

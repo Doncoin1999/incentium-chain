@@ -31,11 +31,23 @@ pub const DAY: u32 = 7_200;
 
 parameter_types! {
     pub const RegistryPalletId: PalletId = PalletId(*b"regipall");
-    pub const DepositFloor: u128 = 1_000 * UNIT;
-    pub const DecayBlocks: u32 = 14 * DAY;
-    pub const ReturnPpm: u32 = 900_000;
     pub const NeuronFee: u128 = UNIT;
     pub const MaxNeurons: u16 = 4;
+    pub const Treasury: u64 = TREASURY;
+    pub static SudoRemoved: bool = false;
+    pub static ApprovedReferenda: u32 = 0;
+}
+
+pub const TREASURY: u64 = 99;
+
+pub struct MockSignals;
+impl pallet_subnet_registry::UnlockSignals for MockSignals {
+    fn sudo_removed() -> bool {
+        SudoRemoved::get()
+    }
+    fn approved_referenda(_at_least: u32) -> u32 {
+        ApprovedReferenda::get()
+    }
 }
 
 impl pallet_subnet_registry::Config for Test {
@@ -43,9 +55,8 @@ impl pallet_subnet_registry::Config for Test {
     type WeightInfo = ();
     type Currency = Balances;
     type PalletId = RegistryPalletId;
-    type DepositFloor = DepositFloor;
-    type DecayBlocks = DecayBlocks;
-    type ReturnPpm = ReturnPpm;
+    type TreasuryAccount = Treasury;
+    type Unlock = MockSignals;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -58,7 +69,11 @@ pub fn new_test_ext(phase2: bool) -> sp_io::TestExternalities {
         .build_storage()
         .unwrap();
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![(ALICE, 100_000 * UNIT), (BOB, 100_000 * UNIT)],
+        balances: vec![
+            (ALICE, 10_000_000 * UNIT),
+            (BOB, 10_000_000 * UNIT),
+            (TREASURY, UNIT),
+        ],
         ..Default::default()
     }
     .assimilate_storage(&mut t)
