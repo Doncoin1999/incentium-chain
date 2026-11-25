@@ -547,3 +547,92 @@ fn subnet_api_output_for_the_page() {
         }
     });
 }
+
+#[test]
+fn emergency_origin_can_only_authorize_an_upgrade() {
+    use frame_support::traits::EnsureOrigin;
+    use governance::{CustomOrigin, TreasurySpender};
+    use pallet_referenda::TracksInfo as _;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        let em: OriginCaller = CustomOrigin::Emergency.into();
+        assert_eq!(governance::TracksInfo::track_for(&em), Ok(3));
+        assert!(TreasurySpender::try_origin(RuntimeOrigin::from(CustomOrigin::Emergency)).is_err());
+        let hash = sp_core::H256::repeat_byte(7);
+        assert!(Emergency::authorize_upgrade(signed(K::Alice), hash).is_err());
+        assert!(Emergency::authorize_upgrade(RuntimeOrigin::root(), hash).is_err());
+        assert_ok!(Emergency::authorize_upgrade(
+            RuntimeOrigin::from(CustomOrigin::Emergency),
+            hash
+        ));
+        assert_eq!(
+            System::authorized_upgrade().map(|a| *a.code_hash()),
+            Some(hash)
+        );
+    });
+}
+
+#[test]
+fn an_emergency_referendum_authorizes_an_upgrade_within_hours() {
+    use frame_support::traits::{schedule::DispatchTime, StorePreimage};
+    use pallet_conviction_voting::{AccountVote, Conviction, Vote};
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        let hash = sp_core::H256::repeat_byte(9);
+        let call = RuntimeCall::Emergency(governance::pallet_emergency::Call::authorize_upgrade {
+            code_hash: hash,
+        });
+        let proposal = <Preimage as StorePreimage>::bound(call).unwrap();
+        assert!(matches!(
+            proposal,
+            frame_support::traits::Bounded::Inline(_)
+        ));
+        let origin: OriginCaller = governance::CustomOrigin::Emergency.into();
+        assert_ok!(Referenda::submit(
+            signed(K::Alice),
+            Box::new(origin),
+            proposal,
+            DispatchTime::After(0)
+        ));
+        assert_ok!(Referenda::place_decision_deposit(signed(K::Alice), 0));
+        for k in [K::Alice, K::Bob, K::Charlie, K::Dave, K::Eve, K::Ferdie] {
+            let bal = Balances::free_balance(acc(k));
+            if bal < 2 * UNIT {
+                continue;
+            }
+            assert_ok!(ConvictionVoting::vote(
+                signed(k),
+                0,
+                AccountVote::Standard {
+                    vote: Vote {
+                        aye: true,
+                        conviction: Conviction::Locked1x
+                    },
+                    balance: bal - UNIT,
+                }
+            ));
+        }
+        let start = System::block_number();
+        let mut done_at = None;
+        for _ in 0..(2 * DAYS) {
+            let b = System::block_number() + 1;
+            System::set_block_number(b);
+            Scheduler::on_initialize(b);
+            if System::authorized_upgrade().is_some() {
+                done_at = Some(b);
+                break;
+            }
+        }
+        let at = done_at.expect("the emergency referendum did not pass");
+        // Prepare 1 h + confirm 3 h + enactment 1 h, plus alarm scheduling: about 5 h 8 min.
+        assert!(
+            at - start <= 5 * HOURS + HOURS / 2,
+            "took {} blocks",
+            at - start
+        );
+        assert_eq!(
+            System::authorized_upgrade().map(|a| *a.code_hash()),
+            Some(hash)
+        );
+    });
+}

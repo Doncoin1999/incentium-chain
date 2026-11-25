@@ -3,7 +3,11 @@
 //! - The development fund is `pallet-treasury` on the fund account that `ict-emission` already
 //!   pays 10 % of issuance into. Nothing leaves it without a vote; unspent funds are not burned.
 //! - Bounties with child bounties pay programmes (marketing, exchange listing) through a curator.
-//! - OpenGov: `referenda` + `conviction-voting`, three tracks (Root, Treasurer, Small spender).
+//! - OpenGov: `referenda` + `conviction-voting`, four tracks (Root, Treasurer, Small spender,
+//!   Emergency). The Emergency track can do one thing only: authorize a runtime upgrade (a
+//!   bug fix), with a high bar and short periods. The code itself is then supplied by anyone
+//!   with `system.apply_authorized_upgrade`; the chain accepts only the authorized hash, with
+//!   the same spec name and a higher spec version.
 //!   Turnout is measured against ICT that can vote: protocol accounts (launch vault, fund,
 //!   subnet pot, stake and work accounts) are left out, so launch-period rewards cannot vote
 //!   until they are released.
@@ -57,6 +61,8 @@ pub mod pallet_custom_origins {
         Treasurer,
         /// Spends of up to 1,000 ICT (3-day vote).
         SmallSpender,
+        /// Authorizes a runtime upgrade only (bug fixes; hours, not weeks).
+        Emergency,
     }
 }
 
@@ -67,16 +73,17 @@ pub use pallet_custom_origins::Origin as CustomOrigin;
 pub const MAX_BALANCE: Balance = Balance::MAX;
 pub const SMALL_SPEND: Balance = 1_000 * UNIT;
 
-/// Treasurer → unlimited, SmallSpender → 1,000 ICT.
+/// Treasurer → unlimited, SmallSpender → 1,000 ICT. Emergency spends nothing.
 pub struct Spender;
 impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::traits::EnsureOrigin<O>
     for Spender
 {
     type Success = Balance;
     fn try_origin(o: O) -> Result<Balance, O> {
-        o.into().map(|o| match o {
-            CustomOrigin::Treasurer => MAX_BALANCE,
-            CustomOrigin::SmallSpender => SMALL_SPEND,
+        o.into().and_then(|o| match o {
+            CustomOrigin::Treasurer => Ok(MAX_BALANCE),
+            CustomOrigin::SmallSpender => Ok(SMALL_SPEND),
+            other => Err(O::from(other)),
         })
     }
     #[cfg(feature = "runtime-benchmarks")]
@@ -87,6 +94,24 @@ impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::trait
 
 parameter_types! {
     pub const MaxBalance: Balance = MAX_BALANCE;
+}
+
+/// The Emergency track's origin.
+pub struct EnsureEmergency;
+impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::traits::EnsureOrigin<O>
+    for EnsureEmergency
+{
+    type Success = ();
+    fn try_origin(o: O) -> Result<(), O> {
+        o.into().and_then(|o| match o {
+            CustomOrigin::Emergency => Ok(()),
+            other => Err(O::from(other)),
+        })
+    }
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(CustomOrigin::Emergency))
+    }
 }
 
 /// Root (sudo in the launch period, the Root track after it) or a treasury track.
@@ -266,6 +291,7 @@ impl pallet_conviction_voting::Config for Runtime {
 pub const TRACK_ROOT: u16 = 0;
 pub const TRACK_TREASURER: u16 = 1;
 pub const TRACK_SMALL_SPENDER: u16 = 2;
+pub const TRACK_EMERGENCY: u16 = 3;
 
 const fn pct(x: u32) -> Perbill {
     Perbill::from_percent(x)
@@ -281,7 +307,7 @@ const fn linear(floor: u32, ceil: u32) -> Curve {
     }
 }
 
-const TRACKS: [Track<u16, Balance, BlockNumber>; 3] = [
+const TRACKS: [Track<u16, Balance, BlockNumber>; 4] = [
     Track {
         id: TRACK_ROOT,
         info: TrackInfo {
@@ -325,6 +351,22 @@ const TRACKS: [Track<u16, Balance, BlockNumber>; 3] = [
             min_support: linear(1, 10),
         },
     },
+    Track {
+        id: TRACK_EMERGENCY,
+        info: TrackInfo {
+            name: s("emergency"),
+            // One fix at a time, with a deposit that keeps the track for real emergencies.
+            max_deciding: 1,
+            decision_deposit: 1_000 * UNIT,
+            prepare_period: HOURS,
+            decision_period: 2 * DAYS,
+            confirm_period: 3 * HOURS,
+            min_enactment_period: HOURS,
+            // A high bar for a short vote: approval 100 % falling to 90 %, support 50 % to 20 %.
+            min_approval: linear(90, 100),
+            min_support: linear(20, 50),
+        },
+    },
 ];
 
 pub struct TracksInfo;
@@ -343,6 +385,7 @@ impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
         match CustomOrigin::try_from(id.clone()) {
             Ok(CustomOrigin::Treasurer) => Ok(TRACK_TREASURER),
             Ok(CustomOrigin::SmallSpender) => Ok(TRACK_SMALL_SPENDER),
+            Ok(CustomOrigin::Emergency) => Ok(TRACK_EMERGENCY),
             Err(_) => Err(()),
         }
     }
@@ -565,4 +608,50 @@ pub mod pallet_launch {
 
 impl pallet_launch::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
+}
+
+// ---------------------------------------------------------------- emergency upgrades
+
+/// The Emergency track's one power: authorize a runtime upgrade by its code hash. Anyone then
+/// supplies the code with `system.apply_authorized_upgrade`, which checks the hash, the spec
+/// name and that the spec version goes up.
+#[frame_support::pallet]
+pub mod pallet_emergency {
+    use polkadot_sdk::frame_support::pallet_prelude::*;
+    use polkadot_sdk::frame_system::pallet_prelude::*;
+
+    #[pallet::config]
+    pub trait Config: polkadot_sdk::frame_system::Config {
+        #[allow(deprecated)]
+        type RuntimeEvent: From<Event<Self>>
+            + IsType<<Self as polkadot_sdk::frame_system::Config>::RuntimeEvent>;
+        type EmergencyOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+    }
+
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
+
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event<T: Config> {
+        /// An emergency referendum authorized the runtime with this code hash.
+        UpgradeAuthorized { code_hash: T::Hash },
+    }
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        #[pallet::call_index(0)]
+        #[pallet::weight(T::DbWeight::get().writes(1))]
+        pub fn authorize_upgrade(origin: OriginFor<T>, code_hash: T::Hash) -> DispatchResult {
+            T::EmergencyOrigin::ensure_origin(origin)?;
+            polkadot_sdk::frame_system::Pallet::<T>::do_authorize_upgrade(code_hash, true);
+            Self::deposit_event(Event::UpgradeAuthorized { code_hash });
+            Ok(())
+        }
+    }
+}
+
+impl pallet_emergency::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type EmergencyOrigin = EnsureEmergency;
 }

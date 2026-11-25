@@ -511,7 +511,8 @@ A runtime test runs the whole period: registration and stake from the 100 ICT al
 | Item | Rule |
 | --- | --- |
 | Development fund | `pallet-treasury` on the fund account; spends paid once a day; unspent funds are not burned |
-| Referendum tracks | Root (runtime changes), Treasurer (large spends), Small spender (up to 1,000 ICT) |
+| Referendum tracks | Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Emergency (from spec 11: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support) |
+| Runtime upgrades | Decided by hash: a referendum on `authorize_upgrade(blake2_256(wasm))` (Root or Emergency track) needs no preimage. Once enacted, anyone uploads the code with `system.apply_authorized_upgrade`; the chain takes it only if the hash matches, the spec name is unchanged and the spec version is higher, and charges no fee. Tool: `scripts/governance.py` (propose-upgrade, vote, status, apply-upgrade) |
 | Voting | Conviction voting; vote locking period 7 days; submission deposit 1 ICT; undecided proposals time out after 14 days |
 | Turnout | Counts only ICT that can vote; the launch vault, the fund, the subnet pot and stake and work accounts are left out |
 | Bounties | Child bounties under each bounty; 3-day payout delay, during which governance can stop an award; the curator must show activity every 90 days |

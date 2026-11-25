@@ -1237,7 +1237,11 @@ body[data-site="trade"] .ic-nav a[data-site="trade"], body[data-site="subnets"] 
 </tr>
 <tr>
 <td>Referendum tracks</td>
-<td>Root (runtime changes), Treasurer (large spends), Small spender (up to 1,000 ICT)</td>
+<td>Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Emergency (from spec 11: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support)</td>
+</tr>
+<tr>
+<td>Runtime upgrades</td>
+<td>Decided by hash: a referendum on <code>authorize_upgrade(blake2_256(wasm))</code> (Root or Emergency track) needs no preimage. Once enacted, anyone uploads the code with <code>system.apply_authorized_upgrade</code>; the chain takes it only if the hash matches, the spec name is unchanged and the spec version is higher, and charges no fee. Tool: <code>scripts/governance.py</code> (propose-upgrade, vote, status, apply-upgrade)</td>
 </tr>
 <tr>
 <td>Voting</td>

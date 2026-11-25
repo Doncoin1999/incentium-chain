@@ -59,7 +59,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("incentium"),
     impl_name: alloc::borrow::Cow::Borrowed("incentium-reference"),
     authoring_version: 1,
-    spec_version: 10,
+    // 11: Emergency track (authorize a runtime upgrade by hash).
+    spec_version: 11,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: spec 10 changed registry.register_subnet and call index 3 (now try_unlock).
@@ -194,4 +195,6 @@ mod runtime {
     pub type Origins = governance::pallet_custom_origins;
     #[runtime::pallet_index(29)]
     pub type Launch = governance::pallet_launch;
+    #[runtime::pallet_index(31)]
+    pub type Emergency = governance::pallet_emergency;
 }
