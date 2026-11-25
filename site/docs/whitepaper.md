@@ -6,7 +6,7 @@ Nov 25, 2026
 
 Incentium (incentium.org) is an open, decentralized network in which machine intelligence is produced, verified and rewarded on a dedicated blockchain. The network's native coin is ICT. The protocol builds on the ideas behind Bittensor but addresses three weaknesses: scoring that cannot be audited, work that cannot be verified, and issuance that is not tied to real demand.
 
-Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once four on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.
+Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once four on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. Each subnet gets its own Alpha token, traded against ICT in a pool no one owns; new Alpha is created only when someone buys it, never from issuance. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.
 
 The goal is a network where rewards follow real value, and where every rule is enforced by the protocol rather than by trust in individual participants: if its founder left, nothing would stop and nobody would notice.
 
@@ -29,7 +29,7 @@ Incentium keeps what works — subnets, a clear division of roles and market-bas
 1. **The protocol enforces; no one has to trust.** Subnet registration, allocation and penalties are executed automatically by on-chain code.
 2. **Rewards for verified work only.** What cannot be checked is not rewarded.
 3. **Manipulation must cost more than it pays.** Every metric that drives issuance requires locked capital or paid fees.
-4. **Value follows demand.** Over time, user revenue — not newly minted coins — should support the value of ICT and of the subnets.
+4. **Value follows demand.** Over time, user revenue — not newly minted coins — should support the price of ICT and of each subnet's Alpha token.
 5. **Complexity is added gradually.** New mechanisms are switched on when the network has shown it can handle them, not by the calendar.
 6. **Nobody is needed.** Subnet registration, the allocation of issuance, penalties and governance decisions are carried out by on-chain code. Temporary powers in the launch period expire by themselves at a fixed block. A decision taken by referendum takes effect without anyone having to act on it.
 7. **No hidden allocations.** No investor or team allocation; all ICT is issued by the protocol, apart from a disclosed 100 ICT genesis allocation to the launch operator, counted in the cap. The development fund is financed by a fixed share of issuance, and the 90-day launch period and its reward lock are disclosed in full (Section 5.1).
@@ -74,6 +74,7 @@ Halving is triggered by the amount issued, not by block height, so the schedule 
 
 - Staking with validators, including on the subnet a validator serves.
 - Buying subnet slots at auction.
+- Buying and selling subnets' Alpha tokens in their pools.
 - Payment for AI services through the payment gateway.
 - Access: ICT locked for access in the holder's own wallet gives a share of the public gateway's capacity, pro rata to the share of all ICT locked for access. Locked ICT cannot be moved during a 7-day unbonding period, so the same tokens cannot grant access twice. A small free tier with a bot check stays open, so anyone can try the network without buying ICT. The public demo opens when Tier 1 (Qwen3.5-9B on GPU) is live, before the launch period ends; access tiers open once ICT can be traded. Gateway traffic does not count towards miner rewards at first, so a gateway operator cannot pay its own miners with fake traffic.
 - Trading on EVM chains: the Incentium chain is EVM-compatible, so MetaMask works on it directly, and ICT moves to Base as an ERC-20 through a Hyperlane Warp Route that the project deploys and runs itself. Native ICT is locked while the same amount exists on Base, so the supply cap is unchanged. The bridge opens around the end of the launch period with transfer caps, a pause switch, continuous supply monitoring and an external audit; its validators start with the project, which is disclosed, and move to independent operators over time.
@@ -198,13 +199,27 @@ What the protocol fixes for every subnet: its share of issuance, the 50/38/12 sp
 
 **Penalties.** A subnet can turn on penalties: when validators holding at least half of the subnet's active stake report a miner's failed work, the miner gets nothing for that epoch, and repeated penalties ban the key from the subnet. The subnet decides what counts as failed work; the protocol fixes the threshold and the consequences.
 
-### 6.5 Alpha tokens: a possible later step
+### 6.5 Alpha tokens and pools
 
-Earlier drafts of this paper gave every subnet its own Alpha token, with at least half of the subnet's issuance buying it back. Phase 2 starts without Alpha tokens. Whether subnets get them is open and would be decided by referendum; if they do, half of each slot payment would seed the subnet's pool, a quarter would go to the treasury and a quarter would be burned. The Phase 3 metrics in Section 7 assume Alpha tokens and will be revised with that decision.
+*Decided 25 November 2026.* Every subnet gets its own token, traded against ICT in a pool that the protocol owns. Alpha takes nothing from issuance: the subnet's share of ICT is paid in ICT as in Section 6.3, and no part of it buys Alpha. Earlier drafts required at least half of each subnet's issuance to buy back its Alpha; that requirement is dropped.
+
+**The token.** Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. Each has fixed rules in the chain's code that no owner or DAO can change: a maximum supply of 21,000,000 and a schedule of at most 7,200 new Alpha a day, halving like ICT. Alpha is transferable.
+
+**New Alpha only when someone buys.** New Alpha comes into being only when someone pays ICT for it in the subnet's pool. The ICT goes into the pool, and the protocol adds just as much new Alpha to the pool as that purchase takes out at the current price, never more than the day's schedule; Alpha not created today stays available later, so the cap is never exceeded. Nobody receives Alpha for free: not the owner, not miners or validators, not the treasury. All Alpha in circulation has been paid for in ICT.
+
+**Start without a deposit.** A new pool opens at a fixed low start price set in the runtime, with no ICT in it. The price then rises as people buy and falls as they sell. Nobody has to fund the pool, and the auction payment stays split between the treasury and burning. The daily schedule means no one can buy up a large share at the start price: a buyer in the first block gets at most that day's new Alpha.
+
+**Who owns the pool.** Nobody. The pool is an account derived from the subnet number with no private key, so no one can sign a withdrawal from it: not the subnet owner, not the treasury, not the founder. Only the code moves ICT and Alpha, and only by buying and selling under the pool formula; changing that takes a runtime upgrade by referendum. Holders have no share to withdraw, but they can always sell Alpha back to the pool for ICT at the current price. Others may add liquidity of their own to make prices steadier; that part is theirs to withdraw, earns half of the trading fees, and does not count in any metric that steers issuance.
+
+**Trading.** Each subnet has one canonical pool, a constant-product market (x · y = k) with a 0.5% fee, half of it burned. A marketplace on top routes swaps, including from one Alpha to another through ICT. Alpha that is staked in the subnet receives the distributions described in Section 7.4; Alpha that is only held does not.
+
+**When a subnet is removed.** No new Alpha is created after that, but the pool stays open: anyone can still sell Alpha back for the ICT in it. Nobody loses their coins because a subnet ends.
+
+**Timing.** Alpha tokens and pools are not part of runtime 10. They are built as their own modules, audited, and installed by referendum, no earlier than the unlock of subnet registration.
 
 ### 6.6 Subnet categories
 
-Incentium defines six subnet categories from the start, each with a standard unit of work and revenue, a standard verification module and a standard on-chain payment contract. Categories give no share of issuance of their own: the allocation rules in Section 6.3 (and Section 7, if adopted) apply to every subnet alike. Their purpose is to make revenue comparable and to let new teams start from working templates. The categories follow the areas where subnets on other networks earn real revenue.
+Incentium defines six subnet categories from the start, each with a standard unit of work and revenue, a standard verification module and a standard on-chain payment contract. Categories give no share of issuance of their own: the allocation rules in Sections 6.3 and 7 apply to every subnet alike. Their purpose is to make revenue comparable and to let new teams start from working templates. The categories follow the areas where subnets on other networks earn real revenue.
 
 | Category | Unit | Verification |
 | --- | --- | --- |
@@ -219,13 +234,13 @@ An open category covers anything else. SN0 is the template for category 2; categ
 
 ## 7. Phase 3 – Utility Calibration
 
-*This section describes the direction for Phase 3 as drafted before 25 November 2026. It assumes Alpha tokens (Section 6.5) and will be revised before it is adopted.*
+*This section is the direction for Phase 3. It builds on the Alpha pools of Section 6.5 and will be simulated again with the rules decided on 25 November 2026 before it is adopted.*
 
 In Phase 3, ICT issuance is allocated between subnets by measured utility: each subnet's market value, its user revenue and its trading turnover. Each is measured in a way that makes manipulation cost more than it gains.
 
 ### 7.1 How the three metrics are measured
 
-- **Market value (L)** is the locked value defined in Section 6.3: the geometric mean of the pool's ICT reserve and the Alpha token's market value, excluding third-party liquidity. Market value alone follows quality well but rewards pumping; the pool reserve alone resists pumping but follows quality poorly. The geometric mean sits between them.
+- **Market value (L)** is the locked value of the subnet's pool (Section 6.5): the geometric mean of the pool's ICT reserve and the Alpha token's market value, excluding third-party liquidity and averaged over 90 days. Market value alone follows quality well but rewards pumping; the pool reserve alone resists pumping but follows quality poorly. The geometric mean sits between them.
 - **User revenue (R)** from the payment gateway is the strongest signal of real utility. Only revenue settled on chain counts, and the issuance a subnet can gain through R is capped by the value its revenue burns (Section 7.3), so paying yourself revenue costs more than it returns.
 - **Turnover (F)** is measured as burned fees, counted only on each account's net daily flow per subnet. A same-day round trip therefore counts as zero. Simulation showed that, at a uniform fee rate, fees and volume move together, so what deters wash trading is the fee rate relative to the metric's weight, not the choice between them.
 
@@ -245,11 +260,11 @@ where the bars denote moving averages: 90 days for L, 30 days for R and F. A sub
 - **Net-flow fees and a low fee weight:** In simulation, wash trading of up to 20,000 ICT per day lost money in every tested strategy, including buying one day and selling the next.
 - **No external oracles:** All inputs already exist on-chain.
 
-**Revenue cap (proposed, 20 Nov 2026):** The issuance a subnet gains through R in a period may not exceed k times the ICT value burned from its revenue in that period (half of the Alpha its revenue buys back, valued at a time-weighted price), with k below 1 (proposed 0.8). Self-paid revenue then always costs more than the issuance it brings, whoever pays it. Weight that R cannot use under the cap is redistributed to L and F. The rule is not yet simulated and is listed as open work in the specification.
+**Revenue cap (proposed, 20 Nov 2026):** The issuance a subnet gains through R in a period may not exceed k times the ICT value burned from its revenue in that period (half of the Alpha its revenue buys, valued at a time-weighted price), with k below 1 (proposed 0.8). Self-paid revenue then always costs more than the issuance it brings, whoever pays it. Weight that R cannot use under the cap is redistributed to L and F. The rule is not yet simulated and is listed as open work in the specification.
 
 ### 7.4 From subsidy to revenue
 
-The minimum 50% buyback stays, but its funding shifts over time. The share of the buyback paid for by user revenue rises by 10 percentage points per quarter, and the issuance this frees up goes to miners and validators. High-revenue subnets therefore get both stronger buybacks and a larger share of issuance.
+Issuance never buys Alpha (Section 6.5). What users pay a subnet does: settled user revenue buys the subnet's Alpha in its pool, half of that Alpha is burned, and half goes to those who have Alpha staked in the subnet. A subnet's token is therefore backed by real demand, not by subsidy, and high-revenue subnets get both buying pressure on their token and, through R, a larger share of issuance.
 
 ## 8. Consensus and verification
 
@@ -283,8 +298,8 @@ Incentium uses an extended variant of Yuma Consensus in which validator weights 
 | Validator collusion | Validators agree to favor certain miners | Square-root weighting, 10% cap per validator, random audits with slashing |
 | Fake work | Miners return output from a cheaper model | Spot checks; no epoch payout when half of the active validator stake reports a failure, bond slashed at two thirds; TEE attestation, fraud proofs |
 | Wash trading | Subnet owners trade with themselves to inflate metrics | Fees counted only on each account's net daily flow, with a low weight in the allocation formula |
-| Price pumping | Thin pools are pumped to raise market value (if Alpha tokens are introduced) | Geometric-mean metric, 90-day averages and third-party liquidity excluded from L |
-| Front-running buybacks | Traders buy ahead of predictable buybacks (if Alpha tokens are introduced) | Buybacks split into small purchases every block |
+| Price pumping | Thin pools are pumped to raise market value | Geometric-mean metric, 90-day averages and third-party liquidity excluded from L |
+| Front-running buybacks | Traders buy ahead of predictable revenue buybacks (Phase 3) | Buybacks split into small purchases every block |
 | Supply-chain attack | Compromised software packages drain wallets | Signed releases, reproducible builds, hardware wallet support |
 | DDoS on miners | Attackers knock out competing miners | libp2p over QUIC, stake-based rate limits, relay nodes |
 
@@ -306,7 +321,7 @@ Incentium has no foundation or company. Governance is on-chain from genesis and 
 
 **Sudo in the launch period.** During the launch period a sudo key held by the launch operator can make urgent fixes and runtime upgrades without a vote. This is disclosed, every use is visible on chain, and the key is removed automatically by the runtime at the end of the launch period. Apart from the two bounties described in Section 5.1, which the runtime creates at that moment, every payment from the development fund needs an on-chain vote.
 
-**Protected parameters:** Maximum supply and the halving rule can only be changed by a supermajority (at least 75%) and a 30-day time-lock; the same applies to a minimum buyback if Alpha tokens are introduced.
+**Protected parameters:** Maximum supply and the halving rule, for ICT and for every Alpha token, can only be changed by a supermajority (at least 75%) and a 30-day time-lock.
 
 ## 11. Implementation and roadmap
 
@@ -342,7 +357,7 @@ Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives 
 | Explorer | explorer.incentium.org live | Show swap activity; from Phase 2 show each subnet's allocation inputs per epoch |
 | Gateway and API | Not built | OpenAI-compatible API with streaming, a batch API and payment; a public chat demo; listing on OpenRouter |
 | Phase 2 | Runtime 10 (on the testnet since 25 Nov 2026): automatic unlock, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, the cap ladder and the subnet page at incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet that penalties can slash |
-| Phase 3 and Alpha | Economic rules exist as tested library code; Alpha, pool, buyback, metrics, payments and access modules are not in the runtime | Decide on Alpha tokens; revise, simulate and audit Phase 3 before it is adopted |
+| Alpha and Phase 3 | Alpha rules decided 25 Nov 2026 (Section 6.5); pool arithmetic and price-aware injection exist as tested library code; the Alpha, pool, marketplace, metrics, payments and access modules are not in the runtime | Set the start price; build, simulate and audit the Alpha modules and install them by referendum; simulate Phase 3 with the new rules |
 | EVM and bridge | Not in the runtime | EVM support and a bridge route to Base as specified, or rely on the atomic swap until a bridge is audited |
 | Legal | No legal entity | Legal review of who contracts with paying users, privacy, MiCA and the EU AI Act before public trading, the paid gateway and the miner app |
 
@@ -374,9 +389,9 @@ All modules are written in Rust as Substrate pallets. Phase transitions follow o
 | `work-verify` | 1 | Spot checks, slashing, task tiers and pool payouts |
 | `weights` | 1 | Commit-reveal of validator weights |
 | `consensus` | 1–2 | Yuma consensus, staking per subnet, sharing issuance between subnets and epoch payouts spread over the epoch (computed on chain today; proof-based version planned) |
-| `alpha-assets` | Open | Alpha coins with fixed tokenomics, if adopted |
-| `amm` | Open | Canonical ICT–Alpha pools, swaps and marketplace router, if adopted |
-| `buyback` | Open | Per-block buyback and burn, if adopted |
+| `alpha-assets` | 2 | Alpha coins with fixed tokenomics, created only when bought |
+| `amm` | 2 | Protocol-owned ICT–Alpha pools, swaps and marketplace router |
+| `buyback` | 3 | Per-block purchase of Alpha with user revenue; half burned, half to Alpha stakers |
 | `utility-metrics` | 3 | Utility measurement, caps and floors |
 | `payments` | 3 | User payments routed to buybacks |
 | governance | 1 | On-chain treasury, bounties and child bounties, multisig, referenda with conviction voting and four tracks including Emergency; removes sudo and creates the two launch bounties at day 90 |
@@ -389,7 +404,7 @@ All modules are written in Rust as Substrate pallets. Phase transitions follow o
 | Miner | A participant that performs AI work in a subnet |
 | Validator | A participant that evaluates miners and submits weights |
 | Subnet | A sub-network with its own task and incentive mechanism |
-| Alpha coin | A possible later per-subnet token (Section 6.5) |
+| Alpha coin | A subnet's own transferable token (Alpha1 for Subnet 1, and so on), created only when bought and traded against ICT in the subnet's protocol-owned pool |
 | Yuma Consensus | The algorithm that turns validator weights into rewards |
 | Slashing | Confiscation of part of a participant's stake as a penalty |
 | Dutch auction | An auction where the price starts high and falls until someone buys |

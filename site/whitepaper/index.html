@@ -132,7 +132,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
         <li><a href="#62-cap-immunity-and-removal">6.2 Cap, immunity and removal</a></li>
         <li><a href="#63-allocation-of-issuance">6.3 Allocation of issuance</a></li>
         <li><a href="#64-control-of-a-subnet">6.4 Control of a subnet</a></li>
-        <li><a href="#65-alpha-tokens-a-possible-later-step">6.5 Alpha tokens: a possible later step</a></li>
+        <li><a href="#65-alpha-tokens-and-pools">6.5 Alpha tokens and pools</a></li>
         <li><a href="#66-subnet-categories">6.6 Subnet categories</a></li>
       </ol></li>
       <li><a href="#7-phase-3-utility-calibration">7. Phase 3 – Utility Calibration</a>
@@ -188,7 +188,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
         <li><a href="#62-cap-immunity-and-removal">6.2 Cap, immunity and removal</a></li>
         <li><a href="#63-allocation-of-issuance">6.3 Allocation of issuance</a></li>
         <li><a href="#64-control-of-a-subnet">6.4 Control of a subnet</a></li>
-        <li><a href="#65-alpha-tokens-a-possible-later-step">6.5 Alpha tokens: a possible later step</a></li>
+        <li><a href="#65-alpha-tokens-and-pools">6.5 Alpha tokens and pools</a></li>
         <li><a href="#66-subnet-categories">6.6 Subnet categories</a></li>
       </ol></li>
       <li><a href="#7-phase-3-utility-calibration">7. Phase 3 – Utility Calibration</a>
@@ -219,7 +219,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
     </header>
 <h2 id="abstract">Abstract<a class="anchor" href="#abstract" aria-label="Link to this section">#</a></h2>
 <p>Incentium (incentium.org) is an open, decentralized network in which machine intelligence is produced, verified and rewarded on a dedicated blockchain. The network's native coin is ICT. The protocol builds on the ideas behind Bittensor but addresses three weaknesses: scoring that cannot be audited, work that cannot be verified, and issuance that is not tied to real demand.</p>
-<p>Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once four on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.</p>
+<p>Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once four on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. Each subnet gets its own Alpha token, traded against ICT in a pool no one owns; new Alpha is created only when someone buys it, never from issuance. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.</p>
 <p>The goal is a network where rewards follow real value, and where every rule is enforced by the protocol rather than by trust in individual participants: if its founder left, nothing would stop and nobody would notice.</p>
 <h2 id="1-introduction-and-motivation">1. Introduction and motivation<a class="anchor" href="#1-introduction-and-motivation" aria-label="Link to this section">#</a></h2>
 <p>Artificial intelligence today is produced mainly by a handful of companies that control data, compute and distribution. A decentralized market for machine intelligence can open production to anyone with compute or expertise, and let the market — not a central party — decide what has value.</p>
@@ -237,7 +237,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <li><strong>The protocol enforces; no one has to trust.</strong> Subnet registration, allocation and penalties are executed automatically by on-chain code.</li>
 <li><strong>Rewards for verified work only.</strong> What cannot be checked is not rewarded.</li>
 <li><strong>Manipulation must cost more than it pays.</strong> Every metric that drives issuance requires locked capital or paid fees.</li>
-<li><strong>Value follows demand.</strong> Over time, user revenue — not newly minted coins — should support the value of ICT and of the subnets.</li>
+<li><strong>Value follows demand.</strong> Over time, user revenue — not newly minted coins — should support the price of ICT and of each subnet's Alpha token.</li>
 <li><strong>Complexity is added gradually.</strong> New mechanisms are switched on when the network has shown it can handle them, not by the calendar.</li>
 <li><strong>Nobody is needed.</strong> Subnet registration, the allocation of issuance, penalties and governance decisions are carried out by on-chain code. Temporary powers in the launch period expire by themselves at a fixed block. A decision taken by referendum takes effect without anyone having to act on it.</li>
 <li><strong>No hidden allocations.</strong> No investor or team allocation; all ICT is issued by the protocol, apart from a disclosed 100 ICT genesis allocation to the launch operator, counted in the cap. The development fund is financed by a fixed share of issuance, and the 90-day launch period and its reward lock are disclosed in full (Section 5.1).</li>
@@ -304,6 +304,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <ul>
 <li>Staking with validators, including on the subnet a validator serves.</li>
 <li>Buying subnet slots at auction.</li>
+<li>Buying and selling subnets' Alpha tokens in their pools.</li>
 <li>Payment for AI services through the payment gateway.</li>
 <li>Access: ICT locked for access in the holder's own wallet gives a share of the public gateway's capacity, pro rata to the share of all ICT locked for access. Locked ICT cannot be moved during a 7-day unbonding period, so the same tokens cannot grant access twice. A small free tier with a bot check stays open, so anyone can try the network without buying ICT. The public demo opens when Tier 1 (Qwen3.5-9B on GPU) is live, before the launch period ends; access tiers open once ICT can be traded. Gateway traffic does not count towards miner rewards at first, so a gateway operator cannot pay its own miners with fake traffic.</li>
 <li>Trading on EVM chains: the Incentium chain is EVM-compatible, so MetaMask works on it directly, and ICT moves to Base as an ERC-20 through a Hyperlane Warp Route that the project deploys and runs itself. Native ICT is locked while the same amount exists on Base, so the supply cap is unchanged. The bridge opens around the end of the launch period with transfer caps, a pause switch, continuous supply monitoring and an external audit; its validators start with the project, which is disclosed, and move to independent operators over time.</li>
@@ -460,10 +461,17 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <p>A subnet is controlled by one key at first, and control can only move forward: to a multisig of 2 to 20 signatories, and from either to a subnet DAO in which the subnet's stakers decide. One key or a multisig can sell the subnet to another key; a DAO subnet stays with its stakers. The controller sets the subnet's own settings within the protocol's bounds (miner registration fee 1–1,000 ICT, 16–256 slots, penalties on or off) and publishes a new code hash with each release of its incentive mechanism. In a subnet DAO any staker can propose, votes run 5 days and are weighed by stake when the vote closes, and a decision that has more aye than nay stake and at least a third of the subnet's stake is carried out at once; the owner share then goes to the DAO's own account, which only DAO votes can spend.</p>
 <p>What the protocol fixes for every subnet: its share of issuance, the 50/38/12 split, the consensus rules, removal and immunity, and the maximum number of neurons.</p>
 <p><strong>Penalties.</strong> A subnet can turn on penalties: when validators holding at least half of the subnet's active stake report a miner's failed work, the miner gets nothing for that epoch, and repeated penalties ban the key from the subnet. The subnet decides what counts as failed work; the protocol fixes the threshold and the consequences.</p>
-<h3 id="65-alpha-tokens-a-possible-later-step">6.5 Alpha tokens: a possible later step<a class="anchor" href="#65-alpha-tokens-a-possible-later-step" aria-label="Link to this section">#</a></h3>
-<p>Earlier drafts of this paper gave every subnet its own Alpha token, with at least half of the subnet's issuance buying it back. Phase 2 starts without Alpha tokens. Whether subnets get them is open and would be decided by referendum; if they do, half of each slot payment would seed the subnet's pool, a quarter would go to the treasury and a quarter would be burned. The Phase 3 metrics in Section 7 assume Alpha tokens and will be revised with that decision.</p>
+<h3 id="65-alpha-tokens-and-pools">6.5 Alpha tokens and pools<a class="anchor" href="#65-alpha-tokens-and-pools" aria-label="Link to this section">#</a></h3>
+<p><em>Decided 25 November 2026.</em> Every subnet gets its own token, traded against ICT in a pool that the protocol owns. Alpha takes nothing from issuance: the subnet's share of ICT is paid in ICT as in Section 6.3, and no part of it buys Alpha. Earlier drafts required at least half of each subnet's issuance to buy back its Alpha; that requirement is dropped.</p>
+<p><strong>The token.</strong> Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. Each has fixed rules in the chain's code that no owner or DAO can change: a maximum supply of 21,000,000 and a schedule of at most 7,200 new Alpha a day, halving like ICT. Alpha is transferable.</p>
+<p><strong>New Alpha only when someone buys.</strong> New Alpha comes into being only when someone pays ICT for it in the subnet's pool. The ICT goes into the pool, and the protocol adds just as much new Alpha to the pool as that purchase takes out at the current price, never more than the day's schedule; Alpha not created today stays available later, so the cap is never exceeded. Nobody receives Alpha for free: not the owner, not miners or validators, not the treasury. All Alpha in circulation has been paid for in ICT.</p>
+<p><strong>Start without a deposit.</strong> A new pool opens at a fixed low start price set in the runtime, with no ICT in it. The price then rises as people buy and falls as they sell. Nobody has to fund the pool, and the auction payment stays split between the treasury and burning. The daily schedule means no one can buy up a large share at the start price: a buyer in the first block gets at most that day's new Alpha.</p>
+<p><strong>Who owns the pool.</strong> Nobody. The pool is an account derived from the subnet number with no private key, so no one can sign a withdrawal from it: not the subnet owner, not the treasury, not the founder. Only the code moves ICT and Alpha, and only by buying and selling under the pool formula; changing that takes a runtime upgrade by referendum. Holders have no share to withdraw, but they can always sell Alpha back to the pool for ICT at the current price. Others may add liquidity of their own to make prices steadier; that part is theirs to withdraw, earns half of the trading fees, and does not count in any metric that steers issuance.</p>
+<p><strong>Trading.</strong> Each subnet has one canonical pool, a constant-product market (x · y = k) with a 0.5% fee, half of it burned. A marketplace on top routes swaps, including from one Alpha to another through ICT. Alpha that is staked in the subnet receives the distributions described in Section 7.4; Alpha that is only held does not.</p>
+<p><strong>When a subnet is removed.</strong> No new Alpha is created after that, but the pool stays open: anyone can still sell Alpha back for the ICT in it. Nobody loses their coins because a subnet ends.</p>
+<p><strong>Timing.</strong> Alpha tokens and pools are not part of runtime 10. They are built as their own modules, audited, and installed by referendum, no earlier than the unlock of subnet registration.</p>
 <h3 id="66-subnet-categories">6.6 Subnet categories<a class="anchor" href="#66-subnet-categories" aria-label="Link to this section">#</a></h3>
-<p>Incentium defines six subnet categories from the start, each with a standard unit of work and revenue, a standard verification module and a standard on-chain payment contract. Categories give no share of issuance of their own: the allocation rules in Section 6.3 (and Section 7, if adopted) apply to every subnet alike. Their purpose is to make revenue comparable and to let new teams start from working templates. The categories follow the areas where subnets on other networks earn real revenue.</p>
+<p>Incentium defines six subnet categories from the start, each with a standard unit of work and revenue, a standard verification module and a standard on-chain payment contract. Categories give no share of issuance of their own: the allocation rules in Sections 6.3 and 7 apply to every subnet alike. Their purpose is to make revenue comparable and to let new teams start from working templates. The categories follow the areas where subnets on other networks earn real revenue.</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -507,11 +515,11 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 </table></div>
 <p>An open category covers anything else. SN0 is the template for category 2; category 1 is the natural next one, because it reuses the same machines.</p>
 <h2 id="7-phase-3-utility-calibration">7. Phase 3 – Utility Calibration<a class="anchor" href="#7-phase-3-utility-calibration" aria-label="Link to this section">#</a></h2>
-<p><em>This section describes the direction for Phase 3 as drafted before 25 November 2026. It assumes Alpha tokens (Section 6.5) and will be revised before it is adopted.</em></p>
+<p><em>This section is the direction for Phase 3. It builds on the Alpha pools of Section 6.5 and will be simulated again with the rules decided on 25 November 2026 before it is adopted.</em></p>
 <p>In Phase 3, ICT issuance is allocated between subnets by measured utility: each subnet's market value, its user revenue and its trading turnover. Each is measured in a way that makes manipulation cost more than it gains.</p>
 <h3 id="71-how-the-three-metrics-are-measured">7.1 How the three metrics are measured<a class="anchor" href="#71-how-the-three-metrics-are-measured" aria-label="Link to this section">#</a></h3>
 <ul>
-<li><strong>Market value (L)</strong> is the locked value defined in Section 6.3: the geometric mean of the pool's ICT reserve and the Alpha token's market value, excluding third-party liquidity. Market value alone follows quality well but rewards pumping; the pool reserve alone resists pumping but follows quality poorly. The geometric mean sits between them.</li>
+<li><strong>Market value (L)</strong> is the locked value of the subnet's pool (Section 6.5): the geometric mean of the pool's ICT reserve and the Alpha token's market value, excluding third-party liquidity and averaged over 90 days. Market value alone follows quality well but rewards pumping; the pool reserve alone resists pumping but follows quality poorly. The geometric mean sits between them.</li>
 <li><strong>User revenue (R)</strong> from the payment gateway is the strongest signal of real utility. Only revenue settled on chain counts, and the issuance a subnet can gain through R is capped by the value its revenue burns (Section 7.3), so paying yourself revenue costs more than it returns.</li>
 <li><strong>Turnover (F)</strong> is measured as burned fees, counted only on each account's net daily flow per subnet. A same-day round trip therefore counts as zero. Simulation showed that, at a uniform fee rate, fees and volume move together, so what deters wash trading is the fee rate relative to the metric's weight, not the choice between them.</li>
 </ul>
@@ -526,9 +534,9 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <li><strong>Net-flow fees and a low fee weight:</strong> In simulation, wash trading of up to 20,000 ICT per day lost money in every tested strategy, including buying one day and selling the next.</li>
 <li><strong>No external oracles:</strong> All inputs already exist on-chain.</li>
 </ul>
-<p><strong>Revenue cap (proposed, 20 Nov 2026):</strong> The issuance a subnet gains through R in a period may not exceed k times the ICT value burned from its revenue in that period (half of the Alpha its revenue buys back, valued at a time-weighted price), with k below 1 (proposed 0.8). Self-paid revenue then always costs more than the issuance it brings, whoever pays it. Weight that R cannot use under the cap is redistributed to L and F. The rule is not yet simulated and is listed as open work in the specification.</p>
+<p><strong>Revenue cap (proposed, 20 Nov 2026):</strong> The issuance a subnet gains through R in a period may not exceed k times the ICT value burned from its revenue in that period (half of the Alpha its revenue buys, valued at a time-weighted price), with k below 1 (proposed 0.8). Self-paid revenue then always costs more than the issuance it brings, whoever pays it. Weight that R cannot use under the cap is redistributed to L and F. The rule is not yet simulated and is listed as open work in the specification.</p>
 <h3 id="74-from-subsidy-to-revenue">7.4 From subsidy to revenue<a class="anchor" href="#74-from-subsidy-to-revenue" aria-label="Link to this section">#</a></h3>
-<p>The minimum 50% buyback stays, but its funding shifts over time. The share of the buyback paid for by user revenue rises by 10 percentage points per quarter, and the issuance this frees up goes to miners and validators. High-revenue subnets therefore get both stronger buybacks and a larger share of issuance.</p>
+<p>Issuance never buys Alpha (Section 6.5). What users pay a subnet does: settled user revenue buys the subnet's Alpha in its pool, half of that Alpha is burned, and half goes to those who have Alpha staked in the subnet. A subnet's token is therefore backed by real demand, not by subsidy, and high-revenue subnets get both buying pressure on their token and, through R, a larger share of issuance.</p>
 <h2 id="8-consensus-and-verification">8. Consensus and verification<a class="anchor" href="#8-consensus-and-verification" aria-label="Link to this section">#</a></h2>
 <p>Incentium uses an extended variant of Yuma Consensus in which validator weights can be audited and poor judgment is penalized.</p>
 <p><strong>Commit-reveal weights.</strong> Validators first submit an encrypted hash of their weights. The weights are revealed automatically after a fixed period using a drand time-lock. No one can therefore copy another validator's weights before they are locked in.</p>
@@ -605,12 +613,12 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 </tr>
 <tr>
 <td>Price pumping</td>
-<td>Thin pools are pumped to raise market value (if Alpha tokens are introduced)</td>
+<td>Thin pools are pumped to raise market value</td>
 <td>Geometric-mean metric, 90-day averages and third-party liquidity excluded from L</td>
 </tr>
 <tr>
 <td>Front-running buybacks</td>
-<td>Traders buy ahead of predictable buybacks (if Alpha tokens are introduced)</td>
+<td>Traders buy ahead of predictable revenue buybacks (Phase 3)</td>
 <td>Buybacks split into small purchases every block</td>
 </tr>
 <tr>
@@ -637,7 +645,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <p><strong>Voting in practice.</strong> There are no meetings and no notice periods. Anyone can submit a proposal with a deposit. After a short preparation period, ICT holders vote yes, no or abstain from their own wallet during a fixed voting period (proposed 7 days, and 3 days for small spends from the fund), with more weight for those who lock their ICT for longer after the vote. A proposal passes when it reaches both the required approval and the required turnout, and takes effect after the time-lock. ICT held in the launch vault cannot vote until it is released. Three referendum tracks exist from genesis: Root for runtime changes and protocol settings, Treasurer for large spends and Small spender for spends up to 1,000 ICT. A fourth, Emergency, can do one thing only: authorize a runtime upgrade that fixes a bug. It needs a 1,000 ICT decision deposit and an approval of 90–100% with high turnout, and with broad, fast support a fix takes effect in about five hours. Turnout counts only ICT that can vote, so the launch vault, the fund and other protocol accounts are left out. Proposals, votes and the fund's bounties are shown at governance.incentium.org, where holders vote with Talisman or SubWallet.</p>
 <p><strong>Runtime upgrades by referendum.</strong> A referendum approves only the hash of the new runtime, so the proposal is small and needs no large deposit. Once it passes, anyone can upload the code; the chain accepts it only if the hash matches, the name is unchanged and the version is higher, and charges no fee. The tool for this is part of the open-source code.</p>
 <p><strong>Sudo in the launch period.</strong> During the launch period a sudo key held by the launch operator can make urgent fixes and runtime upgrades without a vote. This is disclosed, every use is visible on chain, and the key is removed automatically by the runtime at the end of the launch period. Apart from the two bounties described in Section 5.1, which the runtime creates at that moment, every payment from the development fund needs an on-chain vote.</p>
-<p><strong>Protected parameters:</strong> Maximum supply and the halving rule can only be changed by a supermajority (at least 75%) and a 30-day time-lock; the same applies to a minimum buyback if Alpha tokens are introduced.</p>
+<p><strong>Protected parameters:</strong> Maximum supply and the halving rule, for ICT and for every Alpha token, can only be changed by a supermajority (at least 75%) and a 30-day time-lock.</p>
 <h2 id="11-implementation-and-roadmap">11. Implementation and roadmap<a class="anchor" href="#11-implementation-and-roadmap" aria-label="Link to this section">#</a></h2>
 <p>Incentium moves through a preparation period and three phases, and each transition is gated by criteria rather than dates. Phase durations after Phase 1 depend on when the gates are met.</p>
 <p><img alt="Incentium grows in three gated phases after a testnet period" src="roadmap.png" /></p>
@@ -722,9 +730,9 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 <td>Mainnet upgrade before day 90; a miner bond per subnet that penalties can slash</td>
 </tr>
 <tr>
-<td>Phase 3 and Alpha</td>
-<td>Economic rules exist as tested library code; Alpha, pool, buyback, metrics, payments and access modules are not in the runtime</td>
-<td>Decide on Alpha tokens; revise, simulate and audit Phase 3 before it is adopted</td>
+<td>Alpha and Phase 3</td>
+<td>Alpha rules decided 25 Nov 2026 (Section 6.5); pool arithmetic and price-aware injection exist as tested library code; the Alpha, pool, marketplace, metrics, payments and access modules are not in the runtime</td>
+<td>Set the start price; build, simulate and audit the Alpha modules and install them by referendum; simulate Phase 3 with the new rules</td>
 </tr>
 <tr>
 <td>EVM and bridge</td>
@@ -789,18 +797,18 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 </tr>
 <tr>
 <td><code>alpha-assets</code></td>
-<td>Open</td>
-<td>Alpha coins with fixed tokenomics, if adopted</td>
+<td>2</td>
+<td>Alpha coins with fixed tokenomics, created only when bought</td>
 </tr>
 <tr>
 <td><code>amm</code></td>
-<td>Open</td>
-<td>Canonical ICT–Alpha pools, swaps and marketplace router, if adopted</td>
+<td>2</td>
+<td>Protocol-owned ICT–Alpha pools, swaps and marketplace router</td>
 </tr>
 <tr>
 <td><code>buyback</code></td>
-<td>Open</td>
-<td>Per-block buyback and burn, if adopted</td>
+<td>3</td>
+<td>Per-block purchase of Alpha with user revenue; half burned, half to Alpha stakers</td>
 </tr>
 <tr>
 <td><code>utility-metrics</code></td>
@@ -847,7 +855,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-s
 </tr>
 <tr>
 <td>Alpha coin</td>
-<td>A possible later per-subnet token (Section 6.5)</td>
+<td>A subnet's own transferable token (Alpha1 for Subnet 1, and so on), created only when bought and traded against ICT in the subnet's protocol-owned pool</td>
 </tr>
 <tr>
 <td>Yuma Consensus</td>
