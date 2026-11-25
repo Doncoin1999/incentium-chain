@@ -74,6 +74,7 @@ impl pallet_subnet_registry::Config for Test {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = RegistryTreasury;
     type Unlock = ();
+    type StakeInfo = Consensus;
     type OnRemoved = Consensus;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;

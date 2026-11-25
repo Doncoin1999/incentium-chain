@@ -572,9 +572,13 @@ pub mod pallet {
                 let mut r = alloc::vec![0u128; n];
                 for (uid, w) in row {
                     let u = uid as usize;
-                    // Spot checks (work-verify) cover SN0 work only.
-                    let penalized =
-                        netuid == SN0 && pallet_work_verify::Pallet::<T>::is_penalized(we, uid);
+                    // SN0: spot checks in work-verify. Later subnets: their own validators'
+                    // failed-work reports, if the subnet turned penalties on.
+                    let penalized = if netuid == SN0 {
+                        pallet_work_verify::Pallet::<T>::is_penalized(we, uid)
+                    } else {
+                        pallet_subnet_registry::Pallet::<T>::is_work_penalized(netuid, we, uid)
+                    };
                     if u < n && !penalized {
                         r[u] = w as u128;
                     }
@@ -631,7 +635,9 @@ pub mod pallet {
                     continue;
                 }
                 if let Some(hk) = Neurons::<T>::get(netuid, uid as u16) {
-                    if pallet_work_verify::Pallet::<T>::is_banned(&hk) {
+                    if pallet_work_verify::Pallet::<T>::is_banned(&hk)
+                        || pallet_subnet_registry::Pallet::<T>::is_banned_from(netuid, &hk)
+                    {
                         continue;
                     }
                     let amt = mul_div(to_miners, *inc, PPM);
@@ -667,6 +673,19 @@ pub mod pallet {
                     validators: vals,
                     owner: to_owner,
                 });
+            }
+        }
+    }
+
+    impl<T: Config> pallet_subnet_registry::SubnetStakeInfo<T::AccountId> for Pallet<T> {
+        fn stake_of(netuid: u16, who: &T::AccountId) -> u128 {
+            Self::stake_on(netuid, who)
+        }
+        fn total(netuid: u16) -> u128 {
+            if netuid == SN0 {
+                TotalStake::<T>::get()
+            } else {
+                SubnetTotalStake::<T>::get(netuid)
             }
         }
     }

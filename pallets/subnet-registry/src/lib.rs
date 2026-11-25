@@ -12,6 +12,13 @@
 //! - One slot at a time: the next auction starts `MinSpacing` (60 days) after a sale, and only
 //!   while fewer than `MaxSubnets` (8) subnets exist. A new subnet cannot be deregistered for
 //!   180 days.
+//! - Each subnet (SN1 and later) is controlled by one key, then optionally a multisig, then
+//!   optionally its stakers as a DAO; control only moves forward. The controller sets the
+//!   subnet's settings (neuron fee, slots, penalties) within the protocol's bounds and its
+//!   metadata. In DAO mode the stakers vote (5 days, weighed by stake at close) and the
+//!   decision is carried out at once; the owner share then goes to the subnet's DAO account.
+//! - Subnets may turn on penalties: validators holding 1/3 of the subnet's stake can take a
+//!   miner's incentive for an epoch; repeated penalties ban the hotkey from the subnet.
 //! - Neurons (miners and validators) register with a burned fee.
 //! - Each neuron declares a work tier (spec Section 5). Tier weight G, spot-check tolerance,
 //!   reference model and model hash per tier are on chain and set by governance; a tier
@@ -46,6 +53,22 @@ impl UnlockSignals for () {
     }
 }
 
+/// Stake on SN1 and later subnets (implemented by the consensus pallet), for subnet DAO votes
+/// and failed-work reports.
+pub trait SubnetStakeInfo<AccountId> {
+    fn stake_of(netuid: u16, who: &AccountId) -> u128;
+    fn total(netuid: u16) -> u128;
+}
+
+impl<AccountId> SubnetStakeInfo<AccountId> for () {
+    fn stake_of(_netuid: u16, _who: &AccountId) -> u128 {
+        0
+    }
+    fn total(_netuid: u16) -> u128 {
+        0
+    }
+}
+
 /// Told when a subnet is closed, so stake on it can be released.
 pub trait OnSubnetRemoved {
     fn subnet_removed(netuid: u16);
@@ -57,7 +80,7 @@ impl OnSubnetRemoved for () {
 
 #[polkadot_sdk::frame_support::pallet]
 pub mod pallet {
-    use crate::{OnSubnetRemoved, UnlockSignals, WeightInfo};
+    use crate::{OnSubnetRemoved, SubnetStakeInfo, UnlockSignals, WeightInfo};
     use ict_economics::registry::{auction_price, floor_price, payment_split, start_price};
     use ict_economics::BLOCKS_PER_DAY;
     use polkadot_sdk::frame_support::{
@@ -69,7 +92,9 @@ pub mod pallet {
         PalletId,
     };
     use polkadot_sdk::frame_system::pallet_prelude::*;
-    use polkadot_sdk::sp_runtime::traits::{AccountIdConversion, SaturatedConversion};
+    use polkadot_sdk::sp_runtime::traits::{
+        AccountIdConversion, SaturatedConversion, TrailingZeroInput,
+    };
     extern crate alloc;
     use alloc::vec::Vec;
 
@@ -185,6 +210,99 @@ pub mod pallet {
         pub swap_attested: bool,
     }
 
+    // ------------------------------------------------------------ subnet control
+
+    /// How a subnet (SN1 and later) is controlled. It can only move forward:
+    /// `Key` -> `Multisig` -> `Dao`, or `Key` -> `Dao`.
+    #[derive(
+        Clone,
+        Copy,
+        Encode,
+        Decode,
+        DecodeWithMemTracking,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+        Default,
+    )]
+    pub enum ControlKind {
+        /// One key: the owner account signs.
+        #[default]
+        Key,
+        /// The owner account is a multisig of the signatories in `MultisigOf`.
+        Multisig,
+        /// The subnet's stakers decide by vote; the owner share goes to the subnet's DAO account.
+        Dao,
+    }
+
+    /// Settings a subnet's controller may change, within the protocol's bounds.
+    #[derive(
+        Clone,
+        Copy,
+        Encode,
+        Decode,
+        DecodeWithMemTracking,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
+    pub struct SubnetParams {
+        /// Burned fee to register a neuron in this subnet.
+        pub neuron_fee: u128,
+        /// Neuron slots in this subnet.
+        pub max_neurons: u16,
+        /// Whether the subnet's validators can penalise miners for failed work.
+        pub penalties: bool,
+        /// Penalties inside `failure_window` epochs that ban a hotkey from the subnet.
+        pub max_failures: u8,
+        pub failure_window: u32,
+    }
+
+    /// What a subnet DAO can decide.
+    #[derive(
+        Clone, Encode, Decode, DecodeWithMemTracking, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen,
+    )]
+    pub enum SubnetAction<AccountId> {
+        SetParams(SubnetParams),
+        SetMetadata(SubnetMetadata),
+        /// Pay from the subnet's DAO account.
+        Spend {
+            to: AccountId,
+            amount: u128,
+        },
+    }
+
+    #[derive(
+        Clone, Encode, Decode, DecodeWithMemTracking, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen,
+    )]
+    pub struct Proposal<AccountId> {
+        pub action: SubnetAction<AccountId>,
+        pub proposer: AccountId,
+        /// Block from which the vote can be closed.
+        pub end: u32,
+    }
+
+    /// Bounds the protocol puts on subnet settings.
+    pub const MAX_NEURON_FEE: u128 = 1_000 * ict_economics::UNIT;
+    pub const MIN_NEURON_SLOTS: u16 = 16;
+    pub const MAX_FAILURES_LIMIT: u8 = 10;
+    /// Failure window between 1 and 90 days, in epochs of the runtime (20 per day).
+    pub const MIN_FAILURE_WINDOW: u32 = 20;
+    pub const MAX_FAILURE_WINDOW: u32 = 1_800;
+    pub const DEFAULT_FAILURE_WINDOW: u32 = 600;
+    pub const MAX_SIGNATORIES: u32 = 20;
+    /// Subnet DAO votes run 5 days (shorter than the 7-day unbonding, so stake cannot vote,
+    /// leave and vote again elsewhere in the same subnet).
+    pub const DAO_VOTE_BLOCKS: u32 = 5 * DAY;
+    /// A subnet DAO decision needs more aye than nay stake, and aye stake of at least 1/3 of
+    /// the subnet's stake. The same 1/3 is the quorum for failed-work reports.
+    pub const SUBNET_QUORUM_PPM: u128 = 333_334;
+    pub const MAX_REPORTERS: u32 = 64;
+
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
@@ -207,6 +325,8 @@ pub mod pallet {
         type Unlock: UnlockSignals;
         /// Called when a subnet is closed (consensus releases its stake).
         type OnRemoved: OnSubnetRemoved;
+        /// Stake per subnet (consensus), for subnet DAO votes and failed-work reports.
+        type StakeInfo: SubnetStakeInfo<Self::AccountId>;
         /// Burned fee to register a neuron.
         #[pallet::constant]
         type NeuronFee: Get<u128>;
@@ -280,6 +400,83 @@ pub mod pallet {
     #[pallet::storage]
     pub type MinerHistory<T> =
         StorageValue<_, BoundedVec<u32, ConstU32<MINER_WINDOW_DAYS>>, ValueQuery>;
+
+    #[pallet::storage]
+    pub type Control<T> = StorageMap<_, Twox64Concat, NetUid, ControlKind, ValueQuery>;
+
+    /// Multisig subnets: (threshold, sorted signatories).
+    #[pallet::storage]
+    pub type MultisigOf<T: Config> = StorageMap<
+        _,
+        Twox64Concat,
+        NetUid,
+        (u16, BoundedVec<T::AccountId, ConstU32<MAX_SIGNATORIES>>),
+        OptionQuery,
+    >;
+
+    /// Settings of a subnet; the protocol default applies when unset.
+    #[pallet::storage]
+    pub type Params<T> = StorageMap<_, Twox64Concat, NetUid, SubnetParams, OptionQuery>;
+
+    /// The open subnet DAO proposal (one at a time per subnet).
+    #[pallet::storage]
+    pub type Proposals<T: Config> =
+        StorageMap<_, Twox64Concat, NetUid, Proposal<T::AccountId>, OptionQuery>;
+
+    /// Votes on the open proposal: (netuid, voter) -> aye. Weighed by stake when closed.
+    #[pallet::storage]
+    pub type Votes<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        NetUid,
+        Blake2_128Concat,
+        T::AccountId,
+        bool,
+        OptionQuery,
+    >;
+
+    /// Failed-work reports: (netuid, epoch, uid) -> reporters.
+    #[pallet::storage]
+    pub type WorkReporters<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Twox64Concat, NetUid>,
+            NMapKey<Twox64Concat, u64>,
+            NMapKey<Twox64Concat, Uid>,
+        ),
+        BoundedVec<T::AccountId, ConstU32<MAX_REPORTERS>>,
+        ValueQuery,
+    >;
+
+    /// Miners penalised in a subnet epoch: they get no incentive for it.
+    #[pallet::storage]
+    pub type WorkPenalized<T> = StorageNMap<
+        _,
+        (
+            NMapKey<Twox64Concat, NetUid>,
+            NMapKey<Twox64Concat, u64>,
+            NMapKey<Twox64Concat, Uid>,
+        ),
+        (),
+        OptionQuery,
+    >;
+
+    /// Epochs in which each hotkey was penalised in a subnet.
+    #[pallet::storage]
+    pub type WorkFailures<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        NetUid,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<u64, ConstU32<{ MAX_FAILURES_LIMIT as u32 }>>,
+        ValueQuery,
+    >;
+
+    /// Hotkeys banned from a subnet: no more payouts there.
+    #[pallet::storage]
+    pub type SubnetBanned<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Blake2_128Concat, T::AccountId, (), OptionQuery>;
 
     #[pallet::storage]
     pub type Neurons<T: Config> =
@@ -482,6 +679,61 @@ pub mod pallet {
             day: u32,
             average: u32,
         },
+        OwnershipTransferred {
+            netuid: NetUid,
+            to: T::AccountId,
+        },
+        ControlChanged {
+            netuid: NetUid,
+            control: ControlKind,
+            owner: T::AccountId,
+        },
+        ParamsSet {
+            netuid: NetUid,
+            params: SubnetParams,
+        },
+        MetadataSet {
+            netuid: NetUid,
+        },
+        Proposed {
+            netuid: NetUid,
+            proposer: T::AccountId,
+            end: u32,
+        },
+        Voted {
+            netuid: NetUid,
+            voter: T::AccountId,
+            aye: bool,
+        },
+        /// A subnet DAO vote closed; `passed` tells whether the action was carried out.
+        ProposalClosed {
+            netuid: NetUid,
+            passed: bool,
+            ayes: u128,
+            nays: u128,
+        },
+        DaoSpent {
+            netuid: NetUid,
+            to: T::AccountId,
+            amount: u128,
+        },
+        WorkFailureReported {
+            netuid: NetUid,
+            epoch: u64,
+            uid: Uid,
+            reporter: T::AccountId,
+            evidence: [u8; 32],
+        },
+        WorkPenalised {
+            netuid: NetUid,
+            epoch: u64,
+            uid: Uid,
+            hotkey: T::AccountId,
+        },
+        BannedFromSubnet {
+            netuid: NetUid,
+            hotkey: T::AccountId,
+        },
     }
 
     #[pallet::error]
@@ -521,6 +773,30 @@ pub mod pallet {
         SpacingTooShort,
         /// The cap must be at least the current number of subnets and at most 256.
         BadMaxSubnets,
+        /// Only the subnet's controller (owner key or multisig) may do this.
+        NotController,
+        /// SN0 is governed by Incentium governance.
+        Sn0HasNoOwner,
+        /// The subnet is run by its DAO: use a proposal.
+        DaoControlled,
+        /// Control can only move forward (Key -> Multisig -> Dao).
+        ControlCannotGoBack,
+        /// Ownership can only be handed over while one key controls the subnet.
+        OnlyKeyCanTransfer,
+        BadSignatories,
+        /// A setting is outside the protocol's bounds.
+        ParamOutOfBounds,
+        /// The subnet is not run by a DAO.
+        NotDao,
+        ProposalOpen,
+        NoProposal,
+        VoteStillOpen,
+        VoteClosed,
+        /// Only stakers of the subnet may propose, vote or report.
+        NotStaker,
+        PenaltiesOff,
+        AlreadyReported,
+        TooManyReporters,
     }
 
     #[pallet::call]
@@ -616,6 +892,7 @@ pub mod pallet {
             let was_full = SubnetCount::<T>::get() >= MaxSubnets::<T>::get();
             Subnets::<T>::remove(netuid);
             Metadata::<T>::remove(netuid);
+            Self::clear_control(netuid);
             let _ = Neurons::<T>::clear_prefix(netuid, u32::MAX, None);
             let _ = NeuronUid::<T>::clear_prefix(netuid, u32::MAX, None);
             let _ = Endpoints::<T>::clear_prefix(netuid, u32::MAX, None);
@@ -645,7 +922,11 @@ pub mod pallet {
                 Error::<T>::AlreadyRegistered
             );
             let uid = NeuronCount::<T>::get(netuid);
-            ensure!(uid < T::MaxNeurons::get(), Error::<T>::SubnetFull);
+            let params = Self::params(netuid);
+            ensure!(
+                uid < params.max_neurons.min(T::MaxNeurons::get()),
+                Error::<T>::SubnetFull
+            );
             if Self::in_bootstrap() {
                 // Bootstrap: the operator registers its own hotkeys, without a fee.
                 ensure!(
@@ -655,7 +936,7 @@ pub mod pallet {
             } else {
                 T::Currency::burn_from(
                     &who,
-                    T::NeuronFee::get(),
+                    params.neuron_fee,
                     Preservation::Preserve,
                     Precision::Exact,
                     Fortitude::Polite,
@@ -836,6 +1117,290 @@ pub mod pallet {
             Self::deposit_event(Event::MaxSubnetsSet { max });
             Ok(())
         }
+
+        // -------------------------------------------------------- subnet control
+
+        /// Hand the subnet to another single key (controller, `Key` mode only).
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(2, 1))]
+        pub fn transfer_ownership(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            to: T::AccountId,
+        ) -> DispatchResult {
+            Self::ensure_controller(origin, netuid)?;
+            ensure!(
+                Control::<T>::get(netuid) == ControlKind::Key,
+                Error::<T>::OnlyKeyCanTransfer
+            );
+            Self::set_owner(netuid, to.clone());
+            Self::deposit_event(Event::OwnershipTransferred { netuid, to });
+            Ok(())
+        }
+
+        /// Move control to a multisig of `signatories` (2..=20) with `threshold` (2..=n).
+        /// The owner account becomes the multisig account (same derivation as
+        /// `pallet-multisig`), which then signs through `pallet-multisig`.
+        #[pallet::call_index(12)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(2, 3))]
+        pub fn set_multisig(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            mut signatories: Vec<T::AccountId>,
+            threshold: u16,
+        ) -> DispatchResult {
+            Self::ensure_controller(origin, netuid)?;
+            ensure!(
+                Control::<T>::get(netuid) == ControlKind::Key,
+                Error::<T>::ControlCannotGoBack
+            );
+            signatories.sort();
+            signatories.dedup();
+            let n = signatories.len();
+            ensure!(
+                n >= 2
+                    && n <= MAX_SIGNATORIES as usize
+                    && threshold >= 2
+                    && threshold as usize <= n,
+                Error::<T>::BadSignatories
+            );
+            let account = Self::multi_account_id(&signatories, threshold);
+            let bounded: BoundedVec<T::AccountId, ConstU32<MAX_SIGNATORIES>> = signatories
+                .try_into()
+                .map_err(|_| Error::<T>::BadSignatories)?;
+            MultisigOf::<T>::insert(netuid, (threshold, bounded));
+            Control::<T>::insert(netuid, ControlKind::Multisig);
+            Self::set_owner(netuid, account.clone());
+            Self::deposit_event(Event::ControlChanged {
+                netuid,
+                control: ControlKind::Multisig,
+                owner: account,
+            });
+            Ok(())
+        }
+
+        /// Hand the subnet to its stakers for good. The owner share is paid to the subnet's
+        /// DAO account, which only DAO votes can spend.
+        #[pallet::call_index(13)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(2, 3))]
+        pub fn set_dao(origin: OriginFor<T>, netuid: NetUid) -> DispatchResult {
+            Self::ensure_controller(origin, netuid)?;
+            let account = Self::dao_account(netuid);
+            MultisigOf::<T>::remove(netuid);
+            Control::<T>::insert(netuid, ControlKind::Dao);
+            Self::set_owner(netuid, account.clone());
+            Self::deposit_event(Event::ControlChanged {
+                netuid,
+                control: ControlKind::Dao,
+                owner: account,
+            });
+            Ok(())
+        }
+
+        /// Change the subnet's settings (controller), within the protocol's bounds.
+        #[pallet::call_index(14)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(2, 1))]
+        pub fn set_params(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            params: SubnetParams,
+        ) -> DispatchResult {
+            Self::ensure_controller(origin, netuid)?;
+            Self::apply_params(netuid, params)
+        }
+
+        /// Update name, description and incentive-code hash (controller), e.g. for a new
+        /// release of the incentive mechanism.
+        #[pallet::call_index(15)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(2, 1))]
+        pub fn set_metadata(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            name: Vec<u8>,
+            description: Vec<u8>,
+            code_hash: [u8; 32],
+        ) -> DispatchResult {
+            Self::ensure_controller(origin, netuid)?;
+            let meta = Self::make_metadata(name, description, code_hash)?;
+            Metadata::<T>::insert(netuid, meta);
+            Self::deposit_event(Event::MetadataSet { netuid });
+            Ok(())
+        }
+
+        /// Open a vote in a DAO subnet (any staker of the subnet; one vote at a time).
+        #[pallet::call_index(16)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(4, 2))]
+        pub fn propose(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            action: SubnetAction<T::AccountId>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(
+                Control::<T>::get(netuid) == ControlKind::Dao,
+                Error::<T>::NotDao
+            );
+            ensure!(
+                T::StakeInfo::stake_of(netuid, &who) > 0,
+                Error::<T>::NotStaker
+            );
+            ensure!(
+                !Proposals::<T>::contains_key(netuid),
+                Error::<T>::ProposalOpen
+            );
+            // Check the action can be carried out before anyone votes on it.
+            match &action {
+                SubnetAction::SetParams(p) => Self::check_params(p)?,
+                SubnetAction::SetMetadata(m) => ensure!(!m.name.is_empty(), Error::<T>::EmptyName),
+                SubnetAction::Spend { .. } => {}
+            }
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            let end = now.saturating_add(DAO_VOTE_BLOCKS);
+            Proposals::<T>::insert(
+                netuid,
+                Proposal {
+                    action,
+                    proposer: who.clone(),
+                    end,
+                },
+            );
+            Votes::<T>::insert(netuid, &who, true);
+            Self::deposit_event(Event::Proposed {
+                netuid,
+                proposer: who,
+                end,
+            });
+            Ok(())
+        }
+
+        /// Vote on the open proposal (stakers of the subnet). A later vote replaces an
+        /// earlier one. Votes are weighed by each voter's stake when the vote closes.
+        #[pallet::call_index(17)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(3, 1))]
+        pub fn vote(origin: OriginFor<T>, netuid: NetUid, aye: bool) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let p = Proposals::<T>::get(netuid).ok_or(Error::<T>::NoProposal)?;
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            ensure!(now < p.end, Error::<T>::VoteClosed);
+            ensure!(
+                T::StakeInfo::stake_of(netuid, &who) > 0,
+                Error::<T>::NotStaker
+            );
+            Votes::<T>::insert(netuid, &who, aye);
+            Self::deposit_event(Event::Voted {
+                netuid,
+                voter: who,
+                aye,
+            });
+            Ok(())
+        }
+
+        /// Close a vote whose period is over (anyone). If aye stake exceeds nay stake and is
+        /// at least 1/3 of the subnet's stake, the action is carried out at once.
+        #[pallet::call_index(18)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(4 + 2 * T::MaxNeurons::get() as u64, 4 + T::MaxNeurons::get() as u64))]
+        pub fn close_proposal(origin: OriginFor<T>, netuid: NetUid) -> DispatchResult {
+            ensure_signed(origin)?;
+            let p = Proposals::<T>::get(netuid).ok_or(Error::<T>::NoProposal)?;
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            ensure!(now >= p.end, Error::<T>::VoteStillOpen);
+            let (mut ayes, mut nays) = (0u128, 0u128);
+            for (voter, aye) in Votes::<T>::drain_prefix(netuid) {
+                let st = T::StakeInfo::stake_of(netuid, &voter);
+                if aye {
+                    ayes = ayes.saturating_add(st);
+                } else {
+                    nays = nays.saturating_add(st);
+                }
+            }
+            Proposals::<T>::remove(netuid);
+            let total = T::StakeInfo::total(netuid);
+            let quorum = ict_economics::mul_div(total, SUBNET_QUORUM_PPM, ict_economics::PPM);
+            let mut passed = ayes > nays && ayes >= quorum && ayes > 0;
+            if passed {
+                passed = Self::carry_out(netuid, p.action).is_ok();
+            }
+            Self::deposit_event(Event::ProposalClosed {
+                netuid,
+                passed,
+                ayes,
+                nays,
+            });
+            Ok(())
+        }
+
+        /// A validator of the subnet reports that miner `uid` failed its work in `epoch`.
+        /// When reporters holding at least 1/3 of the subnet's stake agree, the miner gets
+        /// no incentive for that epoch; `max_failures` penalties inside `failure_window`
+        /// epochs ban the hotkey from the subnet. Only for subnets that turned penalties on.
+        #[pallet::call_index(19)]
+        #[pallet::weight(T::DbWeight::get().reads_writes(8, 5))]
+        pub fn report_failed_work(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            epoch: u64,
+            uid: Uid,
+            evidence: [u8; 32],
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(netuid != SN0, Error::<T>::Sn0HasNoOwner);
+            let params = Self::params(netuid);
+            ensure!(params.penalties, Error::<T>::PenaltiesOff);
+            ensure!(
+                T::StakeInfo::stake_of(netuid, &who) > 0,
+                Error::<T>::NotStaker
+            );
+            let hotkey = Neurons::<T>::get(netuid, uid).ok_or(Error::<T>::NotRegistered)?;
+            let reporters = WorkReporters::<T>::try_mutate(
+                (netuid, epoch, uid),
+                |r| -> Result<Vec<T::AccountId>, DispatchError> {
+                    ensure!(!r.contains(&who), Error::<T>::AlreadyReported);
+                    r.try_push(who.clone())
+                        .map_err(|_| Error::<T>::TooManyReporters)?;
+                    Ok(r.to_vec())
+                },
+            )?;
+            Self::deposit_event(Event::WorkFailureReported {
+                netuid,
+                epoch,
+                uid,
+                reporter: who,
+                evidence,
+            });
+            if WorkPenalized::<T>::contains_key((netuid, epoch, uid)) {
+                return Ok(());
+            }
+            // Reporter stake counted as it stands now, so moved stake cannot count twice.
+            let reported: u128 = reporters
+                .iter()
+                .map(|r| T::StakeInfo::stake_of(netuid, r))
+                .fold(0, |a, b| a.saturating_add(b));
+            let quorum = ict_economics::mul_div(T::StakeInfo::total(netuid), SUBNET_QUORUM_PPM, 1)
+                .div_ceil(ict_economics::PPM);
+            if reported >= quorum && reported > 0 {
+                WorkPenalized::<T>::insert((netuid, epoch, uid), ());
+                Self::deposit_event(Event::WorkPenalised {
+                    netuid,
+                    epoch,
+                    uid,
+                    hotkey: hotkey.clone(),
+                });
+                let window_start = epoch.saturating_sub(params.failure_window as u64);
+                let count = WorkFailures::<T>::mutate(netuid, &hotkey, |f| {
+                    f.retain(|e| *e >= window_start);
+                    if f.is_full() {
+                        f.remove(0);
+                    }
+                    let _ = f.try_push(epoch);
+                    f.len() as u32
+                });
+                if count >= params.max_failures as u32 {
+                    SubnetBanned::<T>::insert(netuid, &hotkey, ());
+                    Self::deposit_event(Event::BannedFromSubnet { netuid, hotkey });
+                }
+            }
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -964,6 +1529,138 @@ pub mod pallet {
                 start_price: Self::next_start_price(),
             });
             true
+        }
+
+        /// Settings of a subnet (the protocol default when unset).
+        pub fn params(netuid: NetUid) -> SubnetParams {
+            Params::<T>::get(netuid).unwrap_or(SubnetParams {
+                neuron_fee: T::NeuronFee::get(),
+                max_neurons: T::MaxNeurons::get(),
+                penalties: false,
+                max_failures: 3,
+                failure_window: DEFAULT_FAILURE_WINDOW,
+            })
+        }
+
+        fn check_params(p: &SubnetParams) -> DispatchResult {
+            ensure!(
+                p.neuron_fee >= T::NeuronFee::get()
+                    && p.neuron_fee <= MAX_NEURON_FEE
+                    && p.max_neurons >= MIN_NEURON_SLOTS.min(T::MaxNeurons::get())
+                    && p.max_neurons <= T::MaxNeurons::get()
+                    && p.max_failures >= 1
+                    && p.max_failures <= MAX_FAILURES_LIMIT
+                    && p.failure_window >= MIN_FAILURE_WINDOW
+                    && p.failure_window <= MAX_FAILURE_WINDOW,
+                Error::<T>::ParamOutOfBounds
+            );
+            Ok(())
+        }
+
+        fn apply_params(netuid: NetUid, params: SubnetParams) -> DispatchResult {
+            Self::check_params(&params)?;
+            // Fewer slots than neurons already registered would strand them.
+            ensure!(
+                params.max_neurons >= NeuronCount::<T>::get(netuid),
+                Error::<T>::ParamOutOfBounds
+            );
+            Params::<T>::insert(netuid, params);
+            Self::deposit_event(Event::ParamsSet { netuid, params });
+            Ok(())
+        }
+
+        fn make_metadata(
+            name: Vec<u8>,
+            description: Vec<u8>,
+            code_hash: [u8; 32],
+        ) -> Result<SubnetMetadata, DispatchError> {
+            ensure!(!name.is_empty(), Error::<T>::EmptyName);
+            Ok(SubnetMetadata {
+                name: name.try_into().map_err(|_| Error::<T>::NameTooLong)?,
+                description: description
+                    .try_into()
+                    .map_err(|_| Error::<T>::DescriptionTooLong)?,
+                code_hash,
+            })
+        }
+
+        /// The signed caller must be the owner of a subnet that is not run by its DAO.
+        fn ensure_controller(origin: OriginFor<T>, netuid: NetUid) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(netuid != SN0, Error::<T>::Sn0HasNoOwner);
+            let info = Subnets::<T>::get(netuid).ok_or(Error::<T>::NoSuchSubnet)?;
+            ensure!(
+                Control::<T>::get(netuid) != ControlKind::Dao,
+                Error::<T>::DaoControlled
+            );
+            ensure!(info.owner.as_ref() == Some(&who), Error::<T>::NotController);
+            Ok(())
+        }
+
+        fn set_owner(netuid: NetUid, owner: T::AccountId) {
+            Subnets::<T>::mutate(netuid, |i| {
+                if let Some(i) = i {
+                    i.owner = Some(owner);
+                }
+            });
+        }
+
+        fn carry_out(netuid: NetUid, action: SubnetAction<T::AccountId>) -> DispatchResult {
+            match action {
+                SubnetAction::SetParams(p) => Self::apply_params(netuid, p),
+                SubnetAction::SetMetadata(m) => {
+                    Metadata::<T>::insert(netuid, m);
+                    Self::deposit_event(Event::MetadataSet { netuid });
+                    Ok(())
+                }
+                SubnetAction::Spend { to, amount } => {
+                    T::Currency::transfer(
+                        &Self::dao_account(netuid),
+                        &to,
+                        amount,
+                        Preservation::Expendable,
+                    )?;
+                    Self::deposit_event(Event::DaoSpent { netuid, to, amount });
+                    Ok(())
+                }
+            }
+        }
+
+        fn clear_control(netuid: NetUid) {
+            Control::<T>::remove(netuid);
+            MultisigOf::<T>::remove(netuid);
+            Params::<T>::remove(netuid);
+            Proposals::<T>::remove(netuid);
+            let _ = Votes::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = WorkReporters::<T>::clear_prefix((netuid,), u32::MAX, None);
+            let _ = WorkPenalized::<T>::clear_prefix((netuid,), u32::MAX, None);
+            let _ = WorkFailures::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = SubnetBanned::<T>::clear_prefix(netuid, u32::MAX, None);
+        }
+
+        /// The subnet's DAO account: receives the owner share once the subnet is run by its
+        /// DAO; only DAO votes spend from it.
+        pub fn dao_account(netuid: NetUid) -> T::AccountId {
+            T::PalletId::get().into_sub_account_truncating((b"dao", netuid))
+        }
+
+        /// Same derivation as `pallet_multisig::Pallet::multi_account_id` (sorted signatories).
+        pub fn multi_account_id(signatories: &[T::AccountId], threshold: u16) -> T::AccountId {
+            use polkadot_sdk::sp_runtime::traits::{BlakeTwo256, Hash};
+            // blake2_256 of the encoding, as pallet-multisig computes it.
+            let entropy = (b"modlpy/utilisuba", signatories, threshold)
+                .using_encoded(|b| BlakeTwo256::hash(b));
+            Decode::decode(&mut TrailingZeroInput::new(entropy.as_ref()))
+                .expect("infinite length input; no invalid inputs for type; qed")
+        }
+
+        /// Miner `uid` was penalised in subnet epoch `epoch` (SN1 and later).
+        pub fn is_work_penalized(netuid: NetUid, epoch: u64, uid: Uid) -> bool {
+            WorkPenalized::<T>::contains_key((netuid, epoch, uid))
+        }
+
+        pub fn is_banned_from(netuid: NetUid, who: &T::AccountId) -> bool {
+            SubnetBanned::<T>::contains_key(netuid, who)
         }
 
         fn next_free_netuid() -> Option<NetUid> {

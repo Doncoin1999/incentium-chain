@@ -1,6 +1,6 @@
 [package]
 name = "pallet-subnet-registry"
-description = "Incentium subnets and neurons: SN0 at genesis, deposit-priced subnet registration from Phase 2, neuron registration with burned fee."
+description = "Incentium subnets and neurons: SN0 at genesis, automatic unlock and Dutch-auction subnet registration, subnet control (key, multisig, DAO), neuron registration with burned fee."
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
