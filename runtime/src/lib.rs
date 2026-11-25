@@ -62,7 +62,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_version: 10,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
-    transaction_version: 1,
+    // 2: spec 10 changed registry.register_subnet and call index 3 (now try_unlock).
+    transaction_version: 2,
     system_version: 1,
 };
 
