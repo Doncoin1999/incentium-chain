@@ -22,6 +22,7 @@ PAGES = {                                   # page -> shared parts it carries
     "site/spec/index.html": ["topbar", "footer"],   # made by scripts/build_docs.py
     "site/whitepaper/index.html": ["topbar", "footer"],
     "site/events/index.html": ["topbar", "footer"],
+    "site/subnets/index.html": ["topbar", "footer"],
 }
 PARTS = ["topbar", "footer"]
 

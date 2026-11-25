@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Incentium Technical Specification v0.1 · Incentium</title>
+<title>Incentium Technical Specification v0.2 · Incentium</title>
 <meta name="description" content="The rules of the Incentium chain, module by module, with the simulation results behind them.">
 <link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
@@ -84,7 +84,8 @@
 body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
 body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
 body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
-body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
+body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
 @media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
 @media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
 </style>
@@ -97,6 +98,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
       <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
       <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
       <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
       <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
       <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
       <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
@@ -175,9 +177,9 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
   <article>
     <header class="doc-head">
       <div class="kind">Technical specification</div>
-      <h1>Incentium Technical Specification v0.1</h1>
-      <div class="by">Nov 20, 2026 · <strong>Ichiro Pakeshi Miyamoto</strong></div>
-      <div class="dl"><a class="main" href="incentium-technical-specification-v0.1.pdf" download>Download PDF</a> <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/site/docs/technical-specification.md">Markdown source</a></div>
+      <h1>Incentium Technical Specification v0.2</h1>
+      <div class="by">Nov 25, 2026 · <strong>Ichiro Pakeshi Miyamoto</strong></div>
+      <div class="dl"><a class="main" href="incentium-technical-specification-v0.2.pdf" download>Download PDF</a> <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/site/docs/technical-specification.md">Markdown source</a></div>
       <details class="mtoc"><summary>Contents</summary>
     <ol>
       <li><a href="#1-scope-and-conventions">1. Scope and conventions</a>
@@ -244,7 +246,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
       </details>
     </header>
 <h2 id="1-scope-and-conventions">1. Scope and conventions<a class="anchor" href="#1-scope-and-conventions" aria-label="Link to this section">#</a></h2>
-<p>Incentium (incentium.org) is the name of the network; its native coin is ICT. This specification turns the Incentium whitepaper (v0.1) into rules precise enough to build and test. It is the output of step 1 of the build plan and the input to step 2 (the chain). It defines each on-chain module's state, calls and rules, and records what the economic simulation says about the proposed parameters.</p>
+<p>Incentium (incentium.org) is the name of the network; its native coin is ICT. This specification turns the Incentium whitepaper (v0.2) into rules precise enough to build and test. It is the output of step 1 of the build plan and the input to step 2 (the chain). It defines each on-chain module's state, calls and rules, and records what the economic simulation says about the proposed parameters.</p>
 <ul>
 <li><strong>Status:</strong> Draft. Parameters marked <em>proposed</em> may change after further simulation; parameters marked <em>protected</em> can only be changed by a 75% supermajority and a 30-day time-lock.</li>
 <li><strong>Units:</strong> ICT and Alpha amounts are fixed-point integers with 9 decimals (1 ICT = 10⁹ base units). All percentages are stored as parts per million. Addresses use the standard Substrate SS58 format (prefix 42), so they start with 5.</li>
@@ -410,7 +412,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </ul>
 <p><strong>Calls:</strong> none for users. Governance can change the fund share and the fund account.</p>
 <h2 id="4-module-subnet-registry">4. Module <code>subnet-registry</code><a class="anchor" href="#4-module-subnet-registry" aria-label="Link to this section">#</a></h2>
-<p>Opens and closes subnets against a locked deposit, registers miner and validator keys, and seeds each new subnet's pool.</p>
+<p>Sells subnet slots by Dutch auction once registration has unlocked, registers miner and validator keys, and closes subnets. Rules decided 25 Nov 2026 (subnet registration specification); runtime 10, on the testnet since 25 Nov 2026 and planned on mainnet before day 90.</p>
 <p><strong>State</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -424,17 +426,42 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 <tr>
 <td><code>Subnets</code></td>
 <td>map netuid → SubnetInfo</td>
-<td>Owner, created block, deposit, status</td>
+<td>Owner, created block, price paid</td>
 </tr>
 <tr>
-<td><code>LastRegPrice</code>, <code>LastRegBlock</code></td>
-<td>u128, BlockNumber</td>
-<td>Basis for the dynamic deposit price</td>
+<td><code>Metadata</code></td>
+<td>map netuid → SubnetMetadata</td>
+<td>Name (≤ 64 bytes), description (≤ 512 bytes), hash of the incentive code</td>
+</tr>
+<tr>
+<td><code>Phase2Enabled</code></td>
+<td>bool</td>
+<td>Registration has unlocked; never locks again</td>
+</tr>
+<tr>
+<td><code>AuctionStart</code>, <code>Sales</code>, <code>LastSalePrice</code></td>
+<td>BlockNumber, u32, u128</td>
+<td>Current auction and price basis</td>
 </tr>
 <tr>
 <td><code>MaxSubnets</code></td>
 <td>u16</td>
-<td>32 (<em>proposed</em>); SN0 does not count</td>
+<td>8 until governance raises it; SN0 does not count</td>
+</tr>
+<tr>
+<td><code>MinSpacing</code></td>
+<td>u32</td>
+<td>60 days from a sale to the next auction; governance may lower it to 30</td>
+</tr>
+<tr>
+<td><code>MinerHistory</code>, <code>MinerDay</code></td>
+<td>30 daily averages, running tally</td>
+<td>Active SN0 miners for the unlock criterion</td>
+</tr>
+<tr>
+<td><code>SwapAttested</code></td>
+<td>contract, audit hash</td>
+<td>Governance's attestation of the audited, immutable Base swap contract</td>
 </tr>
 <tr>
 <td><code>Neurons</code></td>
@@ -443,8 +470,23 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </tr>
 </tbody>
 </table></div>
-<p><strong>Deposit price</strong></p>
-<p>Price now = max(1,000 ICT, 2 × last price × (1 − days since last registration / 14)). Each registration doubles the price, which then decays linearly back to the floor over 14 days.</p>
+<p><strong>Unlock.</strong> Registration unlocks by itself in the first daily check (every 7,200 blocks) where all of these hold; anyone may also call <code>try_unlock</code>:</p>
+<ol>
+<li>Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).</li>
+<li>At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.</li>
+<li>Sudo removed and at least 3 approved referenda.</li>
+<li><code>attest_swap</code> passed by referendum: the Base swap contract is audited and has no pause guardian.</li>
+</ol>
+<p><strong>Auction price.</strong> The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.</p>
+<p><strong>Payment.</strong> Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When <code>alpha-assets</code> and <code>amm</code> arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.</p>
+<p><strong>Pace.</strong> One slot at a time. After a sale the next auction starts <code>MinSpacing</code> later, and only while fewer than <code>MaxSubnets</code> exist. A full cap does not push anyone out: the auction waits until a slot frees up or the cap rises, and a waiting auction then starts at once.</p>
+<p><strong>Removal.</strong> No subnet is voted out for being weak. A subnet can leave in only two ways, and nothing is refunded in either:</p>
+<ol>
+<li><strong>Dead</strong> (<code>remove_dead_subnet</code>, anyone): past its 180-day immunity, and no epoch in the last 30 days paid at least 3 distinct miners.</li>
+<li><strong>Emergency brake</strong> (<code>deregister_subnet</code>, Incentium governance on the Root track: 75 % approval, one week before it takes effect): against abuse; works during the immunity too.</li>
+</ol>
+<p>Stake on a removed subnet moves to the unbonding queue.</p>
+<p><strong>Cap ladder.</strong> The cap doubles by itself, 8 → 16 → 32 → 64 → 128 → 256, at the daily check when all of these hold: every slot has been taken for 90 days; at least 75 % of the subnets paid at least 10 miners per epoch on average over 30 days; 180 days since the last raise (by the ladder or by governance); and not before day 775 (1 January 2029 on mainnet). Governance can also raise the cap at any time, up to 256. Settlement is spread over the epoch (Section 6), so 256 subnets need no further code.</p>
 <p><strong>Calls</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -456,30 +498,104 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </thead>
 <tbody>
 <tr>
-<td><code>register_subnet(max_deposit)</code></td>
-<td>Anyone (Phase ≥ 2)</td>
-<td>Locks the deposit, creates the subnet and seeds its pool; fails if the price exceeds <code>max_deposit</code></td>
+<td><code>register_subnet(max_price, name, description, code_hash)</code></td>
+<td>Anyone, while an auction runs</td>
+<td>Pays the current price, creates the subnet and publishes its metadata; fails if the price exceeds <code>max_price</code></td>
+</tr>
+<tr>
+<td><code>try_unlock()</code></td>
+<td>Anyone</td>
+<td>Unlocks now if every criterion holds</td>
 </tr>
 <tr>
 <td><code>deregister_subnet(netuid)</code></td>
-<td>Protocol</td>
-<td>Closes a subnet; see below</td>
+<td>Governance</td>
+<td>Emergency brake; nothing is refunded</td>
+</tr>
+<tr>
+<td><code>remove_dead_subnet(netuid)</code></td>
+<td>Anyone</td>
+<td>Removes a dead subnet (above); nothing is refunded</td>
+</tr>
+<tr>
+<td><code>attest_swap(contract, audit_hash)</code></td>
+<td>Governance, once</td>
+<td>Unlock criterion 4</td>
+</tr>
+<tr>
+<td><code>set_min_spacing(blocks)</code>, <code>set_max_subnets(max)</code></td>
+<td>Governance</td>
+<td>Pace and cap, within bounds</td>
 </tr>
 <tr>
 <td><code>register_neuron(netuid, hotkey)</code></td>
 <td>Anyone</td>
-<td>Burns the registration fee and assigns a uid; replaces the lowest-scoring neuron when the subnet is full</td>
+<td>Burns the subnet's registration fee and assigns a uid</td>
 </tr>
 <tr>
-<td><code>set_subnet_identity(netuid, meta)</code></td>
-<td>Owner</td>
-<td>Name, URL, description</td>
+<td><code>transfer_ownership</code>, <code>set_multisig</code>, <code>set_dao</code>, <code>set_params</code>, <code>set_metadata</code></td>
+<td>Subnet controller</td>
+<td>Subnet control, above</td>
+</tr>
+<tr>
+<td><code>propose</code>, <code>vote</code>, <code>close_proposal</code></td>
+<td>Subnet stakers (close: anyone)</td>
+<td>Subnet DAO votes</td>
+</tr>
+<tr>
+<td><code>report_failed_work(netuid, epoch, uid, evidence)</code></td>
+<td>Subnet validators</td>
+<td>Penalties in subnets</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Pool seeding:</strong> The locked deposit becomes the ICT side of the new pool, and an equal amount of Alpha is minted for the other side, so the opening price is 1 ICT per Alpha. The seed position is owned by the protocol on the owner's behalf and cannot be withdrawn while the subnet is live.</p>
-<p><strong>Deregistration:</strong> After a 30-day immunity period, when <code>MaxSubnets</code> is reached and a new subnet registers, the subnet with the lowest 30-day utility score is closed. Its seed position is withdrawn from the pool; 90% of the ICT is returned to the owner and 10% is burned. Remaining Alpha stakers are paid out in ICT from the pool at the closing price, and the Alpha supply is retired.</p>
-<p><strong>Open point:</strong> The returned deposit can be worth more or less than the original 1,000+ ICT, depending on the pool price at closing. Decided (14 Nov 2026): the ICT side is returned as it stands in the pool at closing; no nominal guarantee.</p>
+<p><strong>Subnet control (SN1 and later).</strong> Control only moves forward:</p>
+<ol>
+<li><strong>One key</strong> (at registration): the owner signs.</li>
+<li><strong>Multisig</strong> (<code>set_multisig(signatories, threshold)</code>, 2–20 signatories, threshold ≥ 2): the owner becomes the multisig account, derived as in <code>pallet-multisig</code>, and acts through it.</li>
+<li><strong>Subnet DAO</strong> (<code>set_dao</code>): the owner becomes the subnet's DAO account, which receives the 12 % owner share. Any staker of the subnet may <code>propose</code> one action at a time: change settings, change metadata, or spend from the DAO account. Votes run 5 days (shorter than the 7-day unbonding) and are weighed by each voter's stake when the vote closes. <code>close_proposal</code> (anyone) carries the action out at once if aye stake exceeds nay stake and is at least 1/3 of the subnet's stake.</li>
+</ol>
+<p>A subnet can be sold or handed to another single key (<code>transfer_ownership</code>) while one key or a multisig controls it; the new owner starts again as one key. A DAO subnet stays with its stakers.</p>
+<p>The controller (owner key, multisig, or the DAO by vote) sets the subnet's settings within the protocol's bounds, and its metadata (<code>set_metadata</code>, e.g. a new incentive-code hash for a new release):</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Bounds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>neuron_fee</code> (burned per neuron registration)</td>
+<td>1 ICT</td>
+<td>1–1,000 ICT</td>
+</tr>
+<tr>
+<td><code>max_neurons</code></td>
+<td>256</td>
+<td>16–256, and not below the neurons already registered</td>
+</tr>
+<tr>
+<td><code>penalties</code></td>
+<td>off</td>
+<td>on / off</td>
+</tr>
+<tr>
+<td><code>max_failures</code></td>
+<td>3</td>
+<td>1–10</td>
+</tr>
+<tr>
+<td><code>failure_window</code> (epochs)</td>
+<td>600 (30 days)</td>
+<td>20–1,800 (1–90 days)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Penalties in subnets.</strong> With penalties on, a validator of the subnet reports a miner's failed work with <code>report_failed_work(netuid, epoch, uid, evidence)</code>. When reporters holding at least half of the subnet's active stake (the stake of validators whose weights counted in the last settled epoch) agree, the miner gets no incentive for that epoch; <code>max_failures</code> penalties inside <code>failure_window</code> ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point; slashing will need 2/3 of active stake). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.</p>
+<p><strong>Runtime API and subnet page.</strong> <code>SubnetRegistryApi</code> answers <code>unlock_status</code>, <code>auction</code>, <code>price_at(block)</code> and <code>subnets</code> (with each subnet's current share of issuance), so any client reads the same figures the chain uses. incentium.org/subnets shows them live: progress on the four unlock criteria, the auction price now and in 1, 3 and 7 days, and every subnet.</p>
+<p><strong>Open points:</strong> whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
 <p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
@@ -528,13 +644,14 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 <p>One model family across all tiers keeps the tokenizer and output format identical, which simplifies spot checks. Tiers 0, 1 and 2 use dense models, whose outputs vary less between machines than mixture-of-experts models; tier 3 gets a wider tolerance. The exact weight files are pinned by hash at genesis, together with the inference engine version. Alternative if a non-Qwen family is preferred: gpt-oss-20b (fits in 16 GB) and gpt-oss-120b (one 80 GB GPU), also Apache 2.0. <em>Decided 14 Nov 2026.</em></p>
 <p>G values are relative starting points set by governance. They are calibrated from the measured cost per token on each tier (hardware depreciation, power and what the machine could earn elsewhere) plus a premium for larger tiers, so that running a larger, more useful model earns somewhat more per unit of cost. Governance recalibrates G every quarter, with a limit on each step (<em>proposed</em>: ±25%). An optional demand adjustment, up to +20% for a tier with unserved tasks, can be added later. Model names and versions are fixed at genesis and changed only by governance.</p>
 <p><strong>Tier 0 and the launch period.</strong> During the 90-day launch period SN0 runs only tier 0, which runs on ordinary CPU servers and keeps launch costs low. Tier 0 moves from Qwen3.5-2B to Qwen3.5-4B (<em>proposed</em> 20 Nov 2026): the 4B model scores 27 against 16 for the 2B on the Artificial Analysis index and still fits an ordinary PC. The switch is a governance call on the tier table after a test on testnet with mixed Intel, AMD and Apple processors. Tier 1 (Qwen3.5-9B) is enabled by a governance vote at a time the launch operator chooses, preferably a few weeks before day 90, so the switch is tested before outside miners join. After that, tier 0 remains the entry tier for miners without a GPU.</p>
+<p><strong>At most a quarter of memory (decided 25 Nov 2026).</strong> The miner software picks the largest open tier whose model, with its context (two slots of 4,096 tokens), takes at most 25% of the system or Apple unified memory, or fits entirely in a separate NVIDIA graphics card, which the miner uses alone. Memory a tier then needs: tier 0 (2B) 8 GB; tier 1 (9B) 32 GB, or an 8 GB card; tier 2 (27B) 96 GB, or a 24 GB card. Without a card a machine runs tier 0 only, since larger models are too slow on a processor for the validators' deadlines. The Mac and Windows node and the Linux installer (<code>setup_miner choose</code>, Vulkan build of llama.cpp on NVIDIA) apply the same rule, and the miner declares its tier on chain.</p>
 <p><strong>Declared tier and verification.</strong> Each miner declares its tier on chain when it registers. Validators keep a reference model for every enabled tier and spot-check each miner against the model of its declared tier. A miner that declares tier 1 but runs the 4B model fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below.</p>
 <p><strong>Adding or switching a model.</strong> A governance call adds a tier (model name, weight hash, engine version, G and tolerance). A new tier runs alongside existing ones for a transition window (proposed: 14 days) so miners can upgrade without losing rewards.</p>
 <p><strong>Spot checks</strong></p>
 <ol>
 <li>Each epoch, validators pick 1–5% of requests at random, seeded by the drand beacon so miners cannot predict which.</li>
 <li>The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the tier's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the tier's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp on tier 0 is still to be settled.</li>
-<li>A failed check slashes 10% of the miner's stake (or, for a pool, the pool's bond) and zeroes its W for the epoch. Three failures in 30 days deregister the key.</li>
+<li>When reporters with at least half of the active validator stake (stake whose weights counted in the last settled epoch) report the same failed check, the miner's W for the epoch is zeroed. When they hold at least 2/3, 10% of the miner's bond (or, for a pool, the pool's bond) is also slashed. Three penalties in 30 days ban the key. <em>Thresholds decided 25 Nov 2026 (previously 1/3 for both).</em></li>
 <li>Slashed ICT: 50% burned, 50% to the insurance fund.</li>
 </ol>
 <p><strong>Validator tiers (proposed).</strong> Each validator declares on chain which tiers it checks and must hold the pinned model for each (new storage in <code>subnet-registry</code>). A tier opens only when at least three validators have declared it. Later, a piece of work can be sent to two miners of the same tier, and the validator checks only when their answers disagree.</p>
@@ -622,6 +739,40 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </table></div>
 <p>Anyone may run a prover; the first valid proof earns a small fee from the epoch's issuance (proposed: 0.1%).</p>
 <p><strong>Audits:</strong> Each epoch a drand-seeded draw picks validators whose published evaluations (prompts, outputs, scores on IPFS or Celestia) are re-scored by other validators. A score deviation beyond the subnet's tolerance counts as a failed audit.</p>
+<p><strong>Sharing issuance between subnets (decided 25 Nov 2026; runtime 10, on the testnet since 25 Nov 2026, on mainnet before day 90)</strong></p>
+<p>The development fund takes its share of each block first (10 %); the rest goes to the subnet pot, which consensus shares out every epoch.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>Before the SN1 unlock</th>
+<th>After the SN1 unlock</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pot to SN0</td>
+<td>100 %</td>
+<td>At least 50 % of all issuance (0.5 / (1 − fund share) of the pot: 55.6 % at a 10 % fund)</td>
+</tr>
+<tr>
+<td>Pot to SN1 and later</td>
+<td>0 %</td>
+<td>Rises linearly from 0 to the rest over 180 days, shared by the ICT staked on each subnet; a subnet without stake gets nothing</td>
+</tr>
+<tr>
+<td>SN0 split</td>
+<td>Miners 66.7 %, validators 33.3 % of SN0's slice (60 % / 30 % of issuance)</td>
+<td>Miners 50 / 88, validators 38 / 88 of SN0's slice; SN0 has no owner</td>
+</tr>
+<tr>
+<td>SN1 and later split</td>
+<td>–</td>
+<td>Miners 50 %, validators 38 %, owner 12 % of the subnet's slice</td>
+</tr>
+</tbody>
+</table></div>
+<p>Settlement is spread over the epoch: the epoch's first block shares the pot and settles SN0, and each following block settles one further subnet (an epoch has 360 blocks, so 256 subnets fit). Validators of SN1 and later stake on their own subnet (<code>stake_subnet</code>, <code>unstake_subnet</code>; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (<code>work-verify</code>) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.</p>
 <h2 id="7-modules-alpha-assets-amm-and-buyback">7. Modules <code>alpha-assets</code>, <code>amm</code> and <code>buyback</code><a class="anchor" href="#7-modules-alpha-assets-amm-and-buyback" aria-label="Link to this section">#</a></h2>
 <p>Each subnet has one Alpha asset and one constant-product pool against ICT; every block the protocol injects Alpha only as far as the buyback absorbs it, buys Alpha, burns half and pays half to stakers.</p>
 <p><strong>Alpha asset (<code>alpha-assets</code>)</strong></p>
@@ -702,7 +853,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 <tr>
 <td><code>Phase2</code></td>
 <td><code>register_subnet</code>, Alpha, AMM, buyback</td>
-<td>Gate 1 criteria (whitepaper Section 5) and a passed referendum</td>
+<td><code>register_subnet</code>: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha, AMM, buyback: Gate 1 criteria (whitepaper Section 5) and a passed referendum</td>
 </tr>
 <tr>
 <td><code>Phase3</code></td>
@@ -750,7 +901,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </thead>
 <tbody>
 <tr>
-<td><code>ict-economics</code> (issuance, AMM, buyback with price-aware injection, allocation, deposit price, Yuma-lite)</td>
+<td><code>ict-economics</code> (issuance, AMM, buyback with price-aware injection, allocation, auction price, Yuma-lite)</td>
 <td>Done</td>
 <td>27 passing; matches the simulation (10,506,000 ICT after 4 years)</td>
 </tr>
@@ -760,9 +911,9 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 <td>Passing</td>
 </tr>
 <tr>
-<td><code>pallet-subnet-registry</code> (SN0, Phase 2 gate, deposits, neuron fee, deregistration, on-chain endpoints)</td>
+<td><code>pallet-subnet-registry</code> (SN0, automatic unlock, Dutch auction, subnet control and DAO, penalties, dead-subnet removal, cap ladder, on-chain endpoints)</td>
 <td>Done</td>
-<td>Passing</td>
+<td>28 passing</td>
 </tr>
 <tr>
 <td><code>pallet-weights</code> (hash commit-reveal per epoch)</td>
@@ -1086,7 +1237,11 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </tr>
 <tr>
 <td>Referendum tracks</td>
-<td>Root (runtime changes), Treasurer (large spends), Small spender (up to 1,000 ICT)</td>
+<td>Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support)</td>
+</tr>
+<tr>
+<td>Runtime upgrades</td>
+<td>Decided by hash: a referendum on <code>authorize_upgrade(blake2_256(wasm))</code> (Root or Emergency track) needs no preimage. Once enacted, anyone uploads the code with <code>system.apply_authorized_upgrade</code>; the chain takes it only if the hash matches, the spec name is unchanged and the spec version is higher, and charges no fee. Tool: <code>scripts/governance.py</code> (propose-upgrade, vote, status, apply-upgrade)</td>
 </tr>
 <tr>
 <td>Voting</td>
@@ -1339,7 +1494,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </table></div>
 <p>A seventh, open category covers anything else and uses the generic receipt format of Section 8. A subnet declares its category in <code>set_subnet_identity</code>; the category selects the metering unit its gateway receipts must use. Order: category 2 runs today as SN0; category 1 comes next because it reuses SN0 hardware; categories 3–6 open to outside teams with Phase 2.</p>
 <h2 id="16-implementation-status-and-required-changes">16. Implementation status and required changes<a class="anchor" href="#16-implementation-status-and-required-changes" aria-label="Link to this section">#</a></h2>
-<p>On 20 November 2026 mainnet runs the Phase 1 core at runtime spec version 7, and the testnet runs spec version 8 with the swap module. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.</p>
+<p>On 25 November 2026 the testnet runs runtime 10 (subnet registration and issuance sharing), and a referendum is installing runtime 11 (Emergency track) on it without sudo. Mainnet runs the Phase 1 core and gets runtimes 10 and 11 before day 90, once the testnet rehearsal is complete. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.</p>
 <div class="tbl"><table>
 <thead>
 <tr>
@@ -1367,10 +1522,17 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </tr>
 <tr>
 <td>Governance</td>
-<td>Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook</td>
-<td>None</td>
+<td>Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook; Emergency track and upgrades by hash (runtime 11); <code>scripts/governance.py</code></td>
+<td>Rehearse on the testnet without sudo; a parameter track; a governance web page</td>
 <td>runtime <code>governance</code></td>
-<td>–</td>
+<td>Referendum on testnet, runtime upgrade</td>
+</tr>
+<tr>
+<td>Subnets (Phase 2)</td>
+<td>Runtime 10 on the testnet: automatic unlock, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, cap ladder, spread settlement, <code>SubnetRegistryApi</code>; incentium.org/subnets</td>
+<td>Mainnet upgrade before day 90; a miner bond per subnet; whether subnets get Alpha tokens</td>
+<td><code>subnet-registry</code>, <code>ict-consensus</code></td>
+<td>Runtime upgrade</td>
 </tr>
 <tr>
 <td>Tier table</td>
@@ -1458,10 +1620,10 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </tr>
 <tr>
 <td>Miner onboarding</td>
-<td>Pull-based miner and <code>install-miner.sh</code></td>
-<td>Desktop app for Mac and Windows, pool web page, Docker image (Section 12)</td>
-<td>New software</td>
-<td>Build before day 90</td>
+<td>Pull-based miner; node for Mac and Windows; <code>install-miner.sh</code> picks the tier on Linux; the model takes at most a quarter of memory</td>
+<td>Test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12)</td>
+<td><code>neuron/</code>, <code>scripts/</code></td>
+<td>Software release</td>
 </tr>
 <tr>
 <td>EVM and bridge</td>
@@ -1479,7 +1641,7 @@ body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="
 </tr>
 </tbody>
 </table></div>
-<p>None of the proposed changes touches protected parameters (maximum supply, halving, the 50% buyback floor).</p>
+<p>None of the proposed changes touches protected parameters (maximum supply, halving, and the 50% buyback floor if Alpha tokens are introduced).</p>
   </article>
 </div>
 <!-- ic:footer -->

@@ -1,10 +1,10 @@
-# Incentium Technical Specification v0.1
+# Incentium Technical Specification v0.2
 
-Nov 20, 2026 · **Ichiro Pakeshi Miyamoto**
+Nov 25, 2026 · **Ichiro Pakeshi Miyamoto**
 
 ## 1. Scope and conventions
 
-Incentium (incentium.org) is the name of the network; its native coin is ICT. This specification turns the Incentium whitepaper (v0.1) into rules precise enough to build and test. It is the output of step 1 of the build plan and the input to step 2 (the chain). It defines each on-chain module's state, calls and rules, and records what the economic simulation says about the proposed parameters.
+Incentium (incentium.org) is the name of the network; its native coin is ICT. This specification turns the Incentium whitepaper (v0.2) into rules precise enough to build and test. It is the output of step 1 of the build plan and the input to step 2 (the chain). It defines each on-chain module's state, calls and rules, and records what the economic simulation says about the proposed parameters.
 
 - **Status:** Draft. Parameters marked *proposed* may change after further simulation; parameters marked *protected* can only be changed by a 75% supermajority and a 30-day time-lock.
 - **Units:** ICT and Alpha amounts are fixed-point integers with 9 decimals (1 ICT = 10⁹ base units). All percentages are stored as parts per million. Addresses use the standard Substrate SS58 format (prefix 42), so they start with 5.
@@ -103,35 +103,82 @@ Issues ICT every block and splits it between the development fund and subnets; t
 
 ## 4. Module `subnet-registry`
 
-Opens and closes subnets against a locked deposit, registers miner and validator keys, and seeds each new subnet's pool.
+Sells subnet slots by Dutch auction once registration has unlocked, registers miner and validator keys, and closes subnets. Rules decided 25 Nov 2026 (subnet registration specification); runtime 10, on the testnet since 25 Nov 2026 and planned on mainnet before day 90.
 
 **State**
 
 | Item | Type | Meaning |
 | --- | --- | --- |
-| `Subnets` | map netuid → SubnetInfo | Owner, created block, deposit, status |
-| `LastRegPrice`, `LastRegBlock` | u128, BlockNumber | Basis for the dynamic deposit price |
-| `MaxSubnets` | u16 | 32 (*proposed*); SN0 does not count |
+| `Subnets` | map netuid → SubnetInfo | Owner, created block, price paid |
+| `Metadata` | map netuid → SubnetMetadata | Name (≤ 64 bytes), description (≤ 512 bytes), hash of the incentive code |
+| `Phase2Enabled` | bool | Registration has unlocked; never locks again |
+| `AuctionStart`, `Sales`, `LastSalePrice` | BlockNumber, u32, u128 | Current auction and price basis |
+| `MaxSubnets` | u16 | 8 until governance raises it; SN0 does not count |
+| `MinSpacing` | u32 | 60 days from a sale to the next auction; governance may lower it to 30 |
+| `MinerHistory`, `MinerDay` | 30 daily averages, running tally | Active SN0 miners for the unlock criterion |
+| `SwapAttested` | contract, audit hash | Governance's attestation of the audited, immutable Base swap contract |
 | `Neurons` | map (netuid, uid) → hotkey | Registered miners and validators |
 
-**Deposit price**
+**Unlock.** Registration unlocks by itself in the first daily check (every 7,200 blocks) where all of these hold; anyone may also call `try_unlock`:
 
-Price now = max(1,000 ICT, 2 × last price × (1 − days since last registration / 14)). Each registration doubles the price, which then decays linearly back to the floor over 14 days.
+1. Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).
+2. At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.
+3. Sudo removed and at least 3 approved referenda.
+4. `attest_swap` passed by referendum: the Base swap contract is audited and has no pause guardian.
+
+**Auction price.** The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.
+
+**Payment.** Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When `alpha-assets` and `amm` arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.
+
+**Pace.** One slot at a time. After a sale the next auction starts `MinSpacing` later, and only while fewer than `MaxSubnets` exist. A full cap does not push anyone out: the auction waits until a slot frees up or the cap rises, and a waiting auction then starts at once.
+
+**Removal.** No subnet is voted out for being weak. A subnet can leave in only two ways, and nothing is refunded in either:
+
+1. **Dead** (`remove_dead_subnet`, anyone): past its 180-day immunity, and no epoch in the last 30 days paid at least 3 distinct miners.
+2. **Emergency brake** (`deregister_subnet`, Incentium governance on the Root track: 75 % approval, one week before it takes effect): against abuse; works during the immunity too.
+
+Stake on a removed subnet moves to the unbonding queue.
+
+**Cap ladder.** The cap doubles by itself, 8 → 16 → 32 → 64 → 128 → 256, at the daily check when all of these hold: every slot has been taken for 90 days; at least 75 % of the subnets paid at least 10 miners per epoch on average over 30 days; 180 days since the last raise (by the ladder or by governance); and not before day 775 (1 January 2029 on mainnet). Governance can also raise the cap at any time, up to 256. Settlement is spread over the epoch (Section 6), so 256 subnets need no further code.
 
 **Calls**
 
 | Call | Who | Effect |
 | --- | --- | --- |
-| `register_subnet(max_deposit)` | Anyone (Phase ≥ 2) | Locks the deposit, creates the subnet and seeds its pool; fails if the price exceeds `max_deposit` |
-| `deregister_subnet(netuid)` | Protocol | Closes a subnet; see below |
-| `register_neuron(netuid, hotkey)` | Anyone | Burns the registration fee and assigns a uid; replaces the lowest-scoring neuron when the subnet is full |
-| `set_subnet_identity(netuid, meta)` | Owner | Name, URL, description |
+| `register_subnet(max_price, name, description, code_hash)` | Anyone, while an auction runs | Pays the current price, creates the subnet and publishes its metadata; fails if the price exceeds `max_price` |
+| `try_unlock()` | Anyone | Unlocks now if every criterion holds |
+| `deregister_subnet(netuid)` | Governance | Emergency brake; nothing is refunded |
+| `remove_dead_subnet(netuid)` | Anyone | Removes a dead subnet (above); nothing is refunded |
+| `attest_swap(contract, audit_hash)` | Governance, once | Unlock criterion 4 |
+| `set_min_spacing(blocks)`, `set_max_subnets(max)` | Governance | Pace and cap, within bounds |
+| `register_neuron(netuid, hotkey)` | Anyone | Burns the subnet's registration fee and assigns a uid |
+| `transfer_ownership`, `set_multisig`, `set_dao`, `set_params`, `set_metadata` | Subnet controller | Subnet control, above |
+| `propose`, `vote`, `close_proposal` | Subnet stakers (close: anyone) | Subnet DAO votes |
+| `report_failed_work(netuid, epoch, uid, evidence)` | Subnet validators | Penalties in subnets |
 
-**Pool seeding:** The locked deposit becomes the ICT side of the new pool, and an equal amount of Alpha is minted for the other side, so the opening price is 1 ICT per Alpha. The seed position is owned by the protocol on the owner's behalf and cannot be withdrawn while the subnet is live.
+**Subnet control (SN1 and later).** Control only moves forward:
 
-**Deregistration:** After a 30-day immunity period, when `MaxSubnets` is reached and a new subnet registers, the subnet with the lowest 30-day utility score is closed. Its seed position is withdrawn from the pool; 90% of the ICT is returned to the owner and 10% is burned. Remaining Alpha stakers are paid out in ICT from the pool at the closing price, and the Alpha supply is retired.
+1. **One key** (at registration): the owner signs.
+2. **Multisig** (`set_multisig(signatories, threshold)`, 2–20 signatories, threshold ≥ 2): the owner becomes the multisig account, derived as in `pallet-multisig`, and acts through it.
+3. **Subnet DAO** (`set_dao`): the owner becomes the subnet's DAO account, which receives the 12 % owner share. Any staker of the subnet may `propose` one action at a time: change settings, change metadata, or spend from the DAO account. Votes run 5 days (shorter than the 7-day unbonding) and are weighed by each voter's stake when the vote closes. `close_proposal` (anyone) carries the action out at once if aye stake exceeds nay stake and is at least 1/3 of the subnet's stake.
 
-**Open point:** The returned deposit can be worth more or less than the original 1,000+ ICT, depending on the pool price at closing. Decided (14 Nov 2026): the ICT side is returned as it stands in the pool at closing; no nominal guarantee.
+A subnet can be sold or handed to another single key (`transfer_ownership`) while one key or a multisig controls it; the new owner starts again as one key. A DAO subnet stays with its stakers.
+
+The controller (owner key, multisig, or the DAO by vote) sets the subnet's settings within the protocol's bounds, and its metadata (`set_metadata`, e.g. a new incentive-code hash for a new release):
+
+| Setting | Default | Bounds |
+| --- | --- | --- |
+| `neuron_fee` (burned per neuron registration) | 1 ICT | 1–1,000 ICT |
+| `max_neurons` | 256 | 16–256, and not below the neurons already registered |
+| `penalties` | off | on / off |
+| `max_failures` | 3 | 1–10 |
+| `failure_window` (epochs) | 600 (30 days) | 20–1,800 (1–90 days) |
+
+**Penalties in subnets.** With penalties on, a validator of the subnet reports a miner's failed work with `report_failed_work(netuid, epoch, uid, evidence)`. When reporters holding at least half of the subnet's active stake (the stake of validators whose weights counted in the last settled epoch) agree, the miner gets no incentive for that epoch; `max_failures` penalties inside `failure_window` ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point; slashing will need 2/3 of active stake). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.
+
+**Runtime API and subnet page.** `SubnetRegistryApi` answers `unlock_status`, `auction`, `price_at(block)` and `subnets` (with each subnet's current share of issuance), so any client reads the same figures the chain uses. incentium.org/subnets shows them live: progress on the four unlock criteria, the auction price now and in 1, 3 and 7 days, and every subnet.
+
+**Open points:** whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.
 
 ## 5. Module `work-verify` (SN0)
 
@@ -154,6 +201,8 @@ G values are relative starting points set by governance. They are calibrated fro
 
 **Tier 0 and the launch period.** During the 90-day launch period SN0 runs only tier 0, which runs on ordinary CPU servers and keeps launch costs low. Tier 0 moves from Qwen3.5-2B to Qwen3.5-4B (*proposed* 20 Nov 2026): the 4B model scores 27 against 16 for the 2B on the Artificial Analysis index and still fits an ordinary PC. The switch is a governance call on the tier table after a test on testnet with mixed Intel, AMD and Apple processors. Tier 1 (Qwen3.5-9B) is enabled by a governance vote at a time the launch operator chooses, preferably a few weeks before day 90, so the switch is tested before outside miners join. After that, tier 0 remains the entry tier for miners without a GPU.
 
+**At most a quarter of memory (decided 25 Nov 2026).** The miner software picks the largest open tier whose model, with its context (two slots of 4,096 tokens), takes at most 25% of the system or Apple unified memory, or fits entirely in a separate NVIDIA graphics card, which the miner uses alone. Memory a tier then needs: tier 0 (2B) 8 GB; tier 1 (9B) 32 GB, or an 8 GB card; tier 2 (27B) 96 GB, or a 24 GB card. Without a card a machine runs tier 0 only, since larger models are too slow on a processor for the validators' deadlines. The Mac and Windows node and the Linux installer (`setup_miner choose`, Vulkan build of llama.cpp on NVIDIA) apply the same rule, and the miner declares its tier on chain.
+
 **Declared tier and verification.** Each miner declares its tier on chain when it registers. Validators keep a reference model for every enabled tier and spot-check each miner against the model of its declared tier. A miner that declares tier 1 but runs the 4B model fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below.
 
 **Adding or switching a model.** A governance call adds a tier (model name, weight hash, engine version, G and tolerance). A new tier runs alongside existing ones for a transition window (proposed: 14 days) so miners can upgrade without losing rewards.
@@ -162,7 +211,7 @@ G values are relative starting points set by governance. They are calibrated fro
 
 1. Each epoch, validators pick 1–5% of requests at random, seeded by the drand beacon so miners cannot predict which.
 2. The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the tier's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the tier's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp on tier 0 is still to be settled.
-3. A failed check slashes 10% of the miner's stake (or, for a pool, the pool's bond) and zeroes its W for the epoch. Three failures in 30 days deregister the key.
+3. When reporters with at least half of the active validator stake (stake whose weights counted in the last settled epoch) report the same failed check, the miner's W for the epoch is zeroed. When they hold at least 2/3, 10% of the miner's bond (or, for a pool, the pool's bond) is also slashed. Three penalties in 30 days ban the key. *Thresholds decided 25 Nov 2026 (previously 1/3 for both).*
 4. Slashed ICT: 50% burned, 50% to the insurance fund.
 
 **Validator tiers (proposed).** Each validator declares on chain which tiers it checks and must hold the pinned model for each (new storage in `subnet-registry`). A tier opens only when at least three validators have declared it. Later, a piece of work can be sent to two miners of the same tier, and the validator checks only when their answers disagree.
@@ -214,6 +263,19 @@ Effective stake = min(√(stake), 10% of the subnet's total effective stake) × 
 Anyone may run a prover; the first valid proof earns a small fee from the epoch's issuance (proposed: 0.1%).
 
 **Audits:** Each epoch a drand-seeded draw picks validators whose published evaluations (prompts, outputs, scores on IPFS or Celestia) are re-scored by other validators. A score deviation beyond the subnet's tolerance counts as a failed audit.
+
+**Sharing issuance between subnets (decided 25 Nov 2026; runtime 10, on the testnet since 25 Nov 2026, on mainnet before day 90)**
+
+The development fund takes its share of each block first (10 %); the rest goes to the subnet pot, which consensus shares out every epoch.
+
+| | Before the SN1 unlock | After the SN1 unlock |
+| --- | --- | --- |
+| Pot to SN0 | 100 % | At least 50 % of all issuance (0.5 / (1 − fund share) of the pot: 55.6 % at a 10 % fund) |
+| Pot to SN1 and later | 0 % | Rises linearly from 0 to the rest over 180 days, shared by the ICT staked on each subnet; a subnet without stake gets nothing |
+| SN0 split | Miners 66.7 %, validators 33.3 % of SN0's slice (60 % / 30 % of issuance) | Miners 50 / 88, validators 38 / 88 of SN0's slice; SN0 has no owner |
+| SN1 and later split | – | Miners 50 %, validators 38 %, owner 12 % of the subnet's slice |
+
+Settlement is spread over the epoch: the epoch's first block shares the pot and settles SN0, and each following block settles one further subnet (an epoch has 360 blocks, so 256 subnets fit). Validators of SN1 and later stake on their own subnet (`stake_subnet`, `unstake_subnet`; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (`work-verify`) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.
 
 ## 7. Modules `alpha-assets`, `amm` and `buyback`
 
@@ -280,7 +342,7 @@ Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and
 
 | Switch | Turns on | Requires |
 | --- | --- | --- |
-| `Phase2` | `register_subnet`, Alpha, AMM, buyback | Gate 1 criteria (whitepaper Section 5) and a passed referendum |
+| `Phase2` | `register_subnet`, Alpha, AMM, buyback | `register_subnet`: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha, AMM, buyback: Gate 1 criteria (whitepaper Section 5) and a passed referendum |
 | `Phase3` | Phase 3 allocation formula, revenue-funded buybacks | Gate 2 criteria (whitepaper Section 11) and a passed referendum |
 
 Switches can only move forward. Each switch takes effect at the start of the epoch after a 14-day enactment delay.
@@ -318,9 +380,9 @@ Simulate the revenue cap (Section 8) with self-paid revenue at several sizes, an
 
 | Component | Status | Tests |
 | --- | --- | --- |
-| `ict-economics` (issuance, AMM, buyback with price-aware injection, allocation, deposit price, Yuma-lite) | Done | 27 passing; matches the simulation (10,506,000 ICT after 4 years) |
+| `ict-economics` (issuance, AMM, buyback with price-aware injection, allocation, auction price, Yuma-lite) | Done | 27 passing; matches the simulation (10,506,000 ICT after 4 years) |
 | `pallet-ict-emission` | Done | Passing |
-| `pallet-subnet-registry` (SN0, Phase 2 gate, deposits, neuron fee, deregistration, on-chain endpoints) | Done | Passing |
+| `pallet-subnet-registry` (SN0, automatic unlock, Dutch auction, subnet control and DAO, penalties, dead-subnet removal, cap ladder, on-chain endpoints) | Done | 28 passing |
 | `pallet-weights` (hash commit-reveal per epoch) | Done | Passing, including a hash test vector shared with the Python validator |
 | `pallet-work-verify` (bonds, spot-check quorum, slashing, three-strike ban, pools) | Done | Passing |
 | `pallet-ict-consensus` (validator staking, Yuma-lite, epoch payout) | Done | Passing |
@@ -451,7 +513,8 @@ A runtime test runs the whole period: registration and stake from the 100 ICT al
 | Item | Rule |
 | --- | --- |
 | Development fund | `pallet-treasury` on the fund account; spends paid once a day; unspent funds are not burned |
-| Referendum tracks | Root (runtime changes), Treasurer (large spends), Small spender (up to 1,000 ICT) |
+| Referendum tracks | Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support) |
+| Runtime upgrades | Decided by hash: a referendum on `authorize_upgrade(blake2_256(wasm))` (Root or Emergency track) needs no preimage. Once enacted, anyone uploads the code with `system.apply_authorized_upgrade`; the chain takes it only if the hash matches, the spec name is unchanged and the spec version is higher, and charges no fee. Tool: `scripts/governance.py` (propose-upgrade, vote, status, apply-upgrade) |
 | Voting | Conviction voting; vote locking period 7 days; submission deposit 1 ICT; undecided proposals time out after 14 days |
 | Turnout | Counts only ICT that can vote; the launch vault, the fund, the subnet pot and stake and work accounts are left out |
 | Bounties | Child bounties under each bounty; 3-day payout delay, during which governance can stop an award; the curator must show activity every 90 days |
@@ -571,13 +634,14 @@ A seventh, open category covers anything else and uses the generic receipt forma
 
 ## 16. Implementation status and required changes
 
-On 20 November 2026 mainnet runs the Phase 1 core at runtime spec version 7, and the testnet runs spec version 8 with the swap module. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.
+On 25 November 2026 the testnet runs runtime 10 (subnet registration and issuance sharing), and a referendum is installing runtime 11 (Emergency track) on it without sudo. Mainnet runs the Phase 1 core and gets runtimes 10 and 11 before day 90, once the testnet rehearsal is complete. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.
 
 | Area | In the code today | Change or action | Where | Kind of step |
 | --- | --- | --- | --- | --- |
 | Issuance | Done; mainnet since 18 Nov 2026 | None | `ict-emission` | – |
 | Launch period and vault | Done; 25% paid, 75% locked, release from day 150 to day 690 | None | `subnet-registry`, `ict-consensus` | – |
-| Governance | Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook | None | runtime `governance` | – |
+| Governance | Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook; Emergency track and upgrades by hash (runtime 11); `scripts/governance.py` | Rehearse on the testnet without sudo; a parameter track; a governance web page | runtime `governance` | Referendum on testnet, runtime upgrade |
+| Subnets (Phase 2) | Runtime 10 on the testnet: automatic unlock, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, cap ladder, spread settlement, `SubnetRegistryApi`; incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet; whether subnets get Alpha tokens | `subnet-registry`, `ict-consensus` | Runtime upgrade |
 | Tier table | Four tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed | Tier 0 to Qwen3.5-4B with pinned file hash; embedding job type; validator tier declarations; three-validator rule for opening a tier | `subnet-registry` | Runtime upgrade, then governance call |
 | Task source | Synthetic prompts (`SN0 task <epoch>:<uid>:<i>: <nonce>`), 8 per miner per epoch, at most 32 tokens | Public-goods queue and hidden control tasks; later paid jobs from the gateway | `neuron/validator.py` | Software release |
 | Task fetching | Miner polls validators every 5 s and gets a fixed task count | Protocol assignment by capacity with a drand-seeded draw; WebSocket streaming for real-time tiers | `neuron/miner.py`, `tasks.py` | Software release |
@@ -590,8 +654,8 @@ On 20 November 2026 mainnet runs the Phase 1 core at runtime spec version 7, and
 | Explorer | Live at explorer.incentium.org; swap events classified in code but not yet deployed | Deploy swap events; from Phase 2 show allocation inputs per subnet and epoch | `explorer/` | Software release |
 | Phase 2–3 economics | Rules in `ict-economics`, tested against the simulation | Build `alpha-assets`, `amm`, `buyback`, `utility-metrics`, `payments`, `phase-control`; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole | New pallets | Build, simulation, audit, referendum |
 | Gateway and access | Not built | Gateway with streaming, failover, batch and payment receipts; `access` module (Section 13) | New service, new pallet | Build, legal review |
-| Miner onboarding | Pull-based miner and `install-miner.sh` | Desktop app for Mac and Windows, pool web page, Docker image (Section 12) | New software | Build before day 90 |
+| Miner onboarding | Pull-based miner; node for Mac and Windows; `install-miner.sh` picks the tier on Linux; the model takes at most a quarter of memory | Test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12) | `neuron/`, `scripts/` | Software release |
 | EVM and bridge | Not in the runtime | Frontier and Hyperlane route (Section 14), or rely on the atomic swap until a bridge is audited | Runtime, contracts | Decision, then build and audit |
 | Legal | No legal entity | Review of the contracting party for paid users, GDPR for the gateway, MiCA for trading and marketing, EU AI Act Article 50 | – | External advice |
 
-None of the proposed changes touches protected parameters (maximum supply, halving, the 50% buyback floor).
+None of the proposed changes touches protected parameters (maximum supply, halving, and the 50% buyback floor if Alpha tokens are introduced).

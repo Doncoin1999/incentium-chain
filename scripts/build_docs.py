@@ -21,9 +21,9 @@ import sync_topbar  # noqa: E402
 
 # slug -> (source markdown, PDF file name in site/<slug>/ or None, top bar id, description)
 DOCS = {
-    "whitepaper": ("site/docs/whitepaper.md", "incentium-whitepaper-v0.1.pdf", "whitepaper",
+    "whitepaper": ("site/docs/whitepaper.md", "incentium-whitepaper-v0.2.pdf", "whitepaper",
                    "Incentium: an open network where machine intelligence is produced, verified and rewarded in ICT."),
-    "spec": ("site/docs/technical-specification.md", "incentium-technical-specification-v0.1.pdf", "spec",
+    "spec": ("site/docs/technical-specification.md", "incentium-technical-specification-v0.2.pdf", "spec",
              "The rules of the Incentium chain, module by module, with the simulation results behind them."),
 }
 
