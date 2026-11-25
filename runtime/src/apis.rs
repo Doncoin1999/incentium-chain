@@ -203,6 +203,24 @@ pallet_revive::impl_runtime_apis_plus_revive_traits!(
         }
     }
 
+    impl pallet_subnet_registry::runtime_api::SubnetRegistryApi<Block, AccountId> for Runtime {
+        fn unlock_status() -> pallet_subnet_registry::UnlockStatus {
+            crate::Registry::unlock_status()
+        }
+
+        fn auction() -> pallet_subnet_registry::AuctionInfo {
+            crate::Registry::auction_info()
+        }
+
+        fn price_at(block: u32) -> Option<u128> {
+            crate::Registry::price_at(block)
+        }
+
+        fn subnets() -> Vec<pallet_subnet_registry::SubnetSummary<AccountId>> {
+            crate::subnet_api::subnets_with_emission()
+        }
+    }
+
     impl sp_genesis_builder::GenesisBuilder<Block> for Runtime {
         fn build_state(config: Vec<u8>) -> sp_genesis_builder::Result {
             build_state::<RuntimeGenesisConfig>(config)

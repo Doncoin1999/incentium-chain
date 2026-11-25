@@ -484,7 +484,11 @@ fn upgrade_creates_the_revive_account_from_the_fund_without_minting() {
         let revive = pallet_revive::Pallet::<Runtime>::account_id();
         let fund = pallet_treasury::Pallet::<Runtime>::account_id();
         // Top up the fund, then simulate a chain that started before the EVM existed.
-        assert_ok!(Balances::transfer_keep_alive(signed(K::Alice), fund.clone().into(), 10 * UNIT));
+        assert_ok!(Balances::transfer_keep_alive(
+            signed(K::Alice),
+            fund.clone().into(),
+            10 * UNIT
+        ));
         frame_system::Account::<Runtime>::remove(&revive);
         assert!(!System::account_exists(&revive));
 
@@ -494,12 +498,17 @@ fn upgrade_creates_the_revive_account_from_the_fund_without_minting() {
 
         assert!(System::account_exists(&revive));
         assert_eq!(Balances::free_balance(&revive), EXISTENTIAL_DEPOSIT);
-        assert_eq!(Balances::free_balance(&fund), fund_before - EXISTENTIAL_DEPOSIT);
+        assert_eq!(
+            Balances::free_balance(&fund),
+            fund_before - EXISTENTIAL_DEPOSIT
+        );
         assert_eq!(Balances::total_issuance(), issuance_before);
 
         // Running it again does nothing.
         CreateReviveAccount::on_runtime_upgrade();
         assert_eq!(Balances::free_balance(&revive), EXISTENTIAL_DEPOSIT);
+    });
+}
 
 #[test]
 fn subnet_unlock_sees_sudo_and_approved_referenda() {
@@ -557,5 +566,65 @@ fn subnet_multisig_account_matches_pallet_multisig() {
             Registry::multi_account_id(&who, 2),
             pallet_multisig::Pallet::<Runtime>::multi_account_id(&who, 2)
         );
+    });
+}
+
+#[test]
+fn subnet_api_reports_status_auction_and_sn0() {
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(10);
+        let st = Registry::unlock_status();
+        assert!(!st.unlocked);
+        assert_eq!(st.min_miners, 300);
+        let a = Registry::auction_info();
+        assert_eq!(a.price, None);
+        assert_eq!(a.start_price, 50_000 * UNIT);
+        assert_eq!(a.floor, 1_000 * UNIT);
+        assert_eq!(a.max_subnets, 8);
+        let subnets = subnet_api::subnets_with_emission();
+        assert_eq!(subnets.len(), 1);
+        assert_eq!(subnets[0].netuid, 0);
+        // Before the unlock SN0 gets the whole pot: 90 % of issuance.
+        assert_eq!(subnets[0].emission_ppm, 900_000);
+    });
+}
+
+/// Writes the API's SCALE output for the page's decoder test when INCENTIUM_API_DUMP names a
+/// folder (see site/subnets/test_decode.js).
+#[test]
+fn subnet_api_output_for_the_page() {
+    use codec::Encode;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(200 * DAYS);
+        pallet_subnet_registry::Phase2Enabled::<Runtime>::put(true);
+        pallet_subnet_registry::UnlockedAt::<Runtime>::put(200 * DAYS);
+        pallet_subnet_registry::AuctionStart::<Runtime>::put(200 * DAYS);
+        assert_ok!(Registry::register_subnet(
+            signed(K::Alice),
+            u128::MAX,
+            b"Translate".to_vec(),
+            b"Open translation".to_vec(),
+            [7; 32]
+        ));
+        let status = Registry::unlock_status();
+        let auction = Registry::auction_info();
+        let price = Registry::price_at(200 * DAYS + 60 * DAYS + DAYS);
+        let subnets = subnet_api::subnets_with_emission();
+        assert_eq!(subnets.len(), 2);
+        assert_eq!(subnets[1].name, b"Translate".to_vec());
+        if let Ok(dir) = std::env::var("INCENTIUM_API_DUMP") {
+            let w = |n: &str, b: Vec<u8>| {
+                std::fs::write(
+                    format!("{dir}/{n}.hex"),
+                    b.iter()
+                        .fold(String::from("0x"), |s, x| s + &format!("{x:02x}")),
+                )
+                .unwrap()
+            };
+            w("unlock_status", status.encode());
+            w("auction", auction.encode());
+            w("price_at", price.encode());
+            w("subnets", subnets.encode());
+        }
     });
 }
