@@ -5,11 +5,13 @@
 //! - Each epoch's issuance is split: `bonus_ppm` is paid to the subnet's
 //!   miners, validators and owner; the rest goes to the pool's stock.
 //! - The pool is a constant-product curve over X = vx + rx ICT and Y = vy + ry
-//!   Alpha. vx and vy are virtual: they only shape the price curve, set from the
-//!   slot's sale price (p0 = sale price / 1,000,000 Alpha). rx and ry are real
-//!   and are the only amounts that can ever be paid out.
-//! - Staking is buying: before a purchase, stock is moved onto the curve at the
-//!   current price (at most `daily_cap` per day), then the swap runs.
+//!   Alpha. vx and vy are virtual: they only shape the price curve (start price
+//!   = sale price / 1,000,000, depth START_DEPTH). rx and ry are real and are
+//!   the only amounts that can ever be paid out.
+//! - Each epoch's stock goes straight into the pool; staking is buying on the
+//!   curve, unstaking is selling. A trade too large for the real reserve fills
+//!   partially. (Revised after simulation, see sim/RESULTS.md; the decision of
+//!   25 Nov 2026 had a daily cap on stock sales, which stalled trading.)
 //!
 //! All amounts in base units (1 Alpha = 1 ICT = 10^9). Every division rounds in
 //! the pool's favour.
@@ -99,42 +101,43 @@ pub fn vested(total: u128, granted_at: u64, now: u64) -> u128 {
 
 // ---------------------------------------------------------------- pool
 
+/// Depth of the start curve: ten days of stock at the first reward (36,000 Alpha).
+/// Revised after simulation (sim/RESULTS.md): a million virtual Alpha made the
+/// price move far too slowly, so buyers could hardly buy at all.
+pub const START_DEPTH: u128 = 36_000 * UNIT;
+/// Start price = sale price / START_DIVISOR (decided 25 Nov 2026).
+pub const START_DIVISOR: u128 = 1_000_000;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct AlphaPool {
-    /// Virtual ICT (the slot's sale price). Never paid out.
+    /// Virtual ICT. Shapes the curve only; never paid out.
     pub vx: u128,
-    /// Virtual Alpha (START_ALPHA). Never paid out.
+    /// Virtual Alpha. Shapes the curve only; never paid out.
     pub vy: u128,
     /// Real ICT in the pool.
     pub rx: u128,
-    /// Real Alpha on the curve.
+    /// Real Alpha in the pool (the stock plus everything sold back).
     pub ry: u128,
-    /// Unsold Alpha in stock, outside the curve.
-    pub stock: u128,
-    /// Stock sold in the current day window.
-    pub sold_today: u128,
-    /// First block of the current day window.
-    pub day_start: u64,
-    /// False once the subnet is removed: no stock is sold any more.
+    /// False once the subnet is removed: no more stock arrives.
     pub open: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Trade {
+    /// Input actually used (less than offered on a partial fill).
+    pub amount_in: u128,
     /// Asset received by the trader.
     pub amount_out: u128,
     /// Part of the input fee that is burned (input asset).
     pub burned: u128,
     /// Part of the input fee left in the pool (input asset).
     pub kept: u128,
-    /// Alpha moved from stock onto the curve by this trade.
-    pub from_stock: u128,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PoolError {
     ZeroInput,
-    /// Not enough real reserve on the other side.
+    /// Nothing real on the other side to trade against.
     Insufficient,
     SlippageExceeded,
 }
@@ -151,17 +154,19 @@ pub const DEFAULT_FEES: Fees = Fees {
     burn_ppm: 500_000,
 };
 
+/// A partial fill leaves this share of the real reserve in the pool, so the
+/// price stays finite and the next trader can still trade.
+const FILL_MAX_PPM: u128 = 990_000;
+
 impl AlphaPool {
-    /// A new pool for a slot sold for `sale_price` ICT, opened at `block`.
-    pub fn open(sale_price: u128, block: u64) -> Self {
+    /// A new pool for a slot sold for `sale_price` ICT:
+    /// start price = sale price / 1,000,000, depth = START_DEPTH.
+    pub fn open(sale_price: u128) -> Self {
         Self {
-            vx: sale_price.max(1),
-            vy: START_ALPHA,
+            vx: mul_div(sale_price, START_DEPTH, START_DIVISOR * UNIT).max(1),
+            vy: START_DEPTH,
             rx: 0,
             ry: 0,
-            stock: 0,
-            sold_today: 0,
-            day_start: block,
             open: true,
         }
     }
@@ -178,126 +183,91 @@ impl AlphaPool {
         mul_div(self.x(), UNIT, self.y())
     }
 
-    /// Stock sale room left today, rolling the day window forward if needed.
-    fn room(&mut self, block: u64, daily_cap: u128) -> u128 {
-        if block >= self.day_start + BLOCKS_PER_DAY {
-            let days = (block - self.day_start) / BLOCKS_PER_DAY;
-            self.day_start += days * BLOCKS_PER_DAY;
-            self.sold_today = 0;
-        }
-        if !self.open {
-            return 0;
-        }
-        daily_cap.saturating_sub(self.sold_today).min(self.stock)
-    }
-
-    /// Add newly issued stock.
+    /// Newly issued stock goes straight into the pool.
     pub fn add_stock(&mut self, amount: u128) {
-        self.stock += amount;
+        if self.open {
+            self.ry += amount;
+        }
     }
 
-    /// ICT in, Alpha out (staking). Stock is sold first at the current price,
-    /// then the rest trades on the curve against real Alpha only.
-    pub fn buy(
-        &mut self,
-        ict_in: u128,
-        min_alpha: u128,
+    /// One side of a swap. `x` is the input side, `y` the output side;
+    /// `real_out` the real part of the output side. Fills partially when the
+    /// real output would run out.
+    fn swap(
+        x: u128,
+        y: u128,
+        real_out: u128,
+        amount_in: u128,
         fees: Fees,
-        daily_cap: u128,
-        block: u64,
-    ) -> Result<Trade, PoolError> {
-        if ict_in == 0 {
+    ) -> Result<(Trade, u128), PoolError> {
+        if amount_in == 0 {
             return Err(PoolError::ZeroInput);
         }
-        let mut next = *self;
-        let fee = mul_div(ict_in, fees.fee_ppm, PPM);
-        let burned = mul_div(fee, fees.burn_ppm, PPM);
-        let kept = fee - burned;
-        let net = ict_in - fee;
-        // Inject stock at the current price: a = net * Y / X, capped.
-        let room = next.room(block, daily_cap);
-        let at_price = mul_div(net, next.y(), next.x());
-        let a = at_price.min(room);
-        next.ry += a;
-        next.stock -= a;
-        next.sold_today += a;
-        // Swap net ICT on the curve, rounding the remaining reserve up.
-        let x0 = next.x();
-        let y0 = next.y();
-        let new_x = x0 + net;
-        let y_after = mul_div(x0, y0, new_x) + 1;
-        let out = y0.saturating_sub(y_after);
-        if out > next.ry {
+        if real_out == 0 {
             return Err(PoolError::Insufficient);
         }
-        if out < min_alpha {
+        let mut amount_in = amount_in;
+        let mut fee = mul_div(amount_in, fees.fee_ppm, PPM);
+        let mut net = amount_in - fee;
+        // out = y - x*y/(x+net), the remaining reserve rounded up
+        let mut out = y.saturating_sub(mul_div(x, y, x + net) + 1);
+        if out > real_out {
+            // partial fill: take FILL_MAX of the real reserve, pay only for it
+            out = mul_div(real_out, FILL_MAX_PPM, PPM);
+            if out == 0 {
+                return Err(PoolError::Insufficient);
+            }
+            // net needed so that y - x*y/(x+net) = out: net = x*out/(y-out), rounded up
+            net = mul_div(x, out, y - out) + 1;
+            amount_in = mul_div(net, PPM, PPM - fees.fee_ppm) + 1;
+            fee = amount_in - net;
+        }
+        let burned = mul_div(fee, fees.burn_ppm, PPM);
+        let kept = fee - burned;
+        Ok((
+            Trade {
+                amount_in,
+                amount_out: out,
+                burned,
+                kept,
+            },
+            net,
+        ))
+    }
+
+    /// ICT in, Alpha out (staking).
+    pub fn buy(&mut self, ict_in: u128, min_alpha: u128, fees: Fees) -> Result<Trade, PoolError> {
+        let (t, net) = Self::swap(self.x(), self.y(), self.ry, ict_in, fees)?;
+        if t.amount_out < min_alpha {
             return Err(PoolError::SlippageExceeded);
         }
-        next.rx += net + kept;
-        next.ry -= out;
-        *self = next;
-        Ok(Trade {
-            amount_out: out,
-            burned,
-            kept,
-            from_stock: a,
-        })
+        self.rx += net + t.kept;
+        self.ry -= t.amount_out;
+        Ok(t)
     }
 
     /// Alpha in, ICT out (unstaking). Pays only from real ICT.
-    pub fn sell(
-        &mut self,
-        alpha_in: u128,
-        min_ict: u128,
-        fees: Fees,
-        block: u64,
-    ) -> Result<Trade, PoolError> {
-        if alpha_in == 0 {
-            return Err(PoolError::ZeroInput);
-        }
-        let mut next = *self;
-        let _ = next.room(block, 0); // keep the day window current
-        let fee = mul_div(alpha_in, fees.fee_ppm, PPM);
-        let burned = mul_div(fee, fees.burn_ppm, PPM);
-        let kept = fee - burned;
-        let net = alpha_in - fee;
-        let x0 = next.x();
-        let y0 = next.y();
-        let new_y = y0 + net;
-        let x_after = mul_div(x0, y0, new_y) + 1;
-        let out = x0.saturating_sub(x_after);
-        if out > next.rx {
-            return Err(PoolError::Insufficient);
-        }
-        if out < min_ict {
+    pub fn sell(&mut self, alpha_in: u128, min_ict: u128, fees: Fees) -> Result<Trade, PoolError> {
+        let (t, net) = Self::swap(self.y(), self.x(), self.rx, alpha_in, fees)?;
+        if t.amount_out < min_ict {
             return Err(PoolError::SlippageExceeded);
         }
-        next.ry += net + kept;
-        next.rx -= out;
-        *self = next;
-        Ok(Trade {
-            amount_out: out,
-            burned,
-            kept,
-            from_stock: 0,
-        })
+        self.ry += net + t.kept;
+        self.rx -= t.amount_out;
+        Ok(t)
     }
 
-    pub fn quote_buy(&self, ict_in: u128, fees: Fees, daily_cap: u128, block: u64) -> Option<u128> {
+    pub fn quote_buy(&self, ict_in: u128, fees: Fees) -> Option<Trade> {
         let mut c = *self;
-        c.buy(ict_in, 0, fees, daily_cap, block)
-            .ok()
-            .map(|t| t.amount_out)
+        c.buy(ict_in, 0, fees).ok()
     }
 
-    pub fn quote_sell(&self, alpha_in: u128, fees: Fees, block: u64) -> Option<u128> {
+    pub fn quote_sell(&self, alpha_in: u128, fees: Fees) -> Option<Trade> {
         let mut c = *self;
-        c.sell(alpha_in, 0, fees, block)
-            .ok()
-            .map(|t| t.amount_out)
+        c.sell(alpha_in, 0, fees).ok()
     }
 
-    /// The subnet is removed: no more stock is sold; selling keeps working.
+    /// The subnet is removed: no more stock; trading against the real reserves goes on.
     pub fn close(&mut self) {
         self.open = false;
     }
@@ -306,11 +276,6 @@ impl AlphaPool {
     pub fn stake_ict(&self) -> u128 {
         self.rx
     }
-}
-
-/// One day's Alpha issuance at the current reward: the stock sale cap.
-pub fn daily_cap(issuance: &Issuance) -> u128 {
-    emission::block_reward(issuance.state.halvings) * BLOCKS_PER_DAY as u128
 }
 
 #[cfg(test)]
@@ -333,7 +298,6 @@ mod tests {
         assert_eq!(e.issued, ict(7_200));
         assert_eq!(e.bonus, ict(3_600));
         assert_eq!(e.stock, ict(3_600));
-        assert_eq!(daily_cap(&i), ict(7_200));
     }
 
     #[test]
@@ -345,10 +309,8 @@ mod tests {
             },
         };
         let e = i.issue(20, DEFAULT_BONUS_PPM);
-        // 10 blocks at 1 Alpha, then 10 at 0.5
         assert_eq!(e.issued, ict(10) + ict(5));
         assert_eq!(i.state.halvings, 1);
-        assert_eq!(daily_cap(&i), ict(3_600));
     }
 
     #[test]
@@ -368,119 +330,96 @@ mod tests {
 
     #[test]
     fn start_price_is_sale_price_over_a_million() {
-        let p = AlphaPool::open(ict(1_000), 0);
-        assert_eq!(p.price(), UNIT / 1_000); // 0.001 ICT
-        let p = AlphaPool::open(ict(50_000), 0);
-        assert_eq!(p.price(), 50 * UNIT / 1_000); // 0.05 ICT
+        assert_eq!(AlphaPool::open(ict(1_000)).price(), UNIT / 1_000);
+        assert_eq!(AlphaPool::open(ict(50_000)).price(), 50 * UNIT / 1_000);
+        assert_eq!(AlphaPool::open(ict(200)).price(), UNIT / 5_000);
     }
 
     #[test]
-    fn empty_pool_cannot_pay_a_seller_or_a_buyer_without_stock() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
-        assert_eq!(p.sell(ict(10), 0, NO_FEES, 1), Err(PoolError::Insufficient));
-        assert_eq!(
-            p.buy(ict(1), 0, NO_FEES, ict(7_200), 1),
-            Err(PoolError::Insufficient)
-        );
+    fn empty_pool_cannot_pay_a_seller_or_sell_to_a_buyer() {
+        let mut p = AlphaPool::open(ict(1_000));
+        assert_eq!(p.sell(ict(10), 0, NO_FEES), Err(PoolError::Insufficient));
+        assert_eq!(p.buy(ict(1), 0, NO_FEES), Err(PoolError::Insufficient));
     }
 
     #[test]
-    fn a_buyer_gets_stock_at_the_current_price() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
+    fn stock_lowers_the_price_and_buying_raises_it() {
+        let mut p = AlphaPool::open(ict(1_000));
+        let p0 = p.price();
         p.add_stock(ict(3_600));
-        let t = p.buy(ict(1), 0, NO_FEES, ict(7_200), 1).unwrap();
-        // 1 ICT at 0.001 ICT/Alpha = 1,000 Alpha (minus one base unit of rounding)
-        assert!(t.amount_out >= ict(1_000) - 2 && t.amount_out <= ict(1_000));
-        assert_eq!(t.from_stock, ict(1_000));
-        assert_eq!(p.rx, ict(1));
-        assert!(p.price() > UNIT / 1_000);
+        let p1 = p.price();
+        assert!(p1 < p0);
+        p.buy(ict(1), 0, NO_FEES).unwrap();
+        assert!(p.price() > p1);
     }
 
     #[test]
-    fn price_doubles_when_real_ict_equals_the_sale_price() {
-        // All Alpha bought from stock leaves Y at vy, so price = X / vy.
-        let mut p = AlphaPool::open(ict(1_000), 0);
-        p.add_stock(ict(10_000_000));
-        let mut block = 1;
-        while p.rx < ict(1_000) {
-            p.buy(ict(10), 0, NO_FEES, u128::MAX, block).unwrap();
-            block += 1;
-        }
-        let ratio = p.price() * 1_000 / (UNIT / 1_000);
-        assert!((1_990..=2_010).contains(&ratio), "ratio {ratio}");
-    }
-
-    #[test]
-    fn daily_cap_limits_stock_sales_then_the_curve_takes_over() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
-        p.add_stock(ict(100_000));
-        // 50 ICT at 0.001 would want 50,000 Alpha; only 7,200 may come from stock.
-        let t = p.buy(ict(50), 0, NO_FEES, ict(7_200), 10);
-        // the curve holds only the injected 7,200 real Alpha: the buy cannot fill
-        assert_eq!(t, Err(PoolError::Insufficient));
-        let t = p.buy(ict(5), 0, NO_FEES, ict(7_200), 10).unwrap();
-        assert_eq!(t.from_stock, ict(5_000));
-        let t = p.buy(ict(2), 0, NO_FEES, ict(7_200), 20).unwrap();
-        assert!(t.from_stock <= ict(2_200));
-        // the rest of today's room is too small for 5 ICT, and no one has sold
-        assert_eq!(p.buy(ict(5), 0, NO_FEES, ict(7_200), 30), Err(PoolError::Insufficient));
-        assert!(p.sold_today <= ict(7_200));
-        // next day the window resets
-        let t = p.buy(ict(1), 0, NO_FEES, ict(7_200), BLOCKS_PER_DAY + 5).unwrap();
-        assert!(t.from_stock > 0);
-        assert_eq!(p.sold_today, t.from_stock);
+    fn a_large_buy_fills_partially_and_pays_only_for_what_it_gets() {
+        let mut p = AlphaPool::open(ict(1_000));
+        p.add_stock(ict(3_600));
+        let t = p.buy(ict(1_000), 0, NO_FEES).unwrap();
+        assert!(t.amount_out <= ict(3_600) * 99 / 100);
+        assert!(t.amount_in < ict(1_000));
+        assert!(p.ry >= ict(36) - 1, "1 % of the real Alpha stays");
+        assert_eq!(p.rx, t.amount_in);
     }
 
     #[test]
     fn a_seller_is_paid_only_from_real_ict_and_never_more_than_bought_for() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
+        let mut p = AlphaPool::open(ict(1_000));
         p.add_stock(ict(3_600));
-        let bought = p.buy(ict(2), 0, NO_FEES, ict(7_200), 1).unwrap().amount_out;
-        let back = p.sell(bought, 0, NO_FEES, 2).unwrap().amount_out;
-        assert!(back <= ict(2));
-        assert!(back >= ict(2) - 10);
-        assert!(p.rx < 20);
+        let t = p.buy(ict(1), 0, NO_FEES).unwrap();
+        let back = p.sell(t.amount_out, 0, NO_FEES).unwrap();
+        assert!(back.amount_out <= t.amount_in);
+        assert!(back.amount_out + 10 >= t.amount_in);
+    }
+
+    #[test]
+    fn a_large_sell_fills_partially_from_real_ict() {
+        let mut p = AlphaPool::open(ict(1_000));
+        p.add_stock(ict(3_600));
+        p.buy(ict(2), 0, NO_FEES).unwrap();
+        let rx = p.rx;
+        let t = p.sell(ict(1_000_000), 0, NO_FEES).unwrap();
+        assert!(t.amount_out <= rx * 99 / 100 + 1);
+        assert!(t.amount_in < ict(1_000_000));
     }
 
     #[test]
     fn fees_burn_half_and_keep_half() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
+        let mut p = AlphaPool::open(ict(1_000));
         p.add_stock(ict(3_600));
-        let t = p.buy(ict(2), 0, DEFAULT_FEES, ict(7_200), 1).unwrap();
+        let t = p.buy(ict(2), 0, DEFAULT_FEES).unwrap();
         assert_eq!(t.burned, ict(2) * 5 / 2_000);
         assert_eq!(t.kept, t.burned);
         assert_eq!(p.rx, ict(2) - t.burned);
     }
 
     #[test]
-    fn slippage_limit_is_enforced() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
+    fn slippage_limit_is_enforced_and_a_failed_trade_changes_nothing() {
+        let mut p = AlphaPool::open(ict(1_000));
         p.add_stock(ict(3_600));
-        let q = p.quote_buy(ict(1), NO_FEES, ict(7_200), 1).unwrap();
+        let q = p.quote_buy(ict(1), NO_FEES).unwrap().amount_out;
         let before = p;
-        assert_eq!(
-            p.buy(ict(1), q + 1, NO_FEES, ict(7_200), 1),
-            Err(PoolError::SlippageExceeded)
-        );
-        assert_eq!(p, before, "a failed trade changes nothing");
-        assert_eq!(p.buy(ict(1), q, NO_FEES, ict(7_200), 1).unwrap().amount_out, q);
+        assert_eq!(p.buy(ict(1), q + 1, NO_FEES), Err(PoolError::SlippageExceeded));
+        assert_eq!(p, before);
+        assert_eq!(p.buy(ict(1), q, NO_FEES).unwrap().amount_out, q);
     }
 
     #[test]
-    fn a_closed_pool_sells_no_stock_but_lets_holders_out() {
-        let mut p = AlphaPool::open(ict(1_000), 0);
+    fn a_closed_pool_gets_no_stock_but_lets_holders_out() {
+        let mut p = AlphaPool::open(ict(1_000));
         p.add_stock(ict(3_600));
-        let a = p.buy(ict(2), 0, NO_FEES, ict(7_200), 1).unwrap().amount_out;
+        let a = p.buy(ict(2), 0, NO_FEES).unwrap().amount_out;
         p.close();
-        assert!(p.sell(a / 2, 0, NO_FEES, 2).is_ok());
-        let before = p.stock;
-        let _ = p.buy(ict(1), 0, NO_FEES, ict(7_200), 3);
-        assert_eq!(p.stock, before);
+        let ry = p.ry;
+        p.add_stock(ict(3_600));
+        assert_eq!(p.ry, ry);
+        assert!(p.sell(a / 2, 0, NO_FEES).is_ok());
     }
 
-    /// Deterministic pseudo-random walk over buys, sells and new stock:
-    /// real reserves never go negative, nothing is paid out of virtual
-    /// reserves, and Alpha is conserved.
+    /// Deterministic random walk over issuance, buys and sells: virtual reserves
+    /// are never paid out, k never falls in a swap, and Alpha is conserved.
     #[test]
     fn random_walk_keeps_the_invariants() {
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
@@ -490,43 +429,39 @@ mod tests {
             seed ^= seed << 17;
             seed % m
         };
-        let mut p = AlphaPool::open(ict(1_000), 0);
+        let mut p = AlphaPool::open(ict(1_000));
         let mut iss = Issuance::default();
-        let mut held = 0u128; // Alpha in traders' hands
-        let mut minted_stock = 0u128;
+        let mut held = 0u128;
         let mut burned_alpha = 0u128;
         for step in 0..20_000u64 {
-            let block = step * 36;
             if step % 10 == 0 {
                 let e = iss.issue(360, DEFAULT_BONUS_PPM);
                 p.add_stock(e.stock);
-                minted_stock += e.stock;
-                held += e.bonus; // bonus goes to participants
+                held += e.bonus;
             }
+            let k = p.x() * p.y() / UNIT;
             match rnd(3) {
                 0 => {
-                    let amt = (rnd(50) as u128 + 1) * UNIT / 10;
-                    if let Ok(t) = p.buy(amt, 0, DEFAULT_FEES, daily_cap(&iss), block) {
+                    let amt = (rnd(5_000) as u128 + 1) * UNIT / 10;
+                    if let Ok(t) = p.buy(amt, 0, DEFAULT_FEES) {
                         held += t.amount_out;
+                        assert!(t.amount_in <= amt);
+                        assert!(p.x() * p.y() / UNIT >= k);
                     }
                 }
                 _ => {
-                    if held > 0 {
-                        let amt = held * (rnd(100) as u128 + 1) / 400;
-                        if amt > 0 {
-                            if let Ok(t) = p.sell(amt, 0, DEFAULT_FEES, block) {
-                                held -= amt;
-                                burned_alpha += t.burned;
-                            }
+                    let amt = held * (rnd(100) as u128 + 1) / 400;
+                    if amt > 0 {
+                        if let Ok(t) = p.sell(amt, 0, DEFAULT_FEES) {
+                            held -= t.amount_in;
+                            burned_alpha += t.burned;
+                            assert!(p.x() * p.y() / UNIT >= k);
                         }
                     }
                 }
             }
             assert!(p.x() >= p.vx && p.y() >= p.vy);
-            assert!(p.sold_today <= daily_cap(&iss));
         }
-        // Alpha conservation: issued = held + on curve + stock + burned
-        assert_eq!(iss.total(), held + p.ry + p.stock + burned_alpha);
-        assert!(minted_stock >= p.stock);
+        assert_eq!(iss.total(), held + p.ry + burned_alpha);
     }
 }
