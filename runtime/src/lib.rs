@@ -64,7 +64,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: the transaction extensions changed (EthSetOrigin added).
-    transaction_version: 2,
+    // 3: spec 10 changed registry.register_subnet and call index 3 (now try_unlock).
+    transaction_version: 3,
     system_version: 1,
 };
 
