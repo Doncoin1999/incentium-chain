@@ -183,3 +183,211 @@ fn launch_rewards_quarter_paid_rest_locked_then_released_ten_percent_per_step() 
         );
     });
 }
+
+// ---------------------------------------------------------------- after the SN1 unlock
+
+use crate::{SubnetStake, SubnetTotalStake, Unstaking, EMISSION_RAMP_BLOCKS};
+use pallet_subnet_registry::{Phase2Enabled, SubnetCount, SubnetInfo, Subnets, UnlockedAt};
+
+const OWNER: u64 = 9;
+
+fn unlock_at(block: u32) {
+    Phase2Enabled::<Test>::put(true);
+    UnlockedAt::<Test>::put(block);
+}
+
+/// SN`netuid` owned by OWNER, created at block 0.
+fn add_subnet(netuid: u16) {
+    Subnets::<Test>::insert(
+        netuid,
+        SubnetInfo {
+            owner: Some(OWNER),
+            deposit: 0,
+            created: 0,
+        },
+    );
+    SubnetCount::<Test>::mutate(|c| *c += 1);
+}
+
+fn commit_on(net: u16, v: u64, uids: Vec<u16>, w: Vec<u16>) {
+    let h: H256 = Weights::commit_hash(net, &uids, &w, &SALT);
+    assert_ok!(Weights::commit_weights(RuntimeOrigin::signed(v), net, h));
+}
+
+fn reveal_on(net: u16, v: u64, uids: Vec<u16>, w: Vec<u16>) {
+    assert_ok!(Weights::reveal_weights(
+        RuntimeOrigin::signed(v),
+        net,
+        uids,
+        w,
+        SALT
+    ));
+}
+
+fn close(a: u128, b: u128) -> bool {
+    a.abs_diff(b) <= 2
+}
+
+#[test]
+fn before_the_unlock_sn0_gets_the_whole_pot() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        SubnetTotalStake::<Test>::insert(1, 5_000);
+        assert_eq!(Consensus::others_share_ppm(), 0);
+        assert_eq!(Consensus::allocation(90_000), vec![(0, 90_000)]);
+    });
+}
+
+#[test]
+fn other_subnets_ramp_in_over_180_days_by_stake_and_sn0_keeps_half_of_issuance() {
+    new_test_ext().execute_with(|| {
+        unlock_at(1);
+        add_subnet(1);
+        add_subnet(2);
+        add_subnet(3); // no stake: no slice
+        SubnetTotalStake::<Test>::insert(1, 3_000);
+        SubnetTotalStake::<Test>::insert(2, 1_000);
+        let pot = 900_000u128; // 90 % of 1,000,000 issued; the fund took 100,000
+        assert_eq!(Consensus::allocation(pot), vec![(0, pot)]); // day 0
+
+        System::set_block_number(1 + EMISSION_RAMP_BLOCKS as u64 / 2);
+        let half = Consensus::allocation(pot);
+        assert_eq!(half.iter().map(|(_, x)| x).sum::<u128>(), pot);
+        assert_eq!(half.len(), 3);
+        // Half of the 444,444 ppm maximum.
+        let others = half[1].1 + half[2].1;
+        assert!(close(others, 199_999), "{half:?}");
+        let of = |n: u16| half.iter().find(|(k, _)| *k == n).map(|x| x.1).unwrap();
+        assert!(close(of(1), 3 * of(2)));
+
+        for days in [180u64, 400, 2_000] {
+            System::set_block_number(1 + days * 7_200);
+            let full = Consensus::allocation(pot);
+            assert_eq!(full[0].0, 0);
+            // SN0 keeps at least 500,000 of the 1,000,000 issued.
+            assert!(full[0].1 >= 500_000, "day {days}: {}", full[0].1);
+            assert!(close(full[0].1, 500_000));
+        }
+    });
+}
+
+#[test]
+fn subnet_stake_rules() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        assert_noop!(
+            Consensus::stake_subnet(RuntimeOrigin::signed(5), 0, 1_000),
+            Error::<Test>::UseSn0Calls
+        );
+        assert_noop!(
+            Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 1_000),
+            Error::<Test>::NotSubnetNeuron
+        );
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(5), 1, 5));
+        assert_noop!(
+            Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 10),
+            Error::<Test>::BelowMinimumStake
+        );
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 1_000));
+        assert_eq!(SubnetStake::<Test>::get(1, 5), 1_000);
+        assert_eq!(SubnetTotalStake::<Test>::get(1), 1_000);
+        // SN0 stake is separate.
+        assert_eq!(Stake::<Test>::get(5), 0);
+        assert_ok!(Consensus::unstake_subnet(RuntimeOrigin::signed(5), 1, 400));
+        assert_eq!(SubnetTotalStake::<Test>::get(1), 600);
+        assert_eq!(Unstaking::<Test>::get(5).map(|u| u.0), Some(400));
+        assert_noop!(
+            Consensus::unstake_subnet(RuntimeOrigin::signed(5), 1, 601),
+            Error::<Test>::InsufficientStake
+        );
+    });
+}
+
+#[test]
+fn subnet_pays_owner_12_miners_50_validators_38_percent() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        // validator 5 (uid 0), miners 6 and 7 (uids 1, 2) on SN1
+        for a in 5..=7u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), 1, a));
+        }
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 10_000));
+        unlock_at(0);
+        // Well past the ramp: SN1 gets the full 444,444 ppm of the pot.
+        let b = 200 * 7_200u64;
+        System::set_block_number(b);
+        let epoch = Weights::current_epoch();
+        commit_on(1, 5, vec![1, 2], vec![3, 1]);
+        System::set_block_number(b + 10);
+        reveal_on(1, 5, vec![1, 2], vec![3, 1]);
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            POT,
+            900_000
+        ));
+        let (o, m6, m7, v5) = (
+            Balances::free_balance(OWNER),
+            Balances::free_balance(6),
+            Balances::free_balance(7),
+            Balances::free_balance(5),
+        );
+        Consensus::settle(epoch);
+        let slice = 900_000u128 * 444_444 / 1_000_000; // 399,999
+        let got = |a: u64, before: u128| Balances::free_balance(a) - before;
+        assert_eq!(got(OWNER, o), slice * 120_000 / 1_000_000);
+        let miners = got(6, m6) + got(7, m7);
+        assert!(close(miners, slice / 2), "miners {miners}");
+        assert!(close(got(6, m6), 3 * got(7, m7)));
+        assert!(close(got(5, v5), slice * 380_000 / 1_000_000), "validator");
+        // SN0 had no weights: its slice stays in the pot.
+        assert!(close(Balances::free_balance(POT), 900_000 - slice));
+    });
+}
+
+#[test]
+fn sn0_splits_50_to_38_after_the_unlock() {
+    new_test_ext().execute_with(|| {
+        setup();
+        unlock_at(1);
+        commit(1, vec![2, 3], vec![3, 1]);
+        commit(2, vec![2, 3], vec![3, 1]);
+        go_to(10);
+        reveal(1, vec![2, 3], vec![3, 1]);
+        reveal(2, vec![2, 3], vec![3, 1]);
+        let (m3, m4, v1, v2) = (
+            Balances::free_balance(3),
+            Balances::free_balance(4),
+            Balances::free_balance(1),
+            Balances::free_balance(2),
+        );
+        go_to(20);
+        let miners = Balances::free_balance(3) - m3 + Balances::free_balance(4) - m4;
+        let vals = Balances::free_balance(1) - v1 + Balances::free_balance(2) - v2;
+        // 90,000 x 50/88 to miners, the rest to validators; nothing to an owner.
+        assert!(close(miners, 51_136), "miners {miners}");
+        assert!(close(vals, 38_864), "validators {vals}");
+        assert!(Balances::free_balance(POT) <= 2);
+    });
+}
+
+#[test]
+fn closing_a_subnet_releases_its_stake() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        for a in 5..=6u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), 1, a));
+            assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(a), 1, 2_000));
+        }
+        System::set_block_number(pallet_subnet_registry::IMMUNITY_BLOCKS as u64);
+        assert_ok!(Registry::deregister_subnet(RuntimeOrigin::root(), 1));
+        assert_eq!(SubnetTotalStake::<Test>::get(1), 0);
+        assert_eq!(SubnetStake::<Test>::get(1, 5), 0);
+        assert_eq!(Unstaking::<Test>::get(5).map(|u| u.0), Some(2_000));
+        assert_eq!(Unstaking::<Test>::get(6).map(|u| u.0), Some(2_000));
+        let at = Unstaking::<Test>::get(5).unwrap().1;
+        System::set_block_number(at * 10);
+        let before = Balances::free_balance(5);
+        assert_ok!(Consensus::withdraw_unstaked(RuntimeOrigin::signed(5)));
+        assert_eq!(Balances::free_balance(5), before + 2_000);
+    });
+}

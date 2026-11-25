@@ -227,6 +227,19 @@ Anyone may run a prover; the first valid proof earns a small fee from the epoch'
 
 **Audits:** Each epoch a drand-seeded draw picks validators whose published evaluations (prompts, outputs, scores on IPFS or Celestia) are re-scored by other validators. A score deviation beyond the subnet's tolerance counts as a failed audit.
 
+**Sharing issuance between subnets (in the runtime from spec version 10; decided 25 Nov 2026)**
+
+The development fund takes its share of each block first (10 %); the rest goes to the subnet pot, which consensus shares out every epoch.
+
+| | Before the SN1 unlock | After the SN1 unlock |
+| --- | --- | --- |
+| Pot to SN0 | 100 % | At least 50 % of all issuance (0.5 / (1 − fund share) of the pot: 55.6 % at a 10 % fund) |
+| Pot to SN1 and later | 0 % | Rises linearly from 0 to the rest over 180 days, shared by the ICT staked on each subnet; a subnet without stake gets nothing |
+| SN0 split | Miners 66.7 %, validators 33.3 % of SN0's slice (60 % / 30 % of issuance) | Miners 50 / 88, validators 38 / 88 of SN0's slice; SN0 has no owner |
+| SN1 and later split | – | Miners 50 %, validators 38 %, owner 12 % of the subnet's slice |
+
+Validators of SN1 and later stake on their own subnet (`stake_subnet`, `unstake_subnet`; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (`work-verify`) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.
+
 ## 7. Modules `alpha-assets`, `amm` and `buyback`
 
 Each subnet has one Alpha asset and one constant-product pool against ICT; every block the protocol injects Alpha only as far as the buyback absorbs it, buys Alpha, burns half and pays half to stakers.

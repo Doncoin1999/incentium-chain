@@ -665,6 +665,40 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </table></div>
 <p>Anyone may run a prover; the first valid proof earns a small fee from the epoch's issuance (proposed: 0.1%).</p>
 <p><strong>Audits:</strong> Each epoch a drand-seeded draw picks validators whose published evaluations (prompts, outputs, scores on IPFS or Celestia) are re-scored by other validators. A score deviation beyond the subnet's tolerance counts as a failed audit.</p>
+<p><strong>Sharing issuance between subnets (in the runtime from spec version 10; decided 25 Nov 2026)</strong></p>
+<p>The development fund takes its share of each block first (10 %); the rest goes to the subnet pot, which consensus shares out every epoch.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>Before the SN1 unlock</th>
+<th>After the SN1 unlock</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pot to SN0</td>
+<td>100 %</td>
+<td>At least 50 % of all issuance (0.5 / (1 − fund share) of the pot: 55.6 % at a 10 % fund)</td>
+</tr>
+<tr>
+<td>Pot to SN1 and later</td>
+<td>0 %</td>
+<td>Rises linearly from 0 to the rest over 180 days, shared by the ICT staked on each subnet; a subnet without stake gets nothing</td>
+</tr>
+<tr>
+<td>SN0 split</td>
+<td>Miners 66.7 %, validators 33.3 % of SN0's slice (60 % / 30 % of issuance)</td>
+<td>Miners 50 / 88, validators 38 / 88 of SN0's slice; SN0 has no owner</td>
+</tr>
+<tr>
+<td>SN1 and later split</td>
+<td>–</td>
+<td>Miners 50 %, validators 38 %, owner 12 % of the subnet's slice</td>
+</tr>
+</tbody>
+</table></div>
+<p>Validators of SN1 and later stake on their own subnet (<code>stake_subnet</code>, <code>unstake_subnet</code>; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (<code>work-verify</code>) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.</p>
 <h2 id="7-modules-alpha-assets-amm-and-buyback">7. Modules <code>alpha-assets</code>, <code>amm</code> and <code>buyback</code><a class="anchor" href="#7-modules-alpha-assets-amm-and-buyback" aria-label="Link to this section">#</a></h2>
 <p>Each subnet has one Alpha asset and one constant-product pool against ICT; every block the protocol injects Alpha only as far as the buyback absorbs it, buys Alpha, burns half and pays half to stakers.</p>
 <p><strong>Alpha asset (<code>alpha-assets</code>)</strong></p>

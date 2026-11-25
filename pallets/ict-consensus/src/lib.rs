@@ -6,6 +6,15 @@
 //!   Yuma-lite (sqrt stake, 10 % cap, kappa 0.5, clipping) and pays out the subnet pot:
 //!   `MinerSharePpm` to miners by incentive (pools via work-verify), the rest to
 //!   validators by dividends. With no usable weights the pot carries over.
+//! - Once subnet registration has unlocked (subnet registration specification, 25 Nov 2026):
+//!   - validators of SN1 and later stake on their own subnet (`stake_subnet`);
+//!   - each epoch the pot is shared between SN0 and the other subnets. The other subnets'
+//!     combined share ramps from 0 to its maximum over 180 days from the unlock, shared by
+//!     their stake. SN0 keeps at least `Sn0MinPotPpm` of the pot (50 % of all issuance);
+//!   - SN1 and later pay 50 % to miners, 38 % to validators and 12 % to the owner;
+//!   - SN0 has no owner and splits 50 : 38 between miners and validators
+//!     (`Sn0MinerSharePpm`). Before the unlock SN0 keeps `MinerSharePpm`.
+//! - Closing a subnet releases its stake into the normal unbonding queue.
 //! - The on-chain computation is replaced by off-chain Yuma with a zk proof later.
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -24,7 +33,7 @@ mod tests;
 pub mod pallet {
     use crate::WeightInfo;
     use ict_economics::{mul_div, yuma::yuma_lite, PPM};
-    use pallet_subnet_registry::{NeuronCount, NeuronUid, Neurons, SN0};
+    use pallet_subnet_registry::{NetUid, NeuronCount, NeuronUid, Neurons, Subnets, SN0};
     use pallet_weights::Epoch;
     use polkadot_sdk::frame_support::{
         pallet_prelude::*,
@@ -38,6 +47,12 @@ pub mod pallet {
     use polkadot_sdk::sp_runtime::traits::{AccountIdConversion, SaturatedConversion};
     extern crate alloc;
     use alloc::vec::Vec;
+
+    /// SN1 and later: miners 50 %, validators 38 %, owner 12 % of the subnet's slice.
+    pub const SUBNET_MINER_PPM: u128 = 500_000;
+    pub const SUBNET_OWNER_PPM: u128 = 120_000;
+    /// The other subnets' share ramps in over 180 days from the unlock.
+    pub const EMISSION_RAMP_BLOCKS: u128 = 180 * ict_economics::BLOCKS_PER_DAY as u128;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -55,9 +70,16 @@ pub mod pallet {
         /// Account where `ict-emission` mints subnet issuance.
         #[pallet::constant]
         type SubnetPot: Get<Self::AccountId>;
-        /// Miner share of each payout in ppm (Phase 1: 60 / 90 of issuance = 666,667).
+        /// SN0 miner share of each payout before subnet registration unlocks, in ppm
+        /// (Phase 1: 60 / 90 of issuance = 666,667).
         #[pallet::constant]
         type MinerSharePpm: Get<u32>;
+        /// SN0 miner share after the unlock, in ppm (50 / 88 = 568,182; the rest to validators).
+        #[pallet::constant]
+        type Sn0MinerSharePpm: Get<u32>;
+        /// Smallest share of the pot kept by SN0 after the unlock, in ppm. The runtime sets it
+        /// so that SN0 keeps 50 % of all issuance (the development fund takes its share first).
+        type Sn0MinPotPpm: Get<u32>;
         #[pallet::constant]
         type KappaPpm: Get<u32>;
         #[pallet::constant]
@@ -93,6 +115,15 @@ pub mod pallet {
     #[pallet::storage]
     pub type Unstaking<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, (u128, Epoch), OptionQuery>;
+
+    /// Stake on SN1 and later subnets: (netuid, validator hotkey) -> ICT.
+    #[pallet::storage]
+    pub type SubnetStake<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
+
+    /// Total stake per subnet (SN1 and later); the pot is shared by it.
+    #[pallet::storage]
+    pub type SubnetTotalStake<T> = StorageMap<_, Twox64Concat, NetUid, u128, ValueQuery>;
 
     /// Last weight epoch that was settled.
     #[pallet::storage]
@@ -135,6 +166,32 @@ pub mod pallet {
         EpochSkipped {
             epoch: Epoch,
         },
+        /// A subnet (SN1 and later) was settled.
+        SubnetEpochSettled {
+            netuid: NetUid,
+            epoch: Epoch,
+            paid: u128,
+            miners: u32,
+            validators: u32,
+            owner: u128,
+        },
+        /// A subnet had no usable weights; its slice stays in the pot.
+        SubnetEpochSkipped {
+            netuid: NetUid,
+            epoch: Epoch,
+        },
+        /// Stake on a subnet (SN1 and later).
+        SubnetStaked {
+            netuid: NetUid,
+            who: T::AccountId,
+            amount: u128,
+        },
+        /// A closed subnet's stake moved to the unbonding queue.
+        SubnetStakeReleased {
+            netuid: NetUid,
+            stakers: u32,
+            amount: u128,
+        },
         /// Launch-period reward locked in the vault for `who`.
         LaunchRewardLocked {
             who: T::AccountId,
@@ -156,6 +213,10 @@ pub mod pallet {
         NotYetUnbonded,
         /// Nothing is unlocked yet for this account.
         NothingUnlocked,
+        /// The caller is not a neuron of that subnet.
+        NotSubnetNeuron,
+        /// Use `stake` / `unstake` for SN0.
+        UseSn0Calls,
     }
 
     #[pallet::hooks]
@@ -171,7 +232,9 @@ pub mod pallet {
                 return T::DbWeight::get().reads(1);
             }
             // Every validator is a neuron, so n bounds both the rows and the payouts.
-            let n = NeuronCount::<T>::get(SN0) as u32;
+            let n: u32 = Subnets::<T>::iter_keys()
+                .map(|net| NeuronCount::<T>::get(net) as u32)
+                .sum();
             Self::settle(epoch - 2);
             <T as Config>::WeightInfo::settle(n, n)
         }
@@ -211,11 +274,7 @@ pub mod pallet {
             ensure!(cur >= amount, Error::<T>::InsufficientStake);
             Stake::<T>::insert(&who, cur - amount);
             TotalStake::<T>::mutate(|t| *t -= amount);
-            let at = pallet_weights::Pallet::<T>::current_epoch() + T::StakeUnbondingEpochs::get();
-            Unstaking::<T>::mutate(&who, |u| {
-                let prev = u.map(|x| x.0).unwrap_or(0);
-                *u = Some((prev + amount, at));
-            });
+            let at = Self::queue_unbonding(&who, amount);
             Self::deposit_event(Event::UnstakeRequested {
                 who,
                 amount,
@@ -261,6 +320,59 @@ pub mod pallet {
             )?;
             LaunchClaimed::<T>::mutate(&who, |c| *c += amount);
             Self::deposit_event(Event::LaunchRewardClaimed { who, amount });
+            Ok(())
+        }
+
+        /// Stake ICT on the caller's validator hotkey in subnet `netuid` (SN1 and later).
+        #[pallet::call_index(4)]
+        #[pallet::weight(<T as Config>::WeightInfo::stake())]
+        pub fn stake_subnet(origin: OriginFor<T>, netuid: NetUid, amount: u128) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(netuid != SN0, Error::<T>::UseSn0Calls);
+            ensure!(
+                NeuronUid::<T>::contains_key(netuid, &who),
+                Error::<T>::NotSubnetNeuron
+            );
+            let new = SubnetStake::<T>::get(netuid, &who) + amount;
+            ensure!(
+                new >= T::MinValidatorStake::get(),
+                Error::<T>::BelowMinimumStake
+            );
+            T::StakeCurrency::transfer(&who, &Self::account_id(), amount, Preservation::Preserve)?;
+            SubnetStake::<T>::insert(netuid, &who, new);
+            SubnetTotalStake::<T>::mutate(netuid, |t| *t += amount);
+            Self::deposit_event(Event::SubnetStaked {
+                netuid,
+                who,
+                amount,
+            });
+            Ok(())
+        }
+
+        /// Start unbonding stake from subnet `netuid` (SN1 and later).
+        #[pallet::call_index(5)]
+        #[pallet::weight(<T as Config>::WeightInfo::unstake())]
+        pub fn unstake_subnet(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            amount: u128,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            ensure!(netuid != SN0, Error::<T>::UseSn0Calls);
+            let cur = SubnetStake::<T>::get(netuid, &who);
+            ensure!(cur >= amount, Error::<T>::InsufficientStake);
+            if cur == amount {
+                SubnetStake::<T>::remove(netuid, &who);
+            } else {
+                SubnetStake::<T>::insert(netuid, &who, cur - amount);
+            }
+            SubnetTotalStake::<T>::mutate(netuid, |t| *t = t.saturating_sub(amount));
+            let at = Self::queue_unbonding(&who, amount);
+            Self::deposit_event(Event::UnstakeRequested {
+                who,
+                amount,
+                available_at: at,
+            });
             Ok(())
         }
     }
@@ -334,22 +446,136 @@ pub mod pallet {
             }
         }
 
-        /// Settle weight epoch `we` for SN0.
+        /// Add `amount` to `who`'s unbonding queue; returns the epoch it becomes available.
+        fn queue_unbonding(who: &T::AccountId, amount: u128) -> Epoch {
+            let at = pallet_weights::Pallet::<T>::current_epoch() + T::StakeUnbondingEpochs::get();
+            Unstaking::<T>::mutate(who, |u| {
+                let prev = u.map(|x| x.0).unwrap_or(0);
+                *u = Some((prev + amount, at));
+            });
+            at
+        }
+
+        fn stake_on(netuid: NetUid, who: &T::AccountId) -> u128 {
+            if netuid == SN0 {
+                Stake::<T>::get(who)
+            } else {
+                SubnetStake::<T>::get(netuid, who)
+            }
+        }
+
+        /// Share of the pot that SN1 and later subnets get together now, in ppm: 0 before the
+        /// unlock, then rising linearly over 180 days to `PPM - Sn0MinPotPpm`.
+        pub fn others_share_ppm() -> u128 {
+            let Some(unlocked) = pallet_subnet_registry::UnlockedAt::<T>::get() else {
+                return 0;
+            };
+            if !pallet_subnet_registry::Phase2Enabled::<T>::get() {
+                return 0;
+            }
+            let now: u64 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            let elapsed = now.saturating_sub(unlocked as u64) as u128;
+            let ramp = mul_div(PPM, elapsed, EMISSION_RAMP_BLOCKS).min(PPM);
+            let max = PPM.saturating_sub(T::Sn0MinPotPpm::get() as u128);
+            mul_div(max, ramp, PPM)
+        }
+
+        /// How the pot is shared this epoch: SN0 first, then each staked subnet by its stake.
+        /// Subnets without stake get nothing; if none has stake, SN0 gets the whole pot.
+        pub fn allocation(pot: u128) -> Vec<(NetUid, u128)> {
+            let share = Self::others_share_ppm();
+            let staked: Vec<(NetUid, u128)> = if share == 0 {
+                Vec::new()
+            } else {
+                Subnets::<T>::iter_keys()
+                    .filter(|n| *n != SN0)
+                    .map(|n| (n, SubnetTotalStake::<T>::get(n)))
+                    .filter(|(_, st)| *st > 0)
+                    .collect()
+            };
+            let total: u128 = staked.iter().map(|(_, s)| *s).sum();
+            if total == 0 {
+                return alloc::vec![(SN0, pot)];
+            }
+            let others = mul_div(pot, share, PPM);
+            let mut out = Vec::with_capacity(staked.len() + 1);
+            let mut given = 0u128;
+            for (n, st) in staked {
+                let slice = mul_div(others, st, total);
+                given += slice;
+                out.push((n, slice));
+            }
+            out.insert(0, (SN0, pot - given));
+            out
+        }
+
+        /// Settle weight epoch `we` for every subnet.
         pub fn settle(we: Epoch) {
-            let rows = pallet_weights::Pallet::<T>::revealed(SN0, we);
-            let n = NeuronCount::<T>::get(SN0) as usize;
+            let pot_acct = T::SubnetPot::get();
+            let pot = T::StakeCurrency::reducible_balance(
+                &pot_acct,
+                Preservation::Expendable,
+                Fortitude::Polite,
+            );
+            LastSettled::<T>::put(we);
+            let unlocked = pallet_subnet_registry::Phase2Enabled::<T>::get();
+            let plan = Self::allocation(pot);
+            let mut planned = alloc::collections::BTreeSet::new();
+            for (netuid, slice) in plan {
+                planned.insert(netuid);
+                if netuid == SN0 {
+                    let miner_ppm = if unlocked {
+                        T::Sn0MinerSharePpm::get()
+                    } else {
+                        T::MinerSharePpm::get()
+                    };
+                    Self::settle_subnet(SN0, we, slice, miner_ppm as u128, None);
+                } else {
+                    let owner = Subnets::<T>::get(netuid).and_then(|i| i.owner);
+                    Self::settle_subnet(
+                        netuid,
+                        we,
+                        slice,
+                        SUBNET_MINER_PPM,
+                        owner.map(|o| (o, SUBNET_OWNER_PPM)),
+                    );
+                }
+            }
+            // Subnets without a slice still drop their revealed weights.
+            for netuid in Subnets::<T>::iter_keys() {
+                if !planned.contains(&netuid) {
+                    pallet_weights::Pallet::<T>::prune(netuid, we);
+                }
+            }
+        }
+
+        /// Settle one subnet's `slice` of the pot: `owner_ppm` of it to the owner, `miner_ppm`
+        /// to miners by incentive, the rest to validators by dividends. With no usable weights
+        /// the slice stays in the pot.
+        fn settle_subnet(
+            netuid: NetUid,
+            we: Epoch,
+            slice: u128,
+            miner_ppm: u128,
+            owner: Option<(T::AccountId, u128)>,
+        ) {
+            let rows = pallet_weights::Pallet::<T>::revealed(netuid, we);
+            let n = NeuronCount::<T>::get(netuid) as usize;
             let mut validators: Vec<T::AccountId> = Vec::new();
             let mut stakes: Vec<u128> = Vec::new();
             let mut matrix: Vec<Vec<u128>> = Vec::new();
             for (v, row) in rows {
-                let st = Stake::<T>::get(&v);
+                let st = Self::stake_on(netuid, &v);
                 if st == 0 || pallet_work_verify::Pallet::<T>::is_banned(&v) {
                     continue;
                 }
                 let mut r = alloc::vec![0u128; n];
                 for (uid, w) in row {
                     let u = uid as usize;
-                    if u < n && !pallet_work_verify::Pallet::<T>::is_penalized(we, uid) {
+                    // Spot checks (work-verify) cover SN0 work only.
+                    let penalized =
+                        netuid == SN0 && pallet_work_verify::Pallet::<T>::is_penalized(we, uid);
+                    if u < n && !penalized {
                         r[u] = w as u128;
                     }
                 }
@@ -357,8 +583,7 @@ pub mod pallet {
                 stakes.push(st);
                 matrix.push(r);
             }
-            pallet_weights::Pallet::<T>::prune(SN0, we);
-            LastSettled::<T>::put(we);
+            pallet_weights::Pallet::<T>::prune(netuid, we);
 
             let out = yuma_lite(
                 &stakes,
@@ -368,34 +593,49 @@ pub mod pallet {
                 T::MaxValidatorPpm::get() as u128,
             );
             let pot_acct = T::SubnetPot::get();
-            let pot = T::StakeCurrency::reducible_balance(
-                &pot_acct,
-                Preservation::Expendable,
-                Fortitude::Polite,
-            );
-            if pot == 0 || out.incentive.iter().all(|x| *x == 0) {
-                pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(0);
-                Self::deposit_event(Event::EpochSkipped { epoch: we });
+            if slice == 0 || out.incentive.iter().all(|x| *x == 0) {
+                if netuid == SN0 {
+                    pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(0);
+                    Self::deposit_event(Event::EpochSkipped { epoch: we });
+                } else {
+                    Self::deposit_event(Event::SubnetEpochSkipped { netuid, epoch: we });
+                }
                 return;
             }
-            // Work from an epoch that started in the launch period is paid into the vault.
+            // Work from an SN0 epoch that started in the launch period is paid into the vault.
             let len = <T as pallet_weights::Config>::EpochLength::get() as u64;
-            let launch =
-                we.saturating_mul(len) < pallet_subnet_registry::BootstrapUntil::<T>::get() as u64;
-            let to_miners = mul_div(pot, T::MinerSharePpm::get() as u128, PPM);
-            let to_validators = pot - to_miners;
+            let launch = netuid == SN0
+                && we.saturating_mul(len)
+                    < pallet_subnet_registry::BootstrapUntil::<T>::get() as u64;
             let mut paid = 0u128;
+            let mut to_owner = 0u128;
+            if let Some((o, ppm)) = &owner {
+                let amt = mul_div(slice, *ppm, PPM);
+                if amt > 0
+                    && T::StakeCurrency::transfer(&pot_acct, o, amt, Preservation::Expendable)
+                        .is_ok()
+                {
+                    to_owner = amt;
+                    paid += amt;
+                }
+            }
+            let to_miners = mul_div(slice, miner_ppm, PPM);
+            let owner_part = owner
+                .as_ref()
+                .map(|(_, p)| mul_div(slice, *p, PPM))
+                .unwrap_or(0);
+            let to_validators = slice.saturating_sub(to_miners).saturating_sub(owner_part);
             let mut miners = 0u32;
             for (uid, inc) in out.incentive.iter().enumerate() {
                 if *inc == 0 {
                     continue;
                 }
-                if let Some(hk) = Neurons::<T>::get(SN0, uid as u16) {
+                if let Some(hk) = Neurons::<T>::get(netuid, uid as u16) {
                     if pallet_work_verify::Pallet::<T>::is_banned(&hk) {
                         continue;
                     }
                     let amt = mul_div(to_miners, *inc, PPM);
-                    if Self::pay(&pot_acct, &hk, amt, launch, true) {
+                    if Self::pay(&pot_acct, &hk, amt, launch, netuid == SN0) {
                         paid += amt;
                         miners += 1;
                     }
@@ -409,13 +649,46 @@ pub mod pallet {
                     vals += 1;
                 }
             }
-            // Counts towards the SN1 unlock criterion (300 active miners, 30-day average).
-            pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(miners);
-            Self::deposit_event(Event::EpochSettled {
-                epoch: we,
-                paid,
-                miners,
-                validators: vals,
+            if netuid == SN0 {
+                // Counts towards the SN1 unlock criterion (300 active miners, 30-day average).
+                pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(miners);
+                Self::deposit_event(Event::EpochSettled {
+                    epoch: we,
+                    paid,
+                    miners,
+                    validators: vals,
+                });
+            } else {
+                Self::deposit_event(Event::SubnetEpochSettled {
+                    netuid,
+                    epoch: we,
+                    paid,
+                    miners,
+                    validators: vals,
+                    owner: to_owner,
+                });
+            }
+        }
+    }
+
+    impl<T: Config> pallet_subnet_registry::OnSubnetRemoved for Pallet<T> {
+        /// A closed subnet's stake moves to the unbonding queue of each staker.
+        fn subnet_removed(netuid: u16) {
+            if netuid == SN0 {
+                return;
+            }
+            let mut stakers = 0u32;
+            let mut amount = 0u128;
+            for (who, st) in SubnetStake::<T>::drain_prefix(netuid) {
+                Self::queue_unbonding(&who, st);
+                stakers += 1;
+                amount += st;
+            }
+            SubnetTotalStake::<T>::remove(netuid);
+            Self::deposit_event(Event::SubnetStakeReleased {
+                netuid,
+                stakers,
+                amount,
             });
         }
     }
