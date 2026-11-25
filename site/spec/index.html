@@ -479,7 +479,14 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </ol>
 <p><strong>Auction price.</strong> The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.</p>
 <p><strong>Payment.</strong> Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When <code>alpha-assets</code> and <code>amm</code> arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.</p>
-<p><strong>Pace.</strong> One slot at a time. After a sale the next auction starts <code>MinSpacing</code> later, and only while fewer than <code>MaxSubnets</code> exist. When a slot frees up (deregistration or a higher cap) a waiting auction starts at once.</p>
+<p><strong>Pace.</strong> One slot at a time. After a sale the next auction starts <code>MinSpacing</code> later, and only while fewer than <code>MaxSubnets</code> exist. A full cap does not push anyone out: the auction waits until a slot frees up or the cap rises, and a waiting auction then starts at once.</p>
+<p><strong>Removal.</strong> No subnet is voted out for being weak. A subnet can leave in only two ways, and nothing is refunded in either:</p>
+<ol>
+<li><strong>Dead</strong> (<code>remove_dead_subnet</code>, anyone): past its 180-day immunity, and no epoch in the last 30 days paid at least 3 distinct miners.</li>
+<li><strong>Emergency brake</strong> (<code>deregister_subnet</code>, Incentium governance on the Root track: 75 % approval, one week before it takes effect): against abuse; works during the immunity too.</li>
+</ol>
+<p>Stake on a removed subnet moves to the unbonding queue.</p>
+<p><strong>Cap ladder.</strong> The cap doubles by itself, 8 → 16 → 32 → 64 → 128 → 256, at the daily check when all of these hold: every slot has been taken for 90 days; at least 75 % of the subnets paid at least 10 miners per epoch on average over 30 days; 180 days since the last raise (by the ladder or by governance); and not before day 775 (1 January 2029 on mainnet). Governance can also raise the cap at any time, up to 256. Settlement is spread over the epoch (Section 6), so 256 subnets need no further code.</p>
 <p><strong>Calls</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -503,7 +510,12 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <tr>
 <td><code>deregister_subnet(netuid)</code></td>
 <td>Governance</td>
-<td>Closes a subnet after its 180-day immunity; nothing is refunded</td>
+<td>Emergency brake; nothing is refunded</td>
+</tr>
+<tr>
+<td><code>remove_dead_subnet(netuid)</code></td>
+<td>Anyone</td>
+<td>Removes a dead subnet (above); nothing is refunded</td>
 </tr>
 <tr>
 <td><code>attest_swap(contract, audit_hash)</code></td>
@@ -539,10 +551,11 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </table></div>
 <p><strong>Subnet control (SN1 and later).</strong> Control only moves forward:</p>
 <ol>
-<li><strong>One key</strong> (at registration): the owner signs. Only in this mode can ownership be handed to another key (<code>transfer_ownership</code>).</li>
+<li><strong>One key</strong> (at registration): the owner signs.</li>
 <li><strong>Multisig</strong> (<code>set_multisig(signatories, threshold)</code>, 2–20 signatories, threshold ≥ 2): the owner becomes the multisig account, derived as in <code>pallet-multisig</code>, and acts through it.</li>
 <li><strong>Subnet DAO</strong> (<code>set_dao</code>): the owner becomes the subnet's DAO account, which receives the 12 % owner share. Any staker of the subnet may <code>propose</code> one action at a time: change settings, change metadata, or spend from the DAO account. Votes run 5 days (shorter than the 7-day unbonding) and are weighed by each voter's stake when the vote closes. <code>close_proposal</code> (anyone) carries the action out at once if aye stake exceeds nay stake and is at least 1/3 of the subnet's stake.</li>
 </ol>
+<p>A subnet can be sold or handed to another single key (<code>transfer_ownership</code>) while one key or a multisig controls it; the new owner starts again as one key. A DAO subnet stays with its stakers.</p>
 <p>The controller (owner key, multisig, or the DAO by vote) sets the subnet's settings within the protocol's bounds, and its metadata (<code>set_metadata</code>, e.g. a new incentive-code hash for a new release):</p>
 <div class="tbl"><table>
 <thead>
@@ -580,8 +593,8 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </tr>
 </tbody>
 </table></div>
-<p><strong>Penalties in subnets.</strong> With penalties on, a validator of the subnet reports a miner's failed work with <code>report_failed_work(netuid, epoch, uid, evidence)</code>. When reporters holding at least 1/3 of the subnet's stake agree, the miner gets no incentive for that epoch; <code>max_failures</code> penalties inside <code>failure_window</code> ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.</p>
-<p><strong>Open points:</strong> how "the weakest subnet" is measured for automatic deregistration when the cap is reached; whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash.</p>
+<p><strong>Penalties in subnets.</strong> With penalties on, a validator of the subnet reports a miner's failed work with <code>report_failed_work(netuid, epoch, uid, evidence)</code>. When reporters holding at least half of the subnet's active stake (the stake of validators whose weights counted in the last settled epoch) agree, the miner gets no incentive for that epoch; <code>max_failures</code> penalties inside <code>failure_window</code> ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point; slashing will need 2/3 of active stake). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.</p>
+<p><strong>Open points:</strong> whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
 <p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
@@ -636,7 +649,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <ol>
 <li>Each epoch, validators pick 1–5% of requests at random, seeded by the drand beacon so miners cannot predict which.</li>
 <li>The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the tier's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the tier's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp on tier 0 is still to be settled.</li>
-<li>A failed check slashes 10% of the miner's stake (or, for a pool, the pool's bond) and zeroes its W for the epoch. Three failures in 30 days deregister the key.</li>
+<li>When reporters with at least half of the active validator stake (stake whose weights counted in the last settled epoch) report the same failed check, the miner's W for the epoch is zeroed. When they hold at least 2/3, 10% of the miner's bond (or, for a pool, the pool's bond) is also slashed. Three penalties in 30 days ban the key. <em>Thresholds decided 25 Nov 2026 (previously 1/3 for both).</em></li>
 <li>Slashed ICT: 50% burned, 50% to the insurance fund.</li>
 </ol>
 <p><strong>Validator tiers (proposed).</strong> Each validator declares on chain which tiers it checks and must hold the pinned model for each (new storage in <code>subnet-registry</code>). A tier opens only when at least three validators have declared it. Later, a piece of work can be sent to two miners of the same tier, and the validator checks only when their answers disagree.</p>
@@ -757,7 +770,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </tr>
 </tbody>
 </table></div>
-<p>Validators of SN1 and later stake on their own subnet (<code>stake_subnet</code>, <code>unstake_subnet</code>; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (<code>work-verify</code>) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.</p>
+<p>Settlement is spread over the epoch: the epoch's first block shares the pot and settles SN0, and each following block settles one further subnet (an epoch has 360 blocks, so 256 subnets fit). Validators of SN1 and later stake on their own subnet (<code>stake_subnet</code>, <code>unstake_subnet</code>; same minimum and unbonding as SN0). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (<code>work-verify</code>) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.</p>
 <h2 id="7-modules-alpha-assets-amm-and-buyback">7. Modules <code>alpha-assets</code>, <code>amm</code> and <code>buyback</code><a class="anchor" href="#7-modules-alpha-assets-amm-and-buyback" aria-label="Link to this section">#</a></h2>
 <p>Each subnet has one Alpha asset and one constant-product pool against ICT; every block the protocol injects Alpha only as far as the buyback absorbs it, buys Alpha, burns half and pays half to stakers.</p>
 <p><strong>Alpha asset (<code>alpha-assets</code>)</strong></p>
@@ -896,9 +909,9 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <td>Passing</td>
 </tr>
 <tr>
-<td><code>pallet-subnet-registry</code> (SN0, automatic unlock, Dutch auction, metadata, neuron fee, deregistration with immunity, on-chain endpoints)</td>
+<td><code>pallet-subnet-registry</code> (SN0, automatic unlock, Dutch auction, subnet control and DAO, penalties, dead-subnet removal, cap ladder, on-chain endpoints)</td>
 <td>Done</td>
-<td>19 passing</td>
+<td>28 passing</td>
 </tr>
 <tr>
 <td><code>pallet-weights</code> (hash commit-reveal per epoch)</td>

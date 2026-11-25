@@ -43,7 +43,9 @@ parameter_types! {
     pub const MaxPoolFeePpm: u32 = 50_000;
     pub const FeeChangeDelay: u64 = 2;
     pub const SlashPpm: u32 = 100_000;
-    pub const QuorumPpm: u32 = 333_334;
+    /// Lost payout: half of the active validator stake; slash: 2/3.
+    pub const QuorumPpm: u32 = 500_000;
+    pub const SlashQuorumPpm: u32 = 666_667;
     pub const MaxFailures: u32 = 3;
     pub const FailureWindow: u64 = 600;
     pub const UnbondingEpochs: u64 = 3;
@@ -83,6 +85,9 @@ impl crate::StakeOracle<u64> for MockStake {
     fn total_stake() -> u128 {
         STAKES.with(|s| s.borrow().values().sum())
     }
+    fn active_stake() -> u128 {
+        Self::total_stake()
+    }
     #[cfg(feature = "runtime-benchmarks")]
     fn set_stake(who: &u64, amount: u128) {
         set_stake(*who, amount);
@@ -105,6 +110,7 @@ impl pallet_work_verify::Config for Test {
     type FeeChangeDelay = FeeChangeDelay;
     type SlashPpm = SlashPpm;
     type QuorumPpm = QuorumPpm;
+    type SlashQuorumPpm = SlashQuorumPpm;
     type MaxFailures = MaxFailures;
     type FailureWindow = FailureWindow;
     type UnbondingEpochs = UnbondingEpochs;

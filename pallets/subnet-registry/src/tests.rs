@@ -240,29 +240,25 @@ fn floors_by_sale_number_and_cap_of_eight() {
 }
 
 #[test]
-fn deregistration_after_immunity_refunds_nothing_and_reopens_the_slot() {
+fn governance_can_close_a_subnet_any_time_without_refund_and_the_slot_reopens() {
     new_test_ext(true).execute_with(|| {
         AuctionStart::<Test>::put(1);
         assert_ok!(Registry::set_max_subnets(RuntimeOrigin::root(), 1));
         assert_ok!(reg(ALICE, u128::MAX));
+        assert_eq!(crate::FullSince::<Test>::get(), Some(1));
         assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
-        let created = 1u32;
         assert_noop!(
             Registry::deregister_subnet(RuntimeOrigin::root(), SN0),
             Error::<Test>::CannotDeregisterSn0
         );
-        go(created + IMMUNITY_BLOCKS - 1);
-        assert_noop!(
-            Registry::deregister_subnet(RuntimeOrigin::root(), 1),
-            Error::<Test>::StillImmune
-        );
-        let alice = Balances::free_balance(ALICE);
-        let issuance = Balances::total_issuance();
-        go(created + IMMUNITY_BLOCKS);
         assert_noop!(
             Registry::deregister_subnet(RuntimeOrigin::signed(ALICE), 1),
             DispatchError::BadOrigin
         );
+        // The emergency brake works inside the immunity too.
+        go(1 + DAY);
+        let alice = Balances::free_balance(ALICE);
+        let issuance = Balances::total_issuance();
         assert_ok!(Registry::deregister_subnet(RuntimeOrigin::root(), 1));
         assert_eq!(Balances::free_balance(ALICE), alice);
         assert_eq!(Balances::total_issuance(), issuance);
@@ -270,9 +266,101 @@ fn deregistration_after_immunity_refunds_nothing_and_reopens_the_slot() {
         assert!(Metadata::<Test>::get(1).is_none());
         assert_eq!(NeuronCount::<Test>::get(1), 0);
         assert_eq!(SubnetCount::<Test>::get(), 0);
-        // The auction that waited for a free slot starts now, at 4 x 50,000.
-        assert_eq!(AuctionStart::<Test>::get(), Some(created + IMMUNITY_BLOCKS));
+        assert_eq!(crate::FullSince::<Test>::get(), None);
+        // The next auction still keeps its 60-day spacing after the sale, at 4 x 50,000.
+        assert_eq!(AuctionStart::<Test>::get(), Some(1 + 60 * DAY));
+        assert_eq!(Registry::current_price(), None);
+        go(1 + 60 * DAY);
         assert_eq!(Registry::current_price(), Some(200_000 * UNIT));
+    });
+}
+
+#[test]
+fn a_freed_slot_restarts_an_auction_that_waited_for_it() {
+    new_test_ext(true).execute_with(|| {
+        AuctionStart::<Test>::put(1);
+        assert_ok!(Registry::set_max_subnets(RuntimeOrigin::root(), 1));
+        assert_ok!(reg(ALICE, u128::MAX));
+        go(100 * DAY); // the spacing is over, but the cap is reached
+        assert_eq!(Registry::current_price(), None);
+        assert_ok!(Registry::deregister_subnet(RuntimeOrigin::root(), 1));
+        assert_eq!(AuctionStart::<Test>::get(), Some(100 * DAY));
+        assert_eq!(Registry::current_price(), Some(200_000 * UNIT));
+    });
+}
+
+#[test]
+fn only_dead_subnets_past_immunity_can_be_removed_by_anyone() {
+    new_test_ext(true).execute_with(|| {
+        AuctionStart::<Test>::put(1);
+        assert_ok!(reg(ALICE, u128::MAX)); // created at block 1
+        let rm = || Registry::remove_dead_subnet(RuntimeOrigin::signed(BOB), 1);
+        // Never paid 3 miners, but still immune.
+        go(IMMUNITY_BLOCKS);
+        assert_noop!(rm(), Error::<Test>::NotDead);
+        // An epoch paying only 2 miners does not count as alive.
+        Registry::note_subnet_epoch(1, 2);
+        go(1 + IMMUNITY_BLOCKS - DAY);
+        Registry::note_subnet_epoch(1, 3); // healthy at 1 + immunity - 1 day
+        go(1 + IMMUNITY_BLOCKS + 10 * DAY);
+        assert_noop!(rm(), Error::<Test>::NotDead);
+        assert!(!Registry::is_dead(SN0));
+        // 30 days after the last healthy epoch: dead.
+        go(1 + IMMUNITY_BLOCKS - DAY + crate::DEAD_AFTER_BLOCKS);
+        assert!(Registry::is_dead(1));
+        assert_ok!(rm());
+        assert!(Subnets::<Test>::get(1).is_none());
+        assert!(crate::LastHealthy::<Test>::get(1).is_none());
+    });
+}
+
+#[test]
+fn the_cap_doubles_by_itself_when_full_busy_and_spaced() {
+    use crate::{FullSince, LastCapRaise, SubnetMinerHistory, CAP_LADDER_FROM};
+    new_test_ext(true).execute_with(|| {
+        AuctionStart::<Test>::put(1);
+        assert_ok!(Registry::set_max_subnets(RuntimeOrigin::root(), 4));
+        for _ in 0..4 {
+            let at = AuctionStart::<Test>::get().unwrap();
+            go(at + 100 * DAY); // buy at the floor
+            assert_ok!(reg(ALICE, u128::MAX));
+        }
+        let full = FullSince::<Test>::get().unwrap();
+        // Three of four subnets busy (>= 10 paid miners on average): 75 %.
+        for n in 1..=3u16 {
+            SubnetMinerHistory::<Test>::insert(n, BoundedVec::truncate_from(vec![12u32; 30]));
+        }
+        SubnetMinerHistory::<Test>::insert(4, BoundedVec::truncate_from(vec![9u32; 30]));
+        let t = full.max(CAP_LADDER_FROM) + crate::CAP_FULL_BLOCKS;
+        // Not before day 775.
+        assert!(!Registry::try_raise_cap(CAP_LADDER_FROM - 1));
+        // Governance raised it less than 180 days ago (set_max_subnets above).
+        LastCapRaise::<Test>::put(t - 10);
+        assert!(!Registry::try_raise_cap(t));
+        LastCapRaise::<Test>::kill();
+        // Only two of four busy: 50 % < 75 %.
+        SubnetMinerHistory::<Test>::insert(3, BoundedVec::truncate_from(vec![2u32; 30]));
+        assert!(!Registry::try_raise_cap(t));
+        SubnetMinerHistory::<Test>::insert(3, BoundedVec::truncate_from(vec![12u32; 30]));
+        go(t);
+        assert!(Registry::try_raise_cap(t));
+        assert_eq!(MaxSubnets::<Test>::get(), 8);
+        assert_eq!(LastCapRaise::<Test>::get(), Some(t));
+        assert_eq!(FullSince::<Test>::get(), None);
+        assert!(Registry::current_price().is_some());
+        // Filled again at once: still needs 90 days full and 180 days since the raise.
+        for _ in 0..4 {
+            let at = AuctionStart::<Test>::get().unwrap();
+            go(at + 100 * DAY);
+            assert_ok!(reg(ALICE, u128::MAX));
+            let n = SubnetCount::<Test>::get();
+            SubnetMinerHistory::<Test>::insert(n, BoundedVec::truncate_from(vec![12u32; 30]));
+        }
+        let full2 = FullSince::<Test>::get().unwrap();
+        let t2 = (t + crate::CAP_RAISE_SPACING).max(full2 + crate::CAP_FULL_BLOCKS);
+        assert!(!Registry::try_raise_cap(t2 - 1));
+        assert!(Registry::try_raise_cap(t2));
+        assert_eq!(MaxSubnets::<Test>::get(), 16);
     });
 }
 
@@ -566,10 +654,6 @@ fn control_only_moves_forward_key_multisig_dao() {
         );
         assert_ok!(Registry::set_params(s(ms), 1, params(2 * UNIT)));
         assert_noop!(
-            Registry::transfer_ownership(s(ms), 1, BOB),
-            Error::<Test>::OnlyKeyCanTransfer
-        );
-        assert_noop!(
             Registry::set_multisig(s(ms), 1, vec![4, 5], 2),
             Error::<Test>::ControlCannotGoBack
         );
@@ -582,6 +666,32 @@ fn control_only_moves_forward_key_multisig_dao() {
             Error::<Test>::DaoControlled
         );
         assert_noop!(Registry::set_dao(s(ms), 1), Error::<Test>::DaoControlled);
+        assert_noop!(
+            Registry::transfer_ownership(s(ms), 1, BOB),
+            Error::<Test>::DaoControlled
+        );
+    });
+}
+
+#[test]
+fn a_multisig_can_sell_the_subnet_to_one_key() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        assert_ok!(Registry::set_multisig(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            vec![1, 2],
+            2
+        ));
+        let ms = Registry::multi_account_id(&[1, 2], 2);
+        assert_ok!(Registry::transfer_ownership(
+            RuntimeOrigin::signed(ms),
+            1,
+            BOB
+        ));
+        assert_eq!(owner(1), BOB);
+        assert_eq!(Control::<Test>::get(1), ControlKind::Key);
+        assert!(crate::MultisigOf::<Test>::get(1).is_none());
     });
 }
 
@@ -695,12 +805,12 @@ fn dao_votes_by_stake_and_carries_out_the_decision() {
 }
 
 #[test]
-fn subnet_penalties_need_a_third_of_stake_and_ban_repeat_failures() {
+fn subnet_penalties_need_half_of_active_stake_and_ban_repeat_failures() {
     new_test_ext(true).execute_with(|| {
         sn1();
         assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
-        set_stake(1, 10, 600);
-        set_stake(1, 11, 400);
+        set_stake(1, 10, 500);
+        set_stake(1, 11, 500); // exactly half: enough
         let s = |w: u64| RuntimeOrigin::signed(w);
         assert_noop!(
             Registry::report_failed_work(s(11), 1, 5, 0, [0; 32]),
@@ -756,8 +866,8 @@ fn a_small_reporter_alone_does_not_penalise() {
                 ..params(UNIT)
             }
         ));
-        set_stake(1, 10, 700);
-        set_stake(1, 11, 300);
+        set_stake(1, 10, 501);
+        set_stake(1, 11, 499);
         assert_ok!(Registry::report_failed_work(
             RuntimeOrigin::signed(11),
             1,
@@ -765,6 +875,6 @@ fn a_small_reporter_alone_does_not_penalise() {
             0,
             [0; 32]
         ));
-        assert!(!Registry::is_work_penalized(1, 5, 0)); // 300 of 1,000 < 1/3
+        assert!(!Registry::is_work_penalized(1, 5, 0)); // 499 of 1,000 < half
     });
 }
