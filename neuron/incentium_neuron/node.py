@@ -275,7 +275,7 @@ class Node:
         threads = max(1, (hwinfo.cores if hwinfo else os.cpu_count() or 2) - 1)
         cmd = [exe, "-m", self.model_path(tier), "--host", "127.0.0.1", "--port", str(port),
                "--alias", HW.CATALOG[tier]["model"], "-np", "2", "-c", "4096", "-t", str(threads),
-               "-ngl", str(hwinfo.gpu_layers() if hwinfo else 0)]
+               "-ngl", str(hwinfo.gpu_layers(tier) if hwinfo else 0)]
         log = open(os.path.join(self.cfg.home, "llama.log"), "ab")
         self.llama = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=os.path.dirname(exe))
         self.llama_url = f"http://127.0.0.1:{port}"

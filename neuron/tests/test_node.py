@@ -123,7 +123,7 @@ def test_node_end_to_end(monkeypatch):
         chain.registered.append(node.st.address)
         return 200, {"ok": True}
 
-    big_mac = HW.Hardware("macos", "arm64", "Apple M2", 8, 16, "Apple M2 (Metal)", 0, True, 200)
+    big_mac = HW.Hardware("macos", "arm64", "Apple M2", 8, 32, "Apple M2 (Metal)", 0, True, 200)
     node = N.Node(cfg, chain_factory=lambda url: chain, register_fn=register, detect=lambda home: big_mac)
     cfg.set(overrides={"chat": "http://gateway.test"})
     chats = []
@@ -201,16 +201,60 @@ def test_node_end_to_end(monkeypatch):
 
 
 def test_tier_choice():
+    # The model never takes more than a quarter of the shared memory.
+    assert HW.ram_needed(0) == 7.2 and round(HW.ram_needed(1), 1) == 26.8 and HW.ram_needed(2) == 74
     pc = HW.Hardware("windows", "x64", "CPU", 8, 16, "", 0, False, 100)
     assert pc.max_tier() == 0                                   # no GPU: tier 0
     rtx = HW.Hardware("windows", "x64", "CPU", 8, 16, "RTX 3060", 12, False, 100)
-    assert rtx.max_tier() == 1
+    assert rtx.max_tier() == 1 and rtx.gpu_layers(1) == 99      # the card holds the 9B model
+    small_card = HW.Hardware("linux", "x64", "CPU", 8, 16, "GTX 1050", 4, False, 100)
+    assert small_card.max_tier() == 0 and small_card.gpu_layers(0) == 99 and small_card.gpu_layers(1) == 0
     m1 = HW.Hardware("macos", "arm64", "Apple M1", 4, 8, "Apple M1 (Metal)", 0, True, 100)
     assert m1.max_tier() == 0
+    m2_16 = HW.Hardware("macos", "arm64", "Apple M2", 8, 16, "Apple M2 (Metal)", 0, True, 100)
+    assert m2_16.max_tier() == 0                                # 9B would take 42 % of 16 GB
     m3 = HW.Hardware("macos", "arm64", "Apple M3 Max", 12, 64, "Apple M3 Max (Metal)", 0, True, 100)
-    assert m3.max_tier() == 2
-    assert HW.choose_tier(m3, {0}) == 0 and HW.choose_tier(m3, {0, 1}) == 1
+    assert m3.max_tier() == 1                                   # 27B would take 29 % of 64 GB
+    m4 = HW.Hardware("macos", "arm64", "Apple M4 Max", 12, 128, "Apple M4 Max (Metal)", 0, True, 100)
+    assert m4.max_tier() == 2
+    assert HW.choose_tier(m4, {0}) == 0 and HW.choose_tier(m4, {0, 1}) == 1
+    server = HW.Hardware("linux", "x64", "EPYC", 64, 256, "", 0, False, 500)
+    assert server.max_tier() == 0                               # CPU only: tier 0
     tiny = HW.Hardware("linux", "x64", "CPU", 2, 2, "", 0, False, 100)
     assert not tiny.can_run_at_all()[0]
-    full = HW.Hardware("macos", "arm64", "Apple M3 Max", 12, 64, "x", 0, True, 3)
+    four = HW.Hardware("linux", "x64", "CPU", 2, 4, "", 0, False, 100)
+    assert not four.can_run_at_all()[0]                         # 2B would take 45 % of 4 GB
+    eight = HW.Hardware("linux", "x64", "CPU", 4, 7.6, "", 0, False, 100)
+    assert eight.can_run_at_all()[0]                            # an "8 GB" machine reports ~7.6
+    full = HW.Hardware("macos", "arm64", "Apple M4 Max", 12, 128, "x", 0, True, 3)
     assert full.max_tier() == 0                                 # not enough disk for the bigger files
+
+def test_linux_choose_picks_open_tier_within_a_quarter_of_memory(monkeypatch):
+    from incentium_neuron import setup_miner, validator
+    from incentium_neuron.validator import TierInfo
+
+    class FakeChain:
+        def __init__(self, url, kp):
+            pass
+
+        def tiers(self):
+            return {
+                0: TierInfo(model="Qwen3.5-2B", g=0.15, tolerance=0.35, model_hash="ab" * 32, open=True),
+                1: TierInfo(model="Qwen3.5-9B", g=1.0, tolerance=0.35, model_hash="0" * 64, open=OPEN1),
+            }
+
+    monkeypatch.setattr(validator, "SubstrateChain", FakeChain)
+    gpu_box = HW.Hardware("linux", "x64", "Ryzen", 16, 64, "NVIDIA RTX 4090", 24, False, 500)
+    monkeypatch.setattr(HW, "detect", lambda home=None: gpu_box)
+    OPEN1 = False
+    out = setup_miner.choose("ws://x")
+    assert out["tier"] == 0 and out["model_hash"] == "ab" * 32       # only tier 0 is open
+    OPEN1 = True
+    out = setup_miner.choose("ws://x")
+    assert out["tier"] == 1 and out["gpu_layers"] == 99 and out["file"] == "Qwen_Qwen3.5-9B-Q4_K_M.gguf"
+    assert out["model_hash"] == ""                                   # not locked on chain yet
+    out = setup_miner.choose("ws://x", cpu_only=True)                # no GPU build of llama.cpp
+    assert out["tier"] == 0 and out["gpu_layers"] == 0
+    monkeypatch.setattr(HW, "detect", lambda home=None: HW.Hardware("linux", "x64", "CPU", 2, 4, "", 0, False, 50))
+    out = setup_miner.choose("ws://x")
+    assert not out["ok"] and "quarter" in out["reason"]

@@ -44,7 +44,7 @@ case "$(uname -m)" in
   *) die "unsupported processor: $(uname -m)" ;;
 esac
 MEM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
-[ "$MEM_GB" -ge 4 ] || die "at least 4 GB of memory is needed (this Mac has ${MEM_GB} GB)."
+[ "$MEM_GB" -ge 8 ] || die "at least 8 GB of memory is needed, so that mining never takes more than a quarter of it (this Mac has ${MEM_GB} GB)."
 mkdir -p "$D"/{bin,models,llama,src} "$HOME/Library/LaunchAgents"
 FREE_GB=$(df -Pk "$D" | awk 'NR==2 {print int($4/1024/1024)}')
 [ "$FREE_GB" -ge 3 ] || die "at least 3 GB of free disk is needed (found ${FREE_GB} GB)."

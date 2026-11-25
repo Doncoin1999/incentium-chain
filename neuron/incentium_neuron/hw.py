@@ -17,17 +17,28 @@ from dataclasses import asdict, dataclass
 
 GB = 1024**3
 
-# The model files per tier (Qwen3.5, Q4_K_M GGUF). `ram` is the memory the whole computer needs
-# when the model runs on the CPU or on Apple's shared memory; `vram` what a separate graphics card
-# needs to hold it. Tier 3 (122B-A10B) is for servers and is never picked on a home computer.
+# The model never takes more than a quarter of the computer's memory (decided 25 Nov 2026), so
+# the computer stays fully usable while it mines. The rule applies to the memory the model shares
+# with everything else: the system memory, or Apple's unified memory. A separate graphics card is
+# used by the miner alone, so there the model only has to fit in the card's own memory.
+MEMORY_SHARE = 0.25
+
+# The model files per tier (Qwen3.5, Q4_K_M GGUF). `mem_gb` is what llama-server holds while it
+# runs: the model file plus the context (2 slots of 4,096 tokens) and buffers. Tier 3
+# (122B-A10B) is for servers and is never picked on a home computer.
 CATALOG = {
-    0: {"model": "qwen3.5-2b", "size_gb": 1.3, "ram": 4, "vram": 3,
+    0: {"model": "qwen3.5-2b", "size_gb": 1.3, "mem_gb": 1.8,
         "url": "https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf"},
-    1: {"model": "qwen3.5-9b", "size_gb": 5.7, "ram": 16, "vram": 8,
+    1: {"model": "qwen3.5-9b", "size_gb": 5.7, "mem_gb": 6.7,
         "url": "https://huggingface.co/bartowski/Qwen_Qwen3.5-9B-GGUF/resolve/main/Qwen_Qwen3.5-9B-Q4_K_M.gguf"},
-    2: {"model": "qwen3.5-27b", "size_gb": 16.5, "ram": 32, "vram": 24,
+    2: {"model": "qwen3.5-27b", "size_gb": 16.5, "mem_gb": 18.5,
         "url": "https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF/resolve/main/Qwen_Qwen3.5-27B-Q4_K_M.gguf"},
 }
+
+
+def ram_needed(tier: int) -> float:
+    """System (or Apple unified) memory a computer needs to run `tier` within the 25 % rule."""
+    return CATALOG[tier]["mem_gb"] / MEMORY_SHARE
 
 
 @dataclass
@@ -42,30 +53,37 @@ class Hardware:
     apple_silicon: bool
     disk_free_gb: float
 
+    def on_gpu(self, tier: int) -> bool:
+        """True if `tier` runs on a separate graphics card that holds the whole model."""
+        return bool(self.vram_gb) and not self.apple_silicon and self.vram_gb >= CATALOG[tier]["mem_gb"]
+
+    def fits(self, tier: int) -> bool:
+        """`tier` runs well here and takes at most a quarter of the shared memory."""
+        m = CATALOG[tier]
+        if self.disk_free_gb < m["size_gb"] + 1:
+            return False
+        if self.on_gpu(tier):
+            return self.ram_gb >= ram_needed(0)           # the card holds the model
+        if self.apple_silicon:
+            return self.ram_gb >= ram_needed(tier)        # Metal uses the unified memory
+        return tier == 0 and self.ram_gb >= ram_needed(0)  # CPU only: tier 0, too slow above
+
     def max_tier(self) -> int:
-        """The largest tier this computer can run well."""
-        best = 0
-        for tier, m in sorted(CATALOG.items()):
-            if self.apple_silicon:
-                ok = self.ram_gb >= m["ram"]                       # Metal uses the shared memory
-            elif self.vram_gb:
-                ok = self.vram_gb >= m["vram"] or (tier == 0 and self.ram_gb >= m["ram"])
-            else:
-                ok = tier == 0 and self.ram_gb >= m["ram"]         # CPU only: tier 0
-            if ok and self.disk_free_gb >= m["size_gb"] + 1:
-                best = tier
-        return best
+        """The largest tier this computer can run well within the 25 % memory rule."""
+        return max([t for t in CATALOG if self.fits(t)], default=0)
 
     def can_run_at_all(self) -> tuple[bool, str]:
-        if self.ram_gb < 3.5:
-            return False, f"At least 4 GB of memory is needed (this computer has {self.ram_gb:.0f} GB)."
+        need = ram_needed(0)
+        if self.ram_gb < need:
+            return False, (f"At least {need:.0f} GB of memory is needed, so that mining never takes more "
+                           f"than a quarter of it (this computer has {self.ram_gb:.0f} GB).")
         if self.disk_free_gb < CATALOG[0]["size_gb"] + 1:
             return False, f"At least {CATALOG[0]['size_gb'] + 1:.0f} GB of free disk is needed."
         return True, ""
 
-    def gpu_layers(self) -> int:
-        """llama.cpp -ngl: everything on the GPU when there is one that fits, else none."""
-        return 99 if (self.apple_silicon or self.vram_gb) else 0
+    def gpu_layers(self, tier: int = 0) -> int:
+        """llama.cpp -ngl: everything on the GPU when the model fits there, else none."""
+        return 99 if (self.apple_silicon or self.on_gpu(tier)) else 0
 
 
 def _run(cmd: list[str]) -> str:
@@ -144,4 +162,5 @@ def choose_tier(hw: Hardware, open_tiers: set[int]) -> int:
 
 if __name__ == "__main__":
     h = detect()
-    print(json.dumps({**asdict(h), "max_tier": h.max_tier(), "model": CATALOG[h.max_tier()]["model"]}, indent=2))
+    print(json.dumps({**asdict(h), "max_tier": h.max_tier(), "model": CATALOG[h.max_tier()]["model"],
+                      "ram_needed_gb": {t: round(ram_needed(t), 1) for t in CATALOG}}, indent=2))

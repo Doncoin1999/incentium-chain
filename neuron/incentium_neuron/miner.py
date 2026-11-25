@@ -84,6 +84,7 @@ def main():
     ap.add_argument("--url", default="ws://127.0.0.1:9944", help="chain RPC, to find validators")
     ap.add_argument("--validator", action="append", default=[],
                     help="validator task-server URL (repeatable); default: found on chain")
+    ap.add_argument("--tier", type=int, help="declare this SN0 tier on chain (retried until it holds)")
     a = ap.parse_args()
     from .validator import read_key
 
@@ -92,8 +93,23 @@ def main():
     kp = Keypair.create_from_uri(read_key(a, ap), ss58_format=SS58_FORMAT)
     miner = Miner(OpenAICompatibleBackend(a.backend, a.model), kp.ss58_address, lambda m: kp.sign(m).hex())
     print(f"miner {kp.ss58_address} started", flush=True)
-    chain, found, last_lookup = None, list(a.validator), 0.0
+    chain, found, last_lookup, tier_ok, last_tier = None, list(a.validator), 0.0, a.tier is None, 0.0
     while True:
+        if not tier_ok and time.time() - last_tier > 1800:
+            # Validators check answers against the declared tier's model, so declare it. This
+            # needs the key registered and a little ICT for the fee; until then, retry.
+            last_tier = time.time()
+            try:
+                from .validator import SN0, SubstrateChain
+
+                tchain = SubstrateChain(a.url, kp)
+                have = tchain.s.query("Registry", "NeuronTier", [SN0, kp.ss58_address]).value
+                if have != a.tier:
+                    tchain.declare_tier(SN0, a.tier)
+                print(f"tier {a.tier} declared", flush=True)
+                tier_ok = True
+            except Exception as e:
+                print(f"could not declare tier {a.tier} yet: {e!r}", flush=True)
         if not a.validator and time.time() - last_lookup > 300:
             try:
                 from .validator import SN0, SubstrateChain
