@@ -4,24 +4,25 @@
 #   curl -sSL https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-miner.sh | bash
 #
 # What it does, all under ~/.incentium-miner:
-#   1. Installs Python and llama.cpp's llama-server (prebuilt release, or built from source).
-#   2. Downloads the tier-0 reference model (Qwen3.5-2B, Q4_K_M) and checks it against the
-#      model hash on chain once that is locked.
+#   1. Installs Python and llama.cpp's llama-server (prebuilt release, or built from source;
+#      the Vulkan build when an NVIDIA graphics card is found).
+#   2. Picks the largest Qwen3.5 tier that is open on chain and that this computer runs well
+#      with the model taking at most a quarter of its memory (or fitting on the graphics card),
+#      downloads that model and checks it against the model hash on chain once that is locked.
 #   3. Creates your miner key (BACK IT UP) and asks the launch operator's registration service
 #      to register it in SN0 (free during the launch period).
-#   4. Runs llama-server and the miner as systemd services that start on boot.
+#   4. Runs llama-server and the miner as systemd services that start on boot; the miner
+#      declares its tier on chain once it is registered.
 # The miner only makes outgoing connections: no open port, no fixed IP.
-# Run it again at any time to update; your key and model are kept.
+# Run it again at any time to update or move to a higher tier; your key is kept.
 set -euo pipefail
 
 RPC="${INCENTIUM_RPC:-wss://testnet-rpc.incentium.org}"
 REGISTER="${INCENTIUM_REGISTER:-https://register.incentium.org}"
 REPO="${INCENTIUM_REPO:-incentium/incentium-chain}"
-MODEL_URL="${INCENTIUM_MODEL_URL:-https://huggingface.co/bartowski/Qwen_Qwen3.5-2B-GGUF/resolve/main/Qwen_Qwen3.5-2B-Q4_K_M.gguf}"
 LLAMA_PORT="${INCENTIUM_LLAMA_PORT:-8095}"
 D="$HOME/.incentium-miner"
 KEY="$D/miner-key.json"
-MODEL="$D/models/Qwen_Qwen3.5-2B-Q4_K_M.gguf"
 PY="$D/venv/bin/python"
 
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
@@ -35,7 +36,10 @@ case "$(uname -m)" in
   *) die "unsupported CPU: $(uname -m)" ;;
 esac
 MEM_GB=$(awk '/MemTotal/ {print int($2/1024/1024)}' /proc/meminfo)
-[ "$MEM_GB" -ge 3 ] || die "at least 4 GB of RAM is needed (found ${MEM_GB} GB)."
+# 8 GB machines report a little less than 8; the model then takes at most a quarter of it.
+[ "$MEM_GB" -ge 7 ] || die "at least 8 GB of RAM is needed, so that mining never takes more than a quarter of it (found ${MEM_GB} GB)."
+HAVE_GPU=0
+if command -v nvidia-smi >/dev/null && nvidia-smi -L 2>/dev/null | grep -q GPU; then HAVE_GPU=1; fi
 mkdir -p "$D/models" "$D/src" "$D/llama"
 FREE_GB=$(df -Pk "$D" | awk 'NR==2 {print int($4/1024/1024)}')
 [ "$FREE_GB" -ge 3 ] || die "at least 3 GB of free disk is needed (found ${FREE_GB} GB)."
@@ -61,12 +65,23 @@ curl -fsSL "https://git.incentium.org/$REPO/archive/main.tar.gz" \
 [ -d "$D/src/neuron/incentium_neuron" ] || die "could not download the miner code."
 
 # ---------------------------------------------------------------- llama.cpp
+# The Vulkan build runs on NVIDIA cards with the normal driver; without a card, the CPU build.
+WANT_FLAVOR=cpu
+if [ "$HAVE_GPU" = 1 ] && [ "$ARCH" = x64 ]; then WANT_FLAVOR=vulkan; fi
+FLAVOR="$(cat "$D/llama/FLAVOR" 2>/dev/null || echo cpu)"
 LLAMA="$(find "$D/llama" -name llama-server -type f 2>/dev/null | head -n 1 || true)"
+if [ -n "$LLAMA" ] && [ "$FLAVOR" != "$WANT_FLAVOR" ]; then rm -rf "$D/llama"; mkdir -p "$D/llama"; LLAMA=""; fi
 if [ -z "$LLAMA" ]; then
-  say "Installing llama.cpp (llama-server)"
+  say "Installing llama.cpp (llama-server, $WANT_FLAVOR)"
+  ASSET=""
+  RELEASES=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" 2>/dev/null || true)
+  if [ "$WANT_FLAVOR" = vulkan ]; then
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libvulkan1 >/dev/null 2>&1 || true
+    ASSET=$(echo "$RELEASES" | grep -Eo "https://[^\"]*bin-ubuntu-vulkan-${ARCH}\.(tar\.gz|zip)" | head -n 1 || true)
+    [ -n "$ASSET" ] || WANT_FLAVOR=cpu
+  fi
   # newest release that has a prebuilt file for this machine (newer releases ship .tar.gz, older .zip)
-  ASSET=$(curl -fsSL "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=20" 2>/dev/null \
-    | grep -Eo "https://[^\"]*bin-ubuntu-${ARCH}\.(tar\.gz|zip)" | head -n 1 || true)
+  [ -n "$ASSET" ] || ASSET=$(echo "$RELEASES" | grep -Eo "https://[^\"]*bin-ubuntu-${ARCH}\.(tar\.gz|zip)" | head -n 1 || true)
   if [ -n "$ASSET" ]; then
     case "$ASSET" in
       *.zip) curl -fsSL "$ASSET" -o "$D/llama/llama.zip"
@@ -75,6 +90,7 @@ if [ -z "$LLAMA" ]; then
       *)     curl -fsSL "$ASSET" | tar xz -C "$D/llama" ;;
     esac
   else
+    WANT_FLAVOR=cpu
     say "No prebuilt llama.cpp for this machine: building it (takes 5-15 minutes)"
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential cmake git >/dev/null
     rm -rf "$D/llama/src"
@@ -85,16 +101,31 @@ if [ -z "$LLAMA" ]; then
   LLAMA="$(find "$D/llama" -name llama-server -type f | head -n 1)"
   [ -n "$LLAMA" ] || die "could not install llama-server."
   chmod +x "$LLAMA"
+  echo "$WANT_FLAVOR" > "$D/llama/FLAVOR"
+fi
+FLAVOR="$(cat "$D/llama/FLAVOR" 2>/dev/null || echo cpu)"
+if [ "$FLAVOR" = vulkan ] && ! "$LLAMA" --list-devices 2>/dev/null | grep -qi vulkan; then
+  echo "The graphics card is not usable from llama.cpp (Vulkan); mining on the processor instead."
+  FLAVOR=cpu
 fi
 
 # ---------------------------------------------------------------- model
+say "Choosing the model for this computer"
+CPU_ONLY=""; [ "$FLAVOR" = cpu ] && CPU_ONLY="--cpu-only"
+CHOICE=$(cd "$D/src/neuron" && "$PY" -m incentium_neuron.setup_miner choose --url "$RPC" $CPU_ONLY) \
+  || die "$(echo "$CHOICE" | "$PY" -c "import json,sys; print(json.load(sys.stdin).get('reason','could not read the tiers on chain'))" 2>/dev/null || echo 'could not read the tiers on chain')"
+field() { echo "$CHOICE" | "$PY" -c "import json,sys; print(json.load(sys.stdin)['$1'])"; }
+TIER=$(field tier); MODEL_NAME=$(field model); MODEL_URL=$(field url); WANT=$(field model_hash)
+NGL=$(field gpu_layers); SIZE=$(field size_gb)
+MODEL="$D/models/$(field file)"
+echo "  $(field hardware): tier $TIER, $MODEL_NAME (open tiers: $(field open_tiers), this computer could run up to tier $(field max_tier))"
 if [ ! -s "$MODEL" ]; then
-  say "Downloading the tier-0 model (about 1.3 GB)"
+  say "Downloading $MODEL_NAME (about $SIZE GB)"
   curl -fL --progress-bar "$MODEL_URL" -o "$MODEL.part"
   mv "$MODEL.part" "$MODEL"
 fi
-TIER0=$(cd "$D/src/neuron" && "$PY" -m incentium_neuron.setup_miner tier0 --url "$RPC" 2>/dev/null || echo '{"model_hash": ""}')
-WANT=$(echo "$TIER0" | "$PY" -c "import json,sys; print(json.load(sys.stdin)['model_hash'] or '')")
+# Keep only the model in use.
+find "$D/models" -name "*.gguf" ! -path "$MODEL" -delete 2>/dev/null || true
 if [ -n "$WANT" ]; then
   say "Checking the model against the hash on chain"
   HAVE=$(sha256sum "$MODEL" | cut -d' ' -f1)
@@ -114,12 +145,12 @@ fi
 say "Starting llama-server and the miner as services"
 sudo tee /etc/systemd/system/incentium-llama.service >/dev/null <<EOF
 [Unit]
-Description=Incentium tier-0 model (llama-server, Qwen3.5-2B)
+Description=Incentium tier-$TIER model (llama-server, $MODEL_NAME)
 After=network-online.target
 
 [Service]
 User=$USER
-ExecStart=$LLAMA -m $MODEL --host 127.0.0.1 --port $LLAMA_PORT --alias qwen3.5-2b -np 2 -c 4096 -t $(nproc)
+ExecStart=$LLAMA -m $MODEL --host 127.0.0.1 --port $LLAMA_PORT --alias $MODEL_NAME -np 2 -c 4096 -t $(nproc) -ngl $NGL
 Restart=always
 RestartSec=10
 
@@ -135,7 +166,7 @@ After=incentium-llama.service network-online.target
 User=$USER
 WorkingDirectory=$D/src/neuron
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$PY -m incentium_neuron.miner --url $RPC --key-file $KEY --backend http://127.0.0.1:$LLAMA_PORT --model qwen3.5-2b
+ExecStart=$PY -m incentium_neuron.miner --url $RPC --key-file $KEY --backend http://127.0.0.1:$LLAMA_PORT --model $MODEL_NAME --tier $TIER
 Restart=always
 RestartSec=10
 
@@ -150,6 +181,7 @@ cat <<EOF
 
 $(printf '\033[1m')Incentium miner installed.$(printf '\033[0m')
   Miner address:  $ADDR
+  Model:          $MODEL_NAME (tier $TIER$( [ "$NGL" != 0 ] && echo ", on the graphics card" ))
   Key file:       $KEY   <- BACK THIS UP. Whoever has it controls the miner's rewards.
   Logs:           journalctl -u incentium-miner -f
   Rewards:        https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Ftestnet-rpc.incentium.org#/accounts

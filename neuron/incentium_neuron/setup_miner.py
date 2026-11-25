@@ -3,6 +3,7 @@
   python -m incentium_neuron.setup_miner keygen ~/.incentium-miner/miner-key.json
   python -m incentium_neuron.setup_miner register --key-file ... --service https://register.incentium.org
   python -m incentium_neuron.setup_miner tier0 --url wss://testnet-rpc.incentium.org   # model name and locked hash
+  python -m incentium_neuron.setup_miner choose --url wss://testnet-rpc.incentium.org  # tier and model for this computer
 """
 from __future__ import annotations
 
@@ -64,6 +65,39 @@ def tier0(url: str) -> dict:
     return {"model": t.model, "model_hash": t.model_hash.strip("0") and t.model_hash, "open": t.open}
 
 
+def choose(url: str, cpu_only: bool = False) -> dict:
+    """The tier a Linux miner should run: the largest open on chain that this computer runs well
+    with the model taking at most a quarter of its memory. `cpu_only` when no GPU build of
+    llama.cpp could be installed."""
+    from . import hw as HW
+    from .validator import SubstrateChain
+
+    h = HW.detect()
+    if cpu_only:
+        h.vram_gb, h.gpu = 0.0, ""
+    ok, why = h.can_run_at_all()
+    if not ok:
+        return {"ok": False, "reason": why}
+    tiers = SubstrateChain(url, None).tiers()
+    open_tiers = {t for t, i in tiers.items() if i.open and t in HW.CATALOG}
+    tier = HW.choose_tier(h, open_tiers or {0})
+    m = HW.CATALOG[tier]
+    info = tiers.get(tier)
+    return {
+        "ok": True,
+        "tier": tier,
+        "model": m["model"],
+        "url": m["url"],
+        "file": m["url"].rsplit("/", 1)[1],
+        "size_gb": m["size_gb"],
+        "model_hash": (info.model_hash if info and info.model_hash.strip("0") else ""),
+        "gpu_layers": h.gpu_layers(tier),
+        "max_tier": h.max_tier(),
+        "open_tiers": sorted(open_tiers),
+        "hardware": f"{h.cpu}, {h.ram_gb:.0f} GB memory" + (f", {h.gpu} {h.vram_gb:.0f} GB" if h.gpu else ""),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -74,6 +108,9 @@ def main():
     r.add_argument("--service", default="https://register.incentium.org")
     t = sub.add_parser("tier0")
     t.add_argument("--url", default="wss://testnet-rpc.incentium.org")
+    c = sub.add_parser("choose")
+    c.add_argument("--url", default="wss://testnet-rpc.incentium.org")
+    c.add_argument("--cpu-only", action="store_true")
     a = ap.parse_args()
     if a.cmd == "keygen":
         print(keygen(a.path))
@@ -81,6 +118,10 @@ def main():
         code, body = register(a.key_file, a.service)
         print(json.dumps(body))
         sys.exit(0 if code == 200 else 1)
+    elif a.cmd == "choose":
+        out = choose(a.url, a.cpu_only)
+        print(json.dumps(out))
+        sys.exit(0 if out["ok"] else 1)
     else:
         print(json.dumps(tier0(a.url)))
 

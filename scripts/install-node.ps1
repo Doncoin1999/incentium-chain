@@ -68,7 +68,7 @@ function Install-IncentiumNode {
   }
   $Nvidia = ($arch -eq 'AMD64') -and [bool](Get-Command nvidia-smi -ErrorAction SilentlyContinue)
   $MemGB = [math]::Floor((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
-  if ($MemGB -lt 4) { Fail "at least 4 GB of memory is needed (this PC has $MemGB GB)." }
+  if ($MemGB -lt 7) { Fail "at least 8 GB of memory is needed, so that mining never takes more than a quarter of it (this PC has $MemGB GB)." }
   New-Item -ItemType Directory -Force -Path $D, "$D\bin", "$D\models", "$D\llama", "$D\src" | Out-Null
   $FreeGB = [math]::Floor((Get-PSDrive ($D.Substring(0, 1))).Free / 1GB)
   if ($FreeGB -lt 3) { Fail "at least 3 GB of free disk is needed (found $FreeGB GB)." }
