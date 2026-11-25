@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
-"""Checks and the sudo(set_code) step for the spec 10 upgrade (subnet registration).
+"""Checks and the sudo(set_code) step of a runtime upgrade while the chain still has sudo.
+After sudo is gone, upgrades go through a referendum: see scripts/governance.py.
 
-Used by scripts/upgrade-spec10.sh; it can also be run by hand:
+Used by scripts/upgrade-runtime-sudo.sh; it can also be run by hand:
 
-  python3 scripts/spec10_upgrade.py preflight --url ws://127.0.0.1:9960 --source <repo> \
+  python3 scripts/runtime_upgrade.py preflight --url ws://127.0.0.1:9960 --source <repo> \
       --key-file ~/incentium-testnet/secrets/operator.json
-  python3 scripts/spec10_upgrade.py upgrade --url ... --key-file ... --wasm <file> [--yes]
-  python3 scripts/spec10_upgrade.py verify --url ... --before <file written by preflight>
+  python3 scripts/runtime_upgrade.py upgrade --url ... --key-file ... --wasm <file> --target N [--yes]
+  python3 scripts/runtime_upgrade.py verify --url ... --target N --before <file from preflight>
 
-preflight: the chain is reachable and producing blocks, its spec_version is below 10, the key
-           is the sudo key, and every pallet the chain has today is also in the runtime source
-           that will be built (so the upgrade cannot remove one, e.g. Revive on the testnet).
+preflight: the chain is reachable and producing blocks, its spec_version is below the source's,
+           the key is the sudo key, and every pallet the chain has today is also in the runtime
+           source that will be built (so the upgrade cannot remove one, e.g. Revive on testnet).
 upgrade:   submits sudo_unchecked_weight(system.set_code(wasm)) after typing "yes".
-verify:    spec_version is 10, blocks advance, no pallet disappeared, the registry's new storage
-           reads as expected and the SubnetRegistryApi runtime API answers.
+verify:    the new spec_version, blocks advance, no pallet disappeared, the registry reads as
+           expected and the SubnetRegistryApi runtime API answers.
 
 Needs: pip install substrate-interface
 """
@@ -24,7 +25,6 @@ import re
 import sys
 import time
 
-TARGET_SPEC = 10
 
 
 def read_secret(path):
@@ -76,12 +76,10 @@ def cmd_preflight(a):
     s = connect(a.url)
     v = spec_version(s)
     print(f"chain:          {s.chain} at {a.url}")
-    print(f"spec_version:   {v} on chain, {source_spec(a.source)} in the source")
-    if source_spec(a.source) != TARGET_SPEC:
-        print(f"STOP: the source is not spec {TARGET_SPEC}")
-        ok = False
-    if v >= TARGET_SPEC:
-        print(f"STOP: the chain is already at {v}")
+    target = source_spec(a.source)
+    print(f"spec_version:   {v} on chain, {target} in the source")
+    if target is None or v >= target:
+        print(f"STOP: the source must have a higher spec_version than the chain ({v})")
         ok = False
     if not advancing(s):
         print("STOP: no new block in 40 seconds")
@@ -121,7 +119,7 @@ def cmd_upgrade(a):
     before = spec_version(s)
     kp = Keypair.create_from_uri(read_secret(a.key_file))
     print(f"About to install {a.wasm} ({len(code):,} bytes) on {s.chain} at {a.url}.")
-    print(f"spec_version {before} -> {TARGET_SPEC}. This cannot be undone, only fixed by a later upgrade.")
+    print(f"spec_version {before} -> {a.target}. This cannot be undone, only fixed by a later upgrade.")
     if not a.yes and input('Type "yes" to go ahead: ').strip() != "yes":
         print("stopped, nothing sent")
         return 1
@@ -139,7 +137,7 @@ def cmd_upgrade(a):
         after = spec_version(connect(a.url))
         if after != before:
             print(f"spec_version {before} -> {after}")
-            return 0 if after == TARGET_SPEC else 1
+            return 0 if after == a.target else 1
     print(f"spec_version still {before}: the upgrade did not apply")
     return 1
 
@@ -149,7 +147,7 @@ def cmd_verify(a):
     ok = True
     v = spec_version(s)
     print(f"spec_version:   {v}")
-    ok &= v == TARGET_SPEC
+    ok &= v == a.target
     adv = advancing(s)
     print(f"blocks:         {'advancing' if adv else 'STALLED'} (head {head_number(s)})")
     ok &= adv
@@ -187,9 +185,11 @@ def main():
     p.add_argument("--url", required=True)
     p.add_argument("--key-file", required=True)
     p.add_argument("--wasm", required=True)
+    p.add_argument("--target", type=int, required=True, help="spec_version of the wasm")
     p.add_argument("--yes", action="store_true", help="do not ask")
     p = sub.add_parser("verify")
     p.add_argument("--url", required=True)
+    p.add_argument("--target", type=int, required=True)
     p.add_argument("--before", help="pallet list written by preflight --save")
     a = ap.parse_args()
     return {"preflight": cmd_preflight, "upgrade": cmd_upgrade, "verify": cmd_verify}[a.cmd](a)

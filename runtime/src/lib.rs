@@ -60,7 +60,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     impl_name: alloc::borrow::Cow::Borrowed("incentium-reference"),
     authoring_version: 1,
     // 9: pallet-revive (EVM). 10: subnet registration, issuance sharing, subnet control.
-    spec_version: 10,
+    // 11: Emergency track (authorize a runtime upgrade by hash).
+    spec_version: 11,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: the transaction extensions changed (EthSetOrigin added).
@@ -258,4 +259,7 @@ mod runtime {
     /// EVM and smart contracts (Solidity on the REVM backend), used by the Hyperlane bridge.
     #[runtime::pallet_index(30)]
     pub type Revive = pallet_revive;
+
+    #[runtime::pallet_index(31)]
+    pub type Emergency = governance::pallet_emergency;
 }
