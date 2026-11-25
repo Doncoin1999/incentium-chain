@@ -475,3 +475,15 @@ fn sn0_keeps_half_of_all_issuance_whatever_the_fund_share() {
         assert_eq!(configs::Sn0MinPotPpm::get(), 500_000);
     });
 }
+
+#[test]
+fn subnet_multisig_account_matches_pallet_multisig() {
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        let mut who = vec![acc(K::Charlie), acc(K::Alice), acc(K::Bob)];
+        who.sort();
+        assert_eq!(
+            Registry::multi_account_id(&who, 2),
+            pallet_multisig::Pallet::<Runtime>::multi_account_id(&who, 2)
+        );
+    });
+}

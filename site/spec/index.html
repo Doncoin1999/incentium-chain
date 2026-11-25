@@ -518,11 +518,70 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 <tr>
 <td><code>register_neuron(netuid, hotkey)</code></td>
 <td>Anyone</td>
-<td>Burns the registration fee and assigns a uid</td>
+<td>Burns the subnet's registration fee and assigns a uid</td>
+</tr>
+<tr>
+<td><code>transfer_ownership</code>, <code>set_multisig</code>, <code>set_dao</code>, <code>set_params</code>, <code>set_metadata</code></td>
+<td>Subnet controller</td>
+<td>Subnet control, above</td>
+</tr>
+<tr>
+<td><code>propose</code>, <code>vote</code>, <code>close_proposal</code></td>
+<td>Subnet stakers (close: anyone)</td>
+<td>Subnet DAO votes</td>
+</tr>
+<tr>
+<td><code>report_failed_work(netuid, epoch, uid, evidence)</code></td>
+<td>Subnet validators</td>
+<td>Penalties in subnets</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Open points:</strong> how "the weakest subnet" is measured for automatic deregistration when the cap is reached; bounds for subnet hyperparameters; whether Incentium gets subnet tokens (Alpha).</p>
+<p><strong>Subnet control (SN1 and later).</strong> Control only moves forward:</p>
+<ol>
+<li><strong>One key</strong> (at registration): the owner signs. Only in this mode can ownership be handed to another key (<code>transfer_ownership</code>).</li>
+<li><strong>Multisig</strong> (<code>set_multisig(signatories, threshold)</code>, 2–20 signatories, threshold ≥ 2): the owner becomes the multisig account, derived as in <code>pallet-multisig</code>, and acts through it.</li>
+<li><strong>Subnet DAO</strong> (<code>set_dao</code>): the owner becomes the subnet's DAO account, which receives the 12 % owner share. Any staker of the subnet may <code>propose</code> one action at a time: change settings, change metadata, or spend from the DAO account. Votes run 5 days (shorter than the 7-day unbonding) and are weighed by each voter's stake when the vote closes. <code>close_proposal</code> (anyone) carries the action out at once if aye stake exceeds nay stake and is at least 1/3 of the subnet's stake.</li>
+</ol>
+<p>The controller (owner key, multisig, or the DAO by vote) sets the subnet's settings within the protocol's bounds, and its metadata (<code>set_metadata</code>, e.g. a new incentive-code hash for a new release):</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Bounds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>neuron_fee</code> (burned per neuron registration)</td>
+<td>1 ICT</td>
+<td>1–1,000 ICT</td>
+</tr>
+<tr>
+<td><code>max_neurons</code></td>
+<td>256</td>
+<td>16–256, and not below the neurons already registered</td>
+</tr>
+<tr>
+<td><code>penalties</code></td>
+<td>off</td>
+<td>on / off</td>
+</tr>
+<tr>
+<td><code>max_failures</code></td>
+<td>3</td>
+<td>1–10</td>
+</tr>
+<tr>
+<td><code>failure_window</code> (epochs)</td>
+<td>600 (30 days)</td>
+<td>20–1,800 (1–90 days)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Penalties in subnets.</strong> With penalties on, a validator of the subnet reports a miner's failed work with <code>report_failed_work(netuid, epoch, uid, evidence)</code>. When reporters holding at least 1/3 of the subnet's stake agree, the miner gets no incentive for that epoch; <code>max_failures</code> penalties inside <code>failure_window</code> ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.</p>
+<p><strong>Open points:</strong> how "the weakest subnet" is measured for automatic deregistration when the cap is reached; whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash.</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
 <p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>

@@ -40,6 +40,31 @@ parameter_types! {
 
 pub const TREASURY: u64 = 99;
 
+std::thread_local! {
+    pub static STAKES: std::cell::RefCell<std::collections::BTreeMap<(u16, u64), u128>> =
+        Default::default();
+}
+
+pub fn set_stake(netuid: u16, who: u64, amount: u128) {
+    STAKES.with(|s| s.borrow_mut().insert((netuid, who), amount));
+}
+
+pub struct MockStake;
+impl pallet_subnet_registry::SubnetStakeInfo<u64> for MockStake {
+    fn stake_of(netuid: u16, who: &u64) -> u128 {
+        STAKES.with(|s| s.borrow().get(&(netuid, *who)).copied().unwrap_or(0))
+    }
+    fn total(netuid: u16) -> u128 {
+        STAKES.with(|s| {
+            s.borrow()
+                .iter()
+                .filter(|((n, _), _)| *n == netuid)
+                .map(|(_, v)| *v)
+                .sum()
+        })
+    }
+}
+
 pub struct MockSignals;
 impl pallet_subnet_registry::UnlockSignals for MockSignals {
     fn sudo_removed() -> bool {
@@ -57,6 +82,7 @@ impl pallet_subnet_registry::Config for Test {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = Treasury;
     type Unlock = MockSignals;
+    type StakeInfo = MockStake;
     type OnRemoved = ();
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;

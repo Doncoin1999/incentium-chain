@@ -141,9 +141,30 @@ Sells subnet slots by Dutch auction once registration has unlocked, registers mi
 | `deregister_subnet(netuid)` | Governance | Closes a subnet after its 180-day immunity; nothing is refunded |
 | `attest_swap(contract, audit_hash)` | Governance, once | Unlock criterion 4 |
 | `set_min_spacing(blocks)`, `set_max_subnets(max)` | Governance | Pace and cap, within bounds |
-| `register_neuron(netuid, hotkey)` | Anyone | Burns the registration fee and assigns a uid |
+| `register_neuron(netuid, hotkey)` | Anyone | Burns the subnet's registration fee and assigns a uid |
+| `transfer_ownership`, `set_multisig`, `set_dao`, `set_params`, `set_metadata` | Subnet controller | Subnet control, above |
+| `propose`, `vote`, `close_proposal` | Subnet stakers (close: anyone) | Subnet DAO votes |
+| `report_failed_work(netuid, epoch, uid, evidence)` | Subnet validators | Penalties in subnets |
 
-**Open points:** how "the weakest subnet" is measured for automatic deregistration when the cap is reached; bounds for subnet hyperparameters; whether Incentium gets subnet tokens (Alpha).
+**Subnet control (SN1 and later).** Control only moves forward:
+
+1. **One key** (at registration): the owner signs. Only in this mode can ownership be handed to another key (`transfer_ownership`).
+2. **Multisig** (`set_multisig(signatories, threshold)`, 2–20 signatories, threshold ≥ 2): the owner becomes the multisig account, derived as in `pallet-multisig`, and acts through it.
+3. **Subnet DAO** (`set_dao`): the owner becomes the subnet's DAO account, which receives the 12 % owner share. Any staker of the subnet may `propose` one action at a time: change settings, change metadata, or spend from the DAO account. Votes run 5 days (shorter than the 7-day unbonding) and are weighed by each voter's stake when the vote closes. `close_proposal` (anyone) carries the action out at once if aye stake exceeds nay stake and is at least 1/3 of the subnet's stake.
+
+The controller (owner key, multisig, or the DAO by vote) sets the subnet's settings within the protocol's bounds, and its metadata (`set_metadata`, e.g. a new incentive-code hash for a new release):
+
+| Setting | Default | Bounds |
+| --- | --- | --- |
+| `neuron_fee` (burned per neuron registration) | 1 ICT | 1–1,000 ICT |
+| `max_neurons` | 256 | 16–256, and not below the neurons already registered |
+| `penalties` | off | on / off |
+| `max_failures` | 3 | 1–10 |
+| `failure_window` (epochs) | 600 (30 days) | 20–1,800 (1–90 days) |
+
+**Penalties in subnets.** With penalties on, a validator of the subnet reports a miner's failed work with `report_failed_work(netuid, epoch, uid, evidence)`. When reporters holding at least 1/3 of the subnet's stake agree, the miner gets no incentive for that epoch; `max_failures` penalties inside `failure_window` ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.
+
+**Open points:** how "the weakest subnet" is measured for automatic deregistration when the cap is reached; whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash.
 
 ## 5. Module `work-verify` (SN0)
 

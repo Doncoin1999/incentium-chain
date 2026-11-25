@@ -207,6 +207,7 @@ impl pallet_subnet_registry::Config for Runtime {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = FundAccount;
     type Unlock = crate::governance::GovernanceSignals;
+    type StakeInfo = Consensus;
     type OnRemoved = Consensus;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;

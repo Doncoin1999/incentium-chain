@@ -391,3 +391,44 @@ fn closing_a_subnet_releases_its_stake() {
         assert_eq!(Balances::free_balance(5), before + 2_000);
     });
 }
+
+#[test]
+fn subnet_penalties_and_bans_cut_a_miner_out() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        for a in 5..=7u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), 1, a));
+        }
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 10_000));
+        unlock_at(0);
+        let run = |b: u64| -> (u128, u128) {
+            System::set_block_number(b);
+            let epoch = Weights::current_epoch();
+            commit_on(1, 5, vec![1, 2], vec![1, 1]);
+            System::set_block_number(b + 10);
+            reveal_on(1, 5, vec![1, 2], vec![1, 1]);
+            assert_ok!(Balances::force_set_balance(
+                RuntimeOrigin::root(),
+                POT,
+                900_000
+            ));
+            let (m6, m7) = (Balances::free_balance(6), Balances::free_balance(7));
+            Consensus::settle(epoch);
+            (
+                Balances::free_balance(6) - m6,
+                Balances::free_balance(7) - m7,
+            )
+        };
+        let b = 200 * 7_200u64;
+        // Miner 6 (uid 1) penalised for that epoch: miner 7 gets the miners' half.
+        pallet_subnet_registry::WorkPenalized::<Test>::insert((1u16, b / 10, 1u16), ());
+        let (g6, g7) = run(b);
+        assert_eq!(g6, 0);
+        assert!(close(g7, 399_999 / 2), "{g7}");
+        // Miner 7 banned from SN1: no payout there, even with weight.
+        pallet_subnet_registry::SubnetBanned::<Test>::insert(1u16, 7u64, ());
+        let (g6, g7) = run(b + 100);
+        assert_eq!(g7, 0);
+        assert!(g6 > 0);
+    });
+}

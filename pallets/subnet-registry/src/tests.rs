@@ -505,3 +505,266 @@ fn upgrade_to_v2_drops_the_doubling_price_storage() {
         assert_eq!(AuctionStart::<Test>::get(), None);
     });
 }
+
+// ---------------------------------------------------------------- subnet control
+
+use crate::{
+    Control, ControlKind, Params, SubnetAction, SubnetBanned, SubnetParams, DAO_VOTE_BLOCKS,
+};
+
+/// SN1 bought by ALICE at block 1.
+fn sn1() {
+    AuctionStart::<Test>::put(1);
+    assert_ok!(reg(ALICE, u128::MAX));
+}
+
+fn params(fee: u128) -> SubnetParams {
+    SubnetParams {
+        neuron_fee: fee,
+        max_neurons: 4,
+        penalties: false,
+        max_failures: 3,
+        failure_window: 600,
+    }
+}
+
+fn owner(n: u16) -> u64 {
+    Subnets::<Test>::get(n).unwrap().owner.unwrap()
+}
+
+#[test]
+fn control_only_moves_forward_key_multisig_dao() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        let s = |w: u64| RuntimeOrigin::signed(w);
+        assert_noop!(
+            Registry::transfer_ownership(s(BOB), 1, BOB),
+            Error::<Test>::NotController
+        );
+        assert_noop!(
+            Registry::transfer_ownership(s(ALICE), SN0, BOB),
+            Error::<Test>::Sn0HasNoOwner
+        );
+        assert_ok!(Registry::transfer_ownership(s(ALICE), 1, BOB));
+        assert_eq!(owner(1), BOB);
+
+        assert_noop!(
+            Registry::set_multisig(s(BOB), 1, vec![1, 2, 3], 1),
+            Error::<Test>::BadSignatories
+        );
+        assert_noop!(
+            Registry::set_multisig(s(BOB), 1, vec![3, 3], 2),
+            Error::<Test>::BadSignatories
+        );
+        assert_ok!(Registry::set_multisig(s(BOB), 1, vec![3, 1, 2], 2));
+        let ms = Registry::multi_account_id(&[1, 2, 3], 2);
+        assert_eq!(owner(1), ms);
+        assert_eq!(Control::<Test>::get(1), ControlKind::Multisig);
+        assert_noop!(
+            Registry::set_params(s(BOB), 1, params(2 * UNIT)),
+            Error::<Test>::NotController
+        );
+        assert_ok!(Registry::set_params(s(ms), 1, params(2 * UNIT)));
+        assert_noop!(
+            Registry::transfer_ownership(s(ms), 1, BOB),
+            Error::<Test>::OnlyKeyCanTransfer
+        );
+        assert_noop!(
+            Registry::set_multisig(s(ms), 1, vec![4, 5], 2),
+            Error::<Test>::ControlCannotGoBack
+        );
+
+        assert_ok!(Registry::set_dao(s(ms), 1));
+        assert_eq!(owner(1), Registry::dao_account(1));
+        assert_eq!(Control::<Test>::get(1), ControlKind::Dao);
+        assert_noop!(
+            Registry::set_params(s(ms), 1, params(3 * UNIT)),
+            Error::<Test>::DaoControlled
+        );
+        assert_noop!(Registry::set_dao(s(ms), 1), Error::<Test>::DaoControlled);
+    });
+}
+
+#[test]
+fn settings_stay_within_bounds_and_apply() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        let a = RuntimeOrigin::signed(ALICE);
+        for bad in [
+            params(UNIT - 1),
+            params(1_000 * UNIT + 1),
+            SubnetParams {
+                max_neurons: 5,
+                ..params(UNIT)
+            },
+            SubnetParams {
+                max_failures: 0,
+                ..params(UNIT)
+            },
+            SubnetParams {
+                failure_window: 19,
+                ..params(UNIT)
+            },
+        ] {
+            assert_noop!(
+                Registry::set_params(a.clone(), 1, bad),
+                Error::<Test>::ParamOutOfBounds
+            );
+        }
+        assert_ok!(Registry::set_params(a.clone(), 1, params(5 * UNIT)));
+        let issuance = Balances::total_issuance();
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
+        assert_eq!(Balances::total_issuance(), issuance - 5 * UNIT);
+        // SN0 keeps the protocol fee.
+        assert_ok!(Registry::register_neuron(
+            RuntimeOrigin::signed(BOB),
+            SN0,
+            21
+        ));
+        assert_eq!(Balances::total_issuance(), issuance - 6 * UNIT);
+
+        assert_ok!(Registry::set_metadata(
+            a,
+            1,
+            b"New".to_vec(),
+            vec![],
+            [9; 32]
+        ));
+        let m = Metadata::<Test>::get(1).unwrap();
+        assert_eq!(m.name.to_vec(), b"New".to_vec());
+        assert_eq!(m.code_hash, [9; 32]);
+    });
+}
+
+#[test]
+fn dao_votes_by_stake_and_carries_out_the_decision() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        assert_ok!(Registry::set_dao(RuntimeOrigin::signed(ALICE), 1));
+        set_stake(1, 10, 600);
+        set_stake(1, 11, 300);
+        set_stake(1, 12, 100);
+        let s = |w: u64| RuntimeOrigin::signed(w);
+        let action = SubnetAction::SetParams(params(7 * UNIT));
+        assert_noop!(
+            Registry::propose(s(BOB), 1, action.clone()),
+            Error::<Test>::NotStaker
+        );
+        assert_noop!(
+            Registry::propose(s(10), 1, SubnetAction::SetParams(params(0))),
+            Error::<Test>::ParamOutOfBounds
+        );
+        assert_ok!(Registry::propose(s(10), 1, action.clone()));
+        assert_noop!(
+            Registry::propose(s(11), 1, action.clone()),
+            Error::<Test>::ProposalOpen
+        );
+        assert_ok!(Registry::vote(s(11), 1, false));
+        assert_noop!(
+            Registry::close_proposal(s(BOB), 1),
+            Error::<Test>::VoteStillOpen
+        );
+        go(1 + DAO_VOTE_BLOCKS);
+        assert_noop!(Registry::vote(s(12), 1, true), Error::<Test>::VoteClosed);
+        assert_ok!(Registry::close_proposal(s(BOB), 1));
+        assert_eq!(Params::<Test>::get(1).unwrap().neuron_fee, 7 * UNIT);
+
+        // Spending the DAO account: 100 of 1,000 aye is below the 1/3 quorum.
+        let dao = Registry::dao_account(1);
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            dao,
+            1_000 * UNIT
+        ));
+        let spend = SubnetAction::Spend {
+            to: 50,
+            amount: 40 * UNIT,
+        };
+        let t = 1 + DAO_VOTE_BLOCKS;
+        assert_ok!(Registry::propose(s(12), 1, spend.clone()));
+        go(t + DAO_VOTE_BLOCKS);
+        assert_ok!(Registry::close_proposal(s(BOB), 1));
+        assert_eq!(Balances::free_balance(50), 0);
+
+        assert_ok!(Registry::propose(s(12), 1, spend));
+        assert_ok!(Registry::vote(s(10), 1, true));
+        go(t + 2 * DAO_VOTE_BLOCKS);
+        assert_ok!(Registry::close_proposal(s(BOB), 1));
+        assert_eq!(Balances::free_balance(50), 40 * UNIT);
+    });
+}
+
+#[test]
+fn subnet_penalties_need_a_third_of_stake_and_ban_repeat_failures() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
+        set_stake(1, 10, 600);
+        set_stake(1, 11, 400);
+        let s = |w: u64| RuntimeOrigin::signed(w);
+        assert_noop!(
+            Registry::report_failed_work(s(11), 1, 5, 0, [0; 32]),
+            Error::<Test>::PenaltiesOff
+        );
+        assert_ok!(Registry::set_params(
+            s(ALICE),
+            1,
+            SubnetParams {
+                penalties: true,
+                max_failures: 2,
+                ..params(UNIT)
+            }
+        ));
+        assert_noop!(
+            Registry::report_failed_work(s(BOB), 1, 5, 0, [0; 32]),
+            Error::<Test>::NotStaker
+        );
+        assert_noop!(
+            Registry::report_failed_work(s(11), SN0, 5, 0, [0; 32]),
+            Error::<Test>::Sn0HasNoOwner
+        );
+        assert_ok!(Registry::report_failed_work(s(11), 1, 5, 0, [1; 32]));
+        assert!(Registry::is_work_penalized(1, 5, 0));
+        assert!(!Registry::is_work_penalized(1, 6, 0));
+        assert_noop!(
+            Registry::report_failed_work(s(11), 1, 5, 0, [1; 32]),
+            Error::<Test>::AlreadyReported
+        );
+        assert!(!Registry::is_banned_from(1, &20));
+        assert_ok!(Registry::report_failed_work(s(11), 1, 6, 0, [1; 32]));
+        assert!(Registry::is_banned_from(1, &20));
+
+        // Closing the subnet clears its control state.
+        go(1 + IMMUNITY_BLOCKS);
+        assert_ok!(Registry::deregister_subnet(RuntimeOrigin::root(), 1));
+        assert!(Params::<Test>::get(1).is_none());
+        assert!(!Registry::is_work_penalized(1, 5, 0));
+        assert!(SubnetBanned::<Test>::get(1, 20).is_none());
+    });
+}
+
+#[test]
+fn a_small_reporter_alone_does_not_penalise() {
+    new_test_ext(true).execute_with(|| {
+        sn1();
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
+        assert_ok!(Registry::set_params(
+            RuntimeOrigin::signed(ALICE),
+            1,
+            SubnetParams {
+                penalties: true,
+                ..params(UNIT)
+            }
+        ));
+        set_stake(1, 10, 700);
+        set_stake(1, 11, 300);
+        assert_ok!(Registry::report_failed_work(
+            RuntimeOrigin::signed(11),
+            1,
+            5,
+            0,
+            [0; 32]
+        ));
+        assert!(!Registry::is_work_penalized(1, 5, 0)); // 300 of 1,000 < 1/3
+    });
+}
