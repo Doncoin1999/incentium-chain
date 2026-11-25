@@ -17,7 +17,7 @@
 //!   subnet's settings (neuron fee, slots, penalties) within the protocol's bounds and its
 //!   metadata. In DAO mode the stakers vote (5 days, weighed by stake at close) and the
 //!   decision is carried out at once; the owner share then goes to the subnet's DAO account.
-//! - Subnets may turn on penalties: validators holding 1/3 of the subnet's stake can take a
+//! - Subnets may turn on penalties: validators holding half of the active stake can take a
 //!   miner's incentive for an epoch; repeated penalties ban the hotkey from the subnet.
 //! - Neurons (miners and validators) register with a burned fee.
 //! - Each neuron declares a work tier (spec Section 5). Tier weight G, spot-check tolerance,
@@ -58,6 +58,9 @@ impl UnlockSignals for () {
 pub trait SubnetStakeInfo<AccountId> {
     fn stake_of(netuid: u16, who: &AccountId) -> u128;
     fn total(netuid: u16) -> u128;
+    /// Stake of the validators whose weights counted in the subnet's last settled epoch
+    /// (falls back to the total before any epoch is settled).
+    fn active(netuid: u16) -> u128;
 }
 
 impl<AccountId> SubnetStakeInfo<AccountId> for () {
@@ -65,6 +68,9 @@ impl<AccountId> SubnetStakeInfo<AccountId> for () {
         0
     }
     fn total(_netuid: u16) -> u128 {
+        0
+    }
+    fn active(_netuid: u16) -> u128 {
         0
     }
 }
@@ -123,6 +129,19 @@ pub mod pallet {
     pub const DEFAULT_MAX_SUBNETS: u16 = 8;
     /// Hard upper bound for the cap.
     pub const MAX_SUBNETS_LIMIT: u16 = 256;
+    /// A subnet past its immunity is dead, and anyone may remove it, if no epoch in the last
+    /// 30 days paid at least 3 distinct miners.
+    pub const DEAD_AFTER_BLOCKS: u32 = 30 * DAY;
+    pub const DEAD_MIN_MINERS: u32 = 3;
+    /// The cap doubles by itself (8 -> 16 -> ... -> 256) when every slot has been taken for
+    /// 90 days, at least 75 % of the subnets paid at least 10 miners on average over 30 days,
+    /// 180 days have passed since the last raise, and not before day 775 (1 January 2029 on
+    /// mainnet, whose genesis was 18 November 2026).
+    pub const CAP_FULL_BLOCKS: u32 = 90 * DAY;
+    pub const CAP_LIVE_PPM: u32 = 750_000;
+    pub const CAP_LIVE_MINERS: u32 = 10;
+    pub const CAP_RAISE_SPACING: u32 = 180 * DAY;
+    pub const CAP_LADDER_FROM: u32 = 775 * DAY;
 
     const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
@@ -299,8 +318,12 @@ pub mod pallet {
     /// leave and vote again elsewhere in the same subnet).
     pub const DAO_VOTE_BLOCKS: u32 = 5 * DAY;
     /// A subnet DAO decision needs more aye than nay stake, and aye stake of at least 1/3 of
-    /// the subnet's stake. The same 1/3 is the quorum for failed-work reports.
+    /// the subnet's stake.
     pub const SUBNET_QUORUM_PPM: u128 = 333_334;
+    /// A failed-work report takes a miner's incentive for the epoch once reporters hold at
+    /// least half of the stake active in the subnet's last settled epoch (decided 25 Nov
+    /// 2026). Slashing a bond, when bonds exist, will need 2/3.
+    pub const PENALTY_QUORUM_PPM: u128 = 500_000;
     pub const MAX_REPORTERS: u32 = 64;
 
     #[pallet::pallet]
@@ -400,6 +423,32 @@ pub mod pallet {
     #[pallet::storage]
     pub type MinerHistory<T> =
         StorageValue<_, BoundedVec<u32, ConstU32<MINER_WINDOW_DAYS>>, ValueQuery>;
+
+    /// Per subnet (SN1 and later): running tally for the current day of paid miners.
+    #[pallet::storage]
+    pub type SubnetMinerDay<T> = StorageMap<_, Twox64Concat, NetUid, (u32, u64, u32), ValueQuery>;
+
+    /// Per subnet: daily averages of paid miners, oldest first, at most 30.
+    #[pallet::storage]
+    pub type SubnetMinerHistory<T> = StorageMap<
+        _,
+        Twox64Concat,
+        NetUid,
+        BoundedVec<u32, ConstU32<MINER_WINDOW_DAYS>>,
+        ValueQuery,
+    >;
+
+    /// Per subnet: last block whose epoch settlement paid at least `DEAD_MIN_MINERS` miners.
+    #[pallet::storage]
+    pub type LastHealthy<T> = StorageMap<_, Twox64Concat, NetUid, u32, OptionQuery>;
+
+    /// Block since which every slot has been taken (`None` while one is free).
+    #[pallet::storage]
+    pub type FullSince<T> = StorageValue<_, u32, OptionQuery>;
+
+    /// Block of the last raise of the cap (by the ladder or by governance).
+    #[pallet::storage]
+    pub type LastCapRaise<T> = StorageValue<_, u32, OptionQuery>;
 
     #[pallet::storage]
     pub type Control<T> = StorageMap<_, Twox64Concat, NetUid, ControlKind, ValueQuery>;
@@ -568,8 +617,13 @@ pub mod pallet {
         /// Once a day, until it has happened: unlock subnet registration if all criteria hold.
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             let n: u32 = n.saturated_into();
-            if n % DAY != 0 || Phase2Enabled::<T>::get() {
+            if n % DAY != 0 {
                 return T::DbWeight::get().reads(1);
+            }
+            if Phase2Enabled::<T>::get() {
+                let _ = Self::try_raise_cap(n);
+                // One miner history per subnet.
+                return T::DbWeight::get().reads_writes(8 + SubnetCount::<T>::get() as u64, 4);
             }
             let _ = Self::try_unlock_now();
             // Status reads plus a bounded referendum count.
@@ -734,6 +788,14 @@ pub mod pallet {
             netuid: NetUid,
             hotkey: T::AccountId,
         },
+        /// A dead subnet was removed (no epoch paid 3 miners in 30 days).
+        DeadSubnetRemoved {
+            netuid: NetUid,
+        },
+        /// The ladder doubled the cap.
+        CapRaised {
+            max: u16,
+        },
     }
 
     #[pallet::error]
@@ -797,6 +859,8 @@ pub mod pallet {
         PenaltiesOff,
         AlreadyReported,
         TooManyReporters,
+        /// The subnet is alive (or still immune): it cannot be removed as dead.
+        NotDead,
     }
 
     #[pallet::call]
@@ -857,6 +921,11 @@ pub mod pallet {
             );
             Metadata::<T>::insert(netuid, meta);
             SubnetCount::<T>::mutate(|c| *c += 1);
+            if SubnetCount::<T>::get() >= MaxSubnets::<T>::get() {
+                FullSince::<T>::put(
+                    polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into::<u32>(),
+                );
+            }
             Sales::<T>::mutate(|s| *s += 1);
             LastSalePrice::<T>::put(price);
             let now: u32 = now.saturated_into();
@@ -876,35 +945,14 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Close a subnet (governance), after its 180-day immunity. Nothing is refunded.
+        /// Close a subnet (Incentium governance: the emergency brake against abuse). Works
+        /// also during the 180-day immunity, which only protects against removal as dead.
+        /// Nothing is refunded.
         #[pallet::call_index(1)]
         #[pallet::weight(<T as Config>::WeightInfo::deregister_subnet(T::MaxNeurons::get() as u32))]
         pub fn deregister_subnet(origin: OriginFor<T>, netuid: NetUid) -> DispatchResult {
             ensure_root(origin)?;
-            ensure!(netuid != SN0, Error::<T>::CannotDeregisterSn0);
-            let info = Subnets::<T>::get(netuid).ok_or(Error::<T>::NoSuchSubnet)?;
-            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
-            let created: u32 = info.created.saturated_into();
-            ensure!(
-                now >= created.saturating_add(IMMUNITY_BLOCKS),
-                Error::<T>::StillImmune
-            );
-            let was_full = SubnetCount::<T>::get() >= MaxSubnets::<T>::get();
-            Subnets::<T>::remove(netuid);
-            Metadata::<T>::remove(netuid);
-            Self::clear_control(netuid);
-            let _ = Neurons::<T>::clear_prefix(netuid, u32::MAX, None);
-            let _ = NeuronUid::<T>::clear_prefix(netuid, u32::MAX, None);
-            let _ = Endpoints::<T>::clear_prefix(netuid, u32::MAX, None);
-            let _ = NeuronTier::<T>::clear_prefix(netuid, u32::MAX, None);
-            NeuronCount::<T>::remove(netuid);
-            SubnetCount::<T>::mutate(|c| *c = c.saturating_sub(1));
-            T::OnRemoved::subnet_removed(netuid);
-            if was_full {
-                Self::slot_freed(now);
-            }
-            Self::deposit_event(Event::SubnetDeregistered { netuid });
-            Ok(())
+            Self::do_deregister(netuid)
         }
 
         /// Register a hotkey as a neuron; the fee is burned.
@@ -1107,11 +1155,21 @@ pub mod pallet {
                 max >= count && max <= MAX_SUBNETS_LIMIT,
                 Error::<T>::BadMaxSubnets
             );
-            let was_full = count >= MaxSubnets::<T>::get();
+            let old_max = MaxSubnets::<T>::get();
+            let was_full = count >= old_max;
             MaxSubnets::<T>::put(max);
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            if max > old_max {
+                LastCapRaise::<T>::put(now);
+            }
+            if count >= max {
+                if !was_full {
+                    FullSince::<T>::put(now);
+                }
+            } else {
+                FullSince::<T>::kill();
+            }
             if was_full && count < max {
-                let now: u32 =
-                    polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
                 Self::slot_freed(now);
             }
             Self::deposit_event(Event::MaxSubnetsSet { max });
@@ -1120,7 +1178,7 @@ pub mod pallet {
 
         // -------------------------------------------------------- subnet control
 
-        /// Hand the subnet to another single key (controller, `Key` mode only).
+        /// Hand the subnet to another single key (controller in `Key` or `Multisig` mode).
         #[pallet::call_index(11)]
         #[pallet::weight(T::DbWeight::get().reads_writes(2, 1))]
         pub fn transfer_ownership(
@@ -1129,10 +1187,14 @@ pub mod pallet {
             to: T::AccountId,
         ) -> DispatchResult {
             Self::ensure_controller(origin, netuid)?;
+            // One key or a multisig may sell or hand over the subnet; the new owner is one
+            // key. A DAO subnet stays with its stakers.
             ensure!(
-                Control::<T>::get(netuid) == ControlKind::Key,
+                Control::<T>::get(netuid) != ControlKind::Dao,
                 Error::<T>::OnlyKeyCanTransfer
             );
+            Control::<T>::insert(netuid, ControlKind::Key);
+            MultisigOf::<T>::remove(netuid);
             Self::set_owner(netuid, to.clone());
             Self::deposit_event(Event::OwnershipTransferred { netuid, to });
             Ok(())
@@ -1329,8 +1391,20 @@ pub mod pallet {
             Ok(())
         }
 
+        /// Remove a dead subnet (anyone): past its 180-day immunity, and no epoch in the last
+        /// 30 days paid at least 3 distinct miners. Nothing is refunded.
+        #[pallet::call_index(20)]
+        #[pallet::weight(<T as Config>::WeightInfo::deregister_subnet(T::MaxNeurons::get() as u32))]
+        pub fn remove_dead_subnet(origin: OriginFor<T>, netuid: NetUid) -> DispatchResult {
+            ensure_signed(origin)?;
+            ensure!(Self::is_dead(netuid), Error::<T>::NotDead);
+            Self::do_deregister(netuid)?;
+            Self::deposit_event(Event::DeadSubnetRemoved { netuid });
+            Ok(())
+        }
+
         /// A validator of the subnet reports that miner `uid` failed its work in `epoch`.
-        /// When reporters holding at least 1/3 of the subnet's stake agree, the miner gets
+        /// When reporters holding at least half of the subnet's active stake agree, the miner gets
         /// no incentive for that epoch; `max_failures` penalties inside `failure_window`
         /// epochs ban the hotkey from the subnet. Only for subnets that turned penalties on.
         #[pallet::call_index(19)]
@@ -1375,8 +1449,10 @@ pub mod pallet {
                 .iter()
                 .map(|r| T::StakeInfo::stake_of(netuid, r))
                 .fold(0, |a, b| a.saturating_add(b));
-            let quorum = ict_economics::mul_div(T::StakeInfo::total(netuid), SUBNET_QUORUM_PPM, 1)
-                .div_ceil(ict_economics::PPM);
+            // Lost payout: at least half of the stake active in the last settled epoch.
+            let quorum =
+                ict_economics::mul_div(T::StakeInfo::active(netuid), PENALTY_QUORUM_PPM, 1)
+                    .div_ceil(ict_economics::PPM);
             if reported >= quorum && reported > 0 {
                 WorkPenalized::<T>::insert((netuid, epoch, uid), ());
                 Self::deposit_event(Event::WorkPenalised {
@@ -1528,6 +1604,115 @@ pub mod pallet {
                 at: s.block,
                 start_price: Self::next_start_price(),
             });
+            true
+        }
+
+        fn do_deregister(netuid: NetUid) -> DispatchResult {
+            ensure!(netuid != SN0, Error::<T>::CannotDeregisterSn0);
+            ensure!(Subnets::<T>::contains_key(netuid), Error::<T>::NoSuchSubnet);
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            let was_full = SubnetCount::<T>::get() >= MaxSubnets::<T>::get();
+            Subnets::<T>::remove(netuid);
+            Metadata::<T>::remove(netuid);
+            Self::clear_control(netuid);
+            SubnetMinerDay::<T>::remove(netuid);
+            SubnetMinerHistory::<T>::remove(netuid);
+            LastHealthy::<T>::remove(netuid);
+            let _ = Neurons::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = NeuronUid::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = Endpoints::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = NeuronTier::<T>::clear_prefix(netuid, u32::MAX, None);
+            NeuronCount::<T>::remove(netuid);
+            SubnetCount::<T>::mutate(|c| *c = c.saturating_sub(1));
+            FullSince::<T>::kill();
+            T::OnRemoved::subnet_removed(netuid);
+            if was_full {
+                Self::slot_freed(now);
+            }
+            Self::deposit_event(Event::SubnetDeregistered { netuid });
+            Ok(())
+        }
+
+        /// Called by consensus after each settled epoch of SN1 and later with the number of
+        /// miners paid in it: keeps the 30-day history and the last healthy block.
+        pub fn note_subnet_epoch(netuid: NetUid, paid_miners: u32) {
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            if paid_miners >= DEAD_MIN_MINERS {
+                LastHealthy::<T>::insert(netuid, now);
+            }
+            let today = now / DAY;
+            let (day, sum, epochs) = SubnetMinerDay::<T>::get(netuid);
+            if day != today && epochs > 0 {
+                let avg = (sum / epochs as u64) as u32;
+                SubnetMinerHistory::<T>::mutate(netuid, |h| {
+                    if h.is_full() {
+                        h.remove(0);
+                    }
+                    let _ = h.try_push(avg);
+                });
+            }
+            if day != today {
+                SubnetMinerDay::<T>::insert(netuid, (today, paid_miners as u64, 1));
+            } else {
+                SubnetMinerDay::<T>::insert(netuid, (today, sum + paid_miners as u64, epochs + 1));
+            }
+        }
+
+        /// Average paid miners per epoch over the recorded days (at most 30).
+        pub fn subnet_miners_average(netuid: NetUid) -> Option<u32> {
+            let h = SubnetMinerHistory::<T>::get(netuid);
+            if h.is_empty() {
+                return None;
+            }
+            let sum: u64 = h.iter().map(|x| *x as u64).sum();
+            Some((sum / h.len() as u64) as u32)
+        }
+
+        /// Past immunity, and no epoch in the last 30 days paid at least 3 miners.
+        pub fn is_dead(netuid: NetUid) -> bool {
+            if netuid == SN0 {
+                return false;
+            }
+            let Some(info) = Subnets::<T>::get(netuid) else {
+                return false;
+            };
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            let created: u32 = info.created.saturated_into();
+            let healthy = LastHealthy::<T>::get(netuid)
+                .unwrap_or(created)
+                .max(created);
+            now >= created.saturating_add(IMMUNITY_BLOCKS)
+                && now >= healthy.saturating_add(DEAD_AFTER_BLOCKS)
+        }
+
+        /// Double the cap if every ladder criterion holds. Returns whether it did.
+        pub fn try_raise_cap(now: u32) -> bool {
+            let max = MaxSubnets::<T>::get();
+            if max >= MAX_SUBNETS_LIMIT || now < CAP_LADDER_FROM {
+                return false;
+            }
+            let count = SubnetCount::<T>::get();
+            let full_long = count >= max
+                && FullSince::<T>::get()
+                    .map_or(false, |f| now >= f.saturating_add(CAP_FULL_BLOCKS));
+            let spaced = LastCapRaise::<T>::get()
+                .map_or(true, |r| now >= r.saturating_add(CAP_RAISE_SPACING));
+            if !full_long || !spaced || count == 0 {
+                return false;
+            }
+            let live = Subnets::<T>::iter_keys()
+                .filter(|n| *n != SN0)
+                .filter(|n| Self::subnet_miners_average(*n).map_or(false, |a| a >= CAP_LIVE_MINERS))
+                .count() as u128;
+            if live * (ict_economics::PPM) < count as u128 * CAP_LIVE_PPM as u128 {
+                return false;
+            }
+            let new = max.saturating_mul(2).min(MAX_SUBNETS_LIMIT);
+            MaxSubnets::<T>::put(new);
+            LastCapRaise::<T>::put(now);
+            FullSince::<T>::kill();
+            Self::slot_freed(now);
+            Self::deposit_event(Event::CapRaised { max: new });
             true
         }
 

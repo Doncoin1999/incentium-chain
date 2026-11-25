@@ -15,6 +15,8 @@
 //!   - SN0 has no owner and splits 50 : 38 between miners and validators
 //!     (`Sn0MinerSharePpm`). Before the unlock SN0 keeps `MinerSharePpm`.
 //! - Closing a subnet releases its stake into the normal unbonding queue.
+//! - Settlement is spread out: the epoch's first block shares the pot and settles SN0, and
+//!   each following block settles one further subnet, so 256 subnets fit in one epoch.
 //! - The on-chain computation is replaced by off-chain Yuma with a zk proof later.
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -53,6 +55,8 @@ pub mod pallet {
     pub const SUBNET_OWNER_PPM: u128 = 120_000;
     /// The other subnets' share ramps in over 180 days from the unlock.
     pub const EMISSION_RAMP_BLOCKS: u128 = 180 * ict_economics::BLOCKS_PER_DAY as u128;
+    /// Upper bound of subnets queued for settlement (the registry's cap limit).
+    pub const MAX_PENDING: u32 = pallet_subnet_registry::MAX_SUBNETS_LIMIT as u32;
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -120,6 +124,20 @@ pub mod pallet {
     #[pallet::storage]
     pub type SubnetStake<T: Config> =
         StorageDoubleMap<_, Twox64Concat, NetUid, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
+
+    /// Stake of the validators whose weights counted in each subnet's last settled epoch:
+    /// the base for the 50 % (lost payout) and 2/3 (slash) quorums of failed-work reports.
+    #[pallet::storage]
+    pub type LastActiveStake<T> = StorageMap<_, Twox64Concat, NetUid, u128, ValueQuery>;
+
+    /// Subnets still to settle for an epoch: SN0 settles in the epoch's first block, then one
+    /// further subnet per block, so a full set of 256 subnets fits easily in one epoch.
+    #[pallet::storage]
+    pub type PendingSettle<T> = StorageValue<
+        _,
+        (Epoch, BoundedVec<(NetUid, u128), ConstU32<{ MAX_PENDING }>>),
+        OptionQuery,
+    >;
 
     /// Total stake per subnet (SN1 and later); the pot is shared by it.
     #[pallet::storage]
@@ -224,19 +242,32 @@ pub mod pallet {
         fn on_initialize(n: BlockNumberFor<T>) -> Weight {
             let n: u64 = n.saturated_into();
             let len = <T as pallet_weights::Config>::EpochLength::get() as u64;
-            if len == 0 || !n.is_multiple_of(len) {
+            if len == 0 {
                 return T::DbWeight::get().reads(1);
             }
             let epoch = n / len;
-            if epoch < 2 {
-                return T::DbWeight::get().reads(1);
+            if !n.is_multiple_of(len) || epoch < 2 {
+                // Between epoch starts: settle the next queued subnet, if any.
+                return match Self::settle_next() {
+                    Some(neurons) => <T as Config>::WeightInfo::settle(neurons, neurons),
+                    None => T::DbWeight::get().reads(1),
+                };
             }
+            // Anything still queued from the last epoch settles now (only possible with
+            // more subnets than blocks in an epoch).
+            let mut neurons = 0u32;
+            while let Some(k) = Self::settle_next() {
+                neurons = neurons.saturating_add(k);
+            }
+            neurons = neurons.saturating_add(NeuronCount::<T>::get(SN0) as u32);
+            Self::begin_settle(epoch - 2);
             // Every validator is a neuron, so n bounds both the rows and the payouts.
-            let n: u32 = Subnets::<T>::iter_keys()
-                .map(|net| NeuronCount::<T>::get(net) as u32)
-                .sum();
-            Self::settle(epoch - 2);
-            <T as Config>::WeightInfo::settle(n, n)
+            <T as Config>::WeightInfo::settle(neurons, neurons).saturating_add(
+                T::DbWeight::get().reads_writes(
+                    2 + 2 * pallet_subnet_registry::SubnetCount::<T>::get() as u64,
+                    2,
+                ),
+            )
         }
     }
 
@@ -509,8 +540,15 @@ pub mod pallet {
             out
         }
 
-        /// Settle weight epoch `we` for every subnet.
+        /// Settle weight epoch `we` for every subnet at once (tests and tools; the chain
+        /// spreads the work with `begin_settle` and `settle_next`).
         pub fn settle(we: Epoch) {
+            Self::begin_settle(we);
+            while Self::settle_next().is_some() {}
+        }
+
+        /// Share the pot for epoch `we`, settle SN0 now and queue the other subnets.
+        pub fn begin_settle(we: Epoch) {
             let pot_acct = T::SubnetPot::get();
             let pot = T::StakeCurrency::reducible_balance(
                 &pot_acct,
@@ -521,6 +559,7 @@ pub mod pallet {
             let unlocked = pallet_subnet_registry::Phase2Enabled::<T>::get();
             let plan = Self::allocation(pot);
             let mut planned = alloc::collections::BTreeSet::new();
+            let mut queue: Vec<(NetUid, u128)> = Vec::new();
             for (netuid, slice) in plan {
                 planned.insert(netuid);
                 if netuid == SN0 {
@@ -531,14 +570,7 @@ pub mod pallet {
                     };
                     Self::settle_subnet(SN0, we, slice, miner_ppm as u128, None);
                 } else {
-                    let owner = Subnets::<T>::get(netuid).and_then(|i| i.owner);
-                    Self::settle_subnet(
-                        netuid,
-                        we,
-                        slice,
-                        SUBNET_MINER_PPM,
-                        owner.map(|o| (o, SUBNET_OWNER_PPM)),
-                    );
+                    queue.push((netuid, slice));
                 }
             }
             // Subnets without a slice still drop their revealed weights.
@@ -547,6 +579,34 @@ pub mod pallet {
                     pallet_weights::Pallet::<T>::prune(netuid, we);
                 }
             }
+            if !queue.is_empty() {
+                PendingSettle::<T>::put((we, BoundedVec::truncate_from(queue)));
+            }
+        }
+
+        /// Settle the next queued subnet. Returns its neuron count, or `None` if none waits.
+        pub fn settle_next() -> Option<u32> {
+            let (we, mut queue) = PendingSettle::<T>::get()?;
+            if queue.is_empty() {
+                PendingSettle::<T>::kill();
+                return None;
+            }
+            let (netuid, slice) = queue.remove(0);
+            if queue.is_empty() {
+                PendingSettle::<T>::kill();
+            } else {
+                PendingSettle::<T>::put((we, queue));
+            }
+            let neurons = NeuronCount::<T>::get(netuid) as u32;
+            let owner = Subnets::<T>::get(netuid).and_then(|i| i.owner);
+            Self::settle_subnet(
+                netuid,
+                we,
+                slice,
+                SUBNET_MINER_PPM,
+                owner.map(|o| (o, SUBNET_OWNER_PPM)),
+            );
+            Some(neurons)
         }
 
         /// Settle one subnet's `slice` of the pot: `owner_ppm` of it to the owner, `miner_ppm`
@@ -588,6 +648,10 @@ pub mod pallet {
                 matrix.push(r);
             }
             pallet_weights::Pallet::<T>::prune(netuid, we);
+            LastActiveStake::<T>::insert(
+                netuid,
+                stakes.iter().fold(0u128, |a, b| a.saturating_add(*b)),
+            );
 
             let out = yuma_lite(
                 &stakes,
@@ -602,6 +666,7 @@ pub mod pallet {
                     pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(0);
                     Self::deposit_event(Event::EpochSkipped { epoch: we });
                 } else {
+                    pallet_subnet_registry::Pallet::<T>::note_subnet_epoch(netuid, 0);
                     Self::deposit_event(Event::SubnetEpochSkipped { netuid, epoch: we });
                 }
                 return;
@@ -665,6 +730,7 @@ pub mod pallet {
                     validators: vals,
                 });
             } else {
+                pallet_subnet_registry::Pallet::<T>::note_subnet_epoch(netuid, miners);
                 Self::deposit_event(Event::SubnetEpochSettled {
                     netuid,
                     epoch: we,
@@ -688,6 +754,14 @@ pub mod pallet {
                 SubnetTotalStake::<T>::get(netuid)
             }
         }
+        fn active(netuid: u16) -> u128 {
+            let a = LastActiveStake::<T>::get(netuid);
+            if a > 0 {
+                a
+            } else {
+                <Self as pallet_subnet_registry::SubnetStakeInfo<T::AccountId>>::total(netuid)
+            }
+        }
     }
 
     impl<T: Config> pallet_subnet_registry::OnSubnetRemoved for Pallet<T> {
@@ -704,6 +778,7 @@ pub mod pallet {
                 amount += st;
             }
             SubnetTotalStake::<T>::remove(netuid);
+            LastActiveStake::<T>::remove(netuid);
             Self::deposit_event(Event::SubnetStakeReleased {
                 netuid,
                 stakers,
@@ -718,6 +793,14 @@ pub mod pallet {
         }
         fn total_stake() -> u128 {
             TotalStake::<T>::get()
+        }
+        fn active_stake() -> u128 {
+            let a = LastActiveStake::<T>::get(SN0);
+            if a > 0 {
+                a
+            } else {
+                TotalStake::<T>::get()
+            }
         }
         #[cfg(feature = "runtime-benchmarks")]
         fn set_stake(who: &T::AccountId, amount: u128) {

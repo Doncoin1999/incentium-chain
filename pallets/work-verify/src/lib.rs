@@ -1,10 +1,11 @@
 //! # Work-verify pallet (spec Section 5, SN0)
 //!
 //! - Miners and pools post a bond.
-//! - Validators report failed spot checks; when validators holding at least `QuorumPpm`
-//!   of total validator stake report the same (epoch, uid), the miner is penalised:
-//!   10 % of its bond is slashed (half burned, half to the insurance fund) and it gets
-//!   no incentive for that epoch. Three penalties inside the window ban the hotkey.
+//! - Validators report failed spot checks. When reporters hold at least `QuorumPpm` (50 %)
+//!   of the active validator stake for the same (epoch, uid), the miner gets no incentive
+//!   for that epoch; three penalties inside the window ban the hotkey. When they hold at
+//!   least `SlashQuorumPpm` (2/3), 10 % of its bond is also slashed (half burned, half to
+//!   the insurance fund). Decided 25 Nov 2026.
 //! - Pools receive their miners' rewards in this pallet and pay sub-workers pro rata to
 //!   verified work units, minus a public fee (max 5 %), via `distribute`. The receipt
 //!   root is published so anyone can recompute the payout.
@@ -25,6 +26,9 @@ mod tests;
 pub trait StakeOracle<AccountId> {
     fn stake_of(who: &AccountId) -> u128;
     fn total_stake() -> u128;
+    /// Stake of the validators whose weights counted in the last settled SN0 epoch (the base
+    /// of the report quorums; falls back to the total before any epoch is settled).
+    fn active_stake() -> u128;
     /// Give `who` validator stake (benchmark setup only).
     #[cfg(feature = "runtime-benchmarks")]
     fn set_stake(who: &AccountId, amount: u128);
@@ -95,8 +99,12 @@ pub mod pallet {
         type FeeChangeDelay: Get<Epoch>;
         #[pallet::constant]
         type SlashPpm: Get<u32>;
+        /// Reported share of active stake that takes the miner's incentive (50 %).
         #[pallet::constant]
         type QuorumPpm: Get<u32>;
+        /// Reported share of active stake that also slashes the bond (2/3).
+        #[pallet::constant]
+        type SlashQuorumPpm: Get<u32>;
         #[pallet::constant]
         type MaxFailures: Get<u32>;
         #[pallet::constant]
@@ -139,6 +147,11 @@ pub mod pallet {
     pub type Penalized<T> =
         StorageDoubleMap<_, Twox64Concat, Epoch, Twox64Concat, Uid, bool, ValueQuery>;
 
+    /// Bond already slashed for (epoch, uid).
+    #[pallet::storage]
+    pub type Slashed<T> =
+        StorageDoubleMap<_, Twox64Concat, Epoch, Twox64Concat, Uid, bool, ValueQuery>;
+
     #[pallet::storage]
     pub type Failures<T: Config> =
         StorageMap<_, Blake2_128Concat, T::AccountId, BoundedVec<Epoch, ConstU32<8>>, ValueQuery>;
@@ -177,7 +190,15 @@ pub mod pallet {
             reporter: T::AccountId,
             evidence: H256,
         },
+        /// The miner gets no incentive for `epoch` (`slashed` is always 0; see `BondSlashed`).
         MinerPenalized {
+            epoch: Epoch,
+            uid: Uid,
+            hotkey: T::AccountId,
+            slashed: u128,
+        },
+        /// Reporters with 2/3 of active stake agreed: part of the bond was slashed.
+        BondSlashed {
             epoch: Epoch,
             uid: Uid,
             hotkey: T::AccountId,
@@ -396,11 +417,15 @@ pub mod pallet {
                 reporter: who,
                 evidence,
             });
-            // round the quorum up so "at least 1/3" never passes with exactly 1/3 minus dust
-            let quorum =
-                mul_div(T::Stake::total_stake(), T::QuorumPpm::get() as u128, 1).div_ceil(PPM);
+            // Round the quorums up so "at least half" never passes with dust missing.
+            let base = T::Stake::active_stake();
+            let quorum = mul_div(base, T::QuorumPpm::get() as u128, 1).div_ceil(PPM);
+            let slash_quorum = mul_div(base, T::SlashQuorumPpm::get() as u128, 1).div_ceil(PPM);
             if reported >= quorum && !Penalized::<T>::get(epoch, uid) {
-                Self::penalize(epoch, uid, hotkey)?;
+                Self::penalize(epoch, uid, hotkey.clone())?;
+            }
+            if reported >= slash_quorum && !Slashed::<T>::get(epoch, uid) {
+                Self::slash(epoch, uid, hotkey)?;
             }
             Ok(())
         }
@@ -411,8 +436,8 @@ pub mod pallet {
             T::WorkPalletId::get().into_account_truncating()
         }
 
-        fn penalize(epoch: Epoch, uid: Uid, hotkey: T::AccountId) -> DispatchResult {
-            Penalized::<T>::insert(epoch, uid, true);
+        fn slash(epoch: Epoch, uid: Uid, hotkey: T::AccountId) -> DispatchResult {
+            Slashed::<T>::insert(epoch, uid, true);
             let bond = Bonds::<T>::get(&hotkey);
             let slash = mul_div(bond, T::SlashPpm::get() as u128, PPM);
             if slash > 0 {
@@ -433,11 +458,22 @@ pub mod pallet {
                     Preservation::Expendable,
                 )?;
             }
+            Self::deposit_event(Event::BondSlashed {
+                epoch,
+                uid,
+                hotkey,
+                slashed: slash,
+            });
+            Ok(())
+        }
+
+        fn penalize(epoch: Epoch, uid: Uid, hotkey: T::AccountId) -> DispatchResult {
+            Penalized::<T>::insert(epoch, uid, true);
             Self::deposit_event(Event::MinerPenalized {
                 epoch,
                 uid,
                 hotkey: hotkey.clone(),
-                slashed: slash,
+                slashed: 0,
             });
             let window_start = epoch.saturating_sub(T::FailureWindow::get());
             let count = Failures::<T>::mutate(&hotkey, |f| {

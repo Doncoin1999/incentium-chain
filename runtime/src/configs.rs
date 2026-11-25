@@ -165,7 +165,9 @@ parameter_types! {
     /// 7 days in epochs (20 epochs per day).
     pub const FeeChangeDelay: u64 = 140;
     pub const SlashPpm: u32 = 100_000;
-    pub const QuorumPpm: u32 = 333_334;
+    /// Lost payout: half of the active validator stake; slash: 2/3.
+    pub const QuorumPpm: u32 = 500_000;
+    pub const SlashQuorumPpm: u32 = 666_667;
     pub const MaxFailures: u32 = 3;
     /// 30 days in epochs.
     pub const FailureWindow: u64 = 600;
@@ -230,6 +232,7 @@ impl pallet_work_verify::Config for Runtime {
     type FeeChangeDelay = FeeChangeDelay;
     type SlashPpm = SlashPpm;
     type QuorumPpm = QuorumPpm;
+    type SlashQuorumPpm = SlashQuorumPpm;
     type MaxFailures = MaxFailures;
     type FailureWindow = FailureWindow;
     type UnbondingEpochs = UnbondingEpochs;

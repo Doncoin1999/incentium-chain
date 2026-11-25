@@ -432,3 +432,75 @@ fn subnet_penalties_and_bans_cut_a_miner_out() {
         assert!(g6 > 0);
     });
 }
+
+#[test]
+fn settlement_is_spread_one_subnet_per_block_after_sn0() {
+    use crate::{LastActiveStake, PendingSettle};
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        add_subnet(2);
+        // SN1: validator 5, miners 6 and 7. SN2: validator 8, miners 3 and 4.
+        for (net, accts) in [(1u16, [5u64, 6, 7]), (2u16, [8u64, 3, 4])] {
+            for a in accts {
+                assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), net, a));
+            }
+        }
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 10_000));
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(8), 2, 30_000));
+        unlock_at(0);
+        let b = 200 * 7_200u64;
+        System::set_block_number(b);
+        commit_on(1, 5, vec![1, 2], vec![1, 1]);
+        commit_on(2, 8, vec![1, 2], vec![1, 1]);
+        System::set_block_number(b + 10);
+        reveal_on(1, 5, vec![1, 2], vec![1, 1]);
+        reveal_on(2, 8, vec![1, 2], vec![1, 1]);
+        assert_ok!(Balances::force_set_balance(
+            RuntimeOrigin::root(),
+            POT,
+            900_000
+        ));
+        let owner = Balances::free_balance(OWNER);
+        System::set_block_number(b + 19);
+        go_to(b + 20); // epoch start: SN0 settles, SN1 and SN2 are queued
+        let (_, queue) = PendingSettle::<Test>::get().unwrap();
+        assert_eq!(queue.len(), 2);
+        assert_eq!(Balances::free_balance(OWNER), owner);
+        go_to(b + 21);
+        assert_eq!(PendingSettle::<Test>::get().unwrap().1.len(), 1);
+        go_to(b + 22);
+        assert!(PendingSettle::<Test>::get().is_none());
+        // Both owner shares paid: 12 % of 399,999, split 1:3 by stake.
+        let paid = Balances::free_balance(OWNER) - owner;
+        assert!(close(paid, 399_999 * 12 / 100), "{paid}");
+        assert_eq!(LastActiveStake::<Test>::get(1), 10_000);
+        assert_eq!(LastActiveStake::<Test>::get(2), 30_000);
+        // Two paid miners per subnet: not "healthy" (needs 3), so no healthy block yet.
+        assert!(pallet_subnet_registry::LastHealthy::<Test>::get(1).is_none());
+        assert_eq!(pallet_subnet_registry::SubnetMinerDay::<Test>::get(1).1, 2);
+    });
+}
+
+#[test]
+fn a_queue_left_over_settles_at_the_next_epoch_start() {
+    use crate::PendingSettle;
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(5), 1, 5));
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 10_000));
+        unlock_at(0);
+        System::set_block_number(200 * 7_200);
+        // A queued subnet that never got its block (as with more subnets than blocks).
+        PendingSettle::<Test>::put((
+            1u64,
+            polkadot_sdk::frame_support::BoundedVec::truncate_from(vec![(1u16, 0u128)]),
+        ));
+        let b = 200 * 7_200u64 + 10;
+        System::set_block_number(b - 1);
+        go_to(b);
+        // Flushed, then the new epoch queued SN1 again.
+        let (we, q) = PendingSettle::<Test>::get().unwrap();
+        assert_eq!(we, b / 10 - 2);
+        assert_eq!(q.len(), 1);
+    });
+}

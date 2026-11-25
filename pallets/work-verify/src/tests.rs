@@ -64,56 +64,56 @@ fn non_pool_credit_goes_to_hotkey() {
 }
 
 #[test]
-fn quorum_of_reports_slashes_and_three_strikes_ban() {
+fn half_of_active_stake_penalises_two_thirds_slash_three_strikes_ban() {
+    use crate::Slashed;
     new_test_ext().execute_with(|| {
         reg(1);
         reg(2); // miner uid 1
         assert_ok!(Work::bond(RuntimeOrigin::signed(2), 10_000));
         set_stake(7, 100);
         set_stake(8, 100);
+        set_stake(9, 100);
         set_stake(10, 100);
         assert_noop!(
             Work::report_failed_check(RuntimeOrigin::signed(3), 0, 1, Default::default()),
             Error::<Test>::NotAValidator
         );
         let issuance = Balances::total_issuance();
-        // 1/3 of stake is not yet above the 333,334 ppm quorum
-        assert_ok!(Work::report_failed_check(
-            RuntimeOrigin::signed(7),
-            0,
-            1,
-            Default::default()
-        ));
+        let r = |v: u64, e: u64| {
+            assert_ok!(Work::report_failed_check(
+                RuntimeOrigin::signed(v),
+                e,
+                1,
+                Default::default()
+            ));
+        };
+        // 1/4 of stake: nothing.
+        r(7, 0);
         assert!(!Penalized::<Test>::get(0, 1));
         assert_noop!(
             Work::report_failed_check(RuntimeOrigin::signed(7), 0, 1, Default::default()),
             Error::<Test>::AlreadyReported
         );
-        assert_ok!(Work::report_failed_check(
-            RuntimeOrigin::signed(8),
-            0,
-            1,
-            Default::default()
-        ));
+        // 1/2: no incentive for the epoch, bond untouched.
+        r(8, 0);
         assert!(Penalized::<Test>::get(0, 1));
+        assert!(!Slashed::<Test>::get(0, 1));
+        assert_eq!(Bonds::<Test>::get(2), 10_000);
+        // 3/4 (above 2/3): 10 % of the bond slashed, half burned, half to insurance.
+        r(9, 0);
+        assert!(Slashed::<Test>::get(0, 1));
         assert_eq!(Bonds::<Test>::get(2), 9_000);
         assert_eq!(Balances::total_issuance(), issuance - 500);
         assert_eq!(Balances::free_balance(InsuranceFund::get()), 500);
+        r(10, 0); // no second slash
+        assert_eq!(Bonds::<Test>::get(2), 9_000);
         for e in 1..=2u64 {
-            assert_ok!(Work::report_failed_check(
-                RuntimeOrigin::signed(7),
-                e,
-                1,
-                Default::default()
-            ));
-            assert_ok!(Work::report_failed_check(
-                RuntimeOrigin::signed(8),
-                e,
-                1,
-                Default::default()
-            ));
+            r(7, e);
+            r(8, e);
         }
+        // Three penalties (half each time): banned; only the first epoch was slashed.
         assert!(Banned::<Test>::contains_key(2));
+        assert_eq!(Bonds::<Test>::get(2), 9_000);
     });
 }
 

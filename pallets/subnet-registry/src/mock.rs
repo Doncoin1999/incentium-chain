@@ -54,6 +54,9 @@ impl pallet_subnet_registry::SubnetStakeInfo<u64> for MockStake {
     fn stake_of(netuid: u16, who: &u64) -> u128 {
         STAKES.with(|s| s.borrow().get(&(netuid, *who)).copied().unwrap_or(0))
     }
+    fn active(netuid: u16) -> u128 {
+        Self::total(netuid)
+    }
     fn total(netuid: u16) -> u128 {
         STAKES.with(|s| {
             s.borrow()
