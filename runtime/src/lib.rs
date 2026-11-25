@@ -58,8 +58,8 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: alloc::borrow::Cow::Borrowed("incentium"),
     impl_name: alloc::borrow::Cow::Borrowed("incentium-reference"),
     authoring_version: 1,
-    // 9: pallet-revive (EVM). Testnet is at 8 with the swap module, so this comes after it.
-    spec_version: 9,
+    // 9: pallet-revive (EVM). 10: subnet registration, issuance sharing, subnet control.
+    spec_version: 10,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: the transaction extensions changed (EthSetOrigin added).

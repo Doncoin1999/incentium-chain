@@ -1,6 +1,12 @@
-use crate::{mock::*, Error, NeuronCount, Neurons, SubnetCount, Subnets, SN0};
+use crate::{
+    mock::*, AuctionStart, Error, MaxSubnets, Metadata, MinSpacing, MinerHistory, NeuronCount,
+    Neurons, Phase2Enabled, Sales, SubnetCount, Subnets, SwapAttestation, SwapAttested,
+    IMMUNITY_BLOCKS, SN0, UNLOCK_MIN_BLOCK,
+};
 use ict_economics::UNIT;
-use polkadot_sdk::frame_support::{assert_noop, assert_ok};
+use polkadot_sdk::frame_support::{
+    assert_noop, assert_ok, pallet_prelude::BoundedVec, traits::Hooks,
+};
 use polkadot_sdk::sp_runtime::DispatchError;
 
 #[test]
@@ -48,65 +54,261 @@ fn subnet_full() {
     });
 }
 
+fn reg(who: u64, max: u128) -> polkadot_sdk::sp_runtime::DispatchResult {
+    Registry::register_subnet(
+        RuntimeOrigin::signed(who),
+        max,
+        b"Inference".to_vec(),
+        b"Open LLM inference".to_vec(),
+        [7u8; 32],
+    )
+}
+
+fn go(block: u32) {
+    System::set_block_number(block as u64);
+}
+
+fn all_criteria_but(skip: u8) {
+    if skip != 1 {
+        go(UNLOCK_MIN_BLOCK);
+    } else {
+        go(UNLOCK_MIN_BLOCK - 1);
+    }
+    let miners = if skip == 2 { 299 } else { 300 };
+    MinerHistory::<Test>::put(BoundedVec::truncate_from(vec![miners; 30]));
+    SudoRemoved::set(skip != 3);
+    ApprovedReferenda::set(if skip == 4 { 2 } else { 3 });
+    if skip != 5 {
+        SwapAttested::<Test>::put(SwapAttestation {
+            contract: [1; 20],
+            audit_hash: [2; 32],
+        });
+    }
+}
+
 #[test]
-fn subnets_only_in_phase2() {
+fn unlock_needs_all_four_criteria() {
+    for skip in 1..=5u8 {
+        new_test_ext(false).execute_with(|| {
+            all_criteria_but(skip);
+            assert_noop!(
+                Registry::try_unlock(RuntimeOrigin::signed(ALICE)),
+                Error::<Test>::CriteriaNotMet
+            );
+            assert_noop!(reg(ALICE, u128::MAX), Error::<Test>::Phase2NotEnabled);
+        });
+    }
     new_test_ext(false).execute_with(|| {
+        all_criteria_but(0);
+        assert_ok!(Registry::try_unlock(RuntimeOrigin::signed(ALICE)));
+        assert!(Phase2Enabled::<Test>::get());
+        assert_eq!(AuctionStart::<Test>::get(), Some(UNLOCK_MIN_BLOCK));
+        assert_eq!(Registry::current_price(), Some(50_000 * UNIT));
         assert_noop!(
-            Registry::register_subnet(RuntimeOrigin::signed(ALICE), 10_000 * UNIT),
-            Error::<Test>::Phase2NotEnabled
+            Registry::try_unlock(RuntimeOrigin::signed(ALICE)),
+            Error::<Test>::AlreadyUnlocked
         );
-        assert_noop!(
-            Registry::enable_phase2(RuntimeOrigin::signed(ALICE)),
-            DispatchError::BadOrigin
-        );
-        assert_ok!(Registry::enable_phase2(RuntimeOrigin::root()));
-        assert_ok!(Registry::register_subnet(
-            RuntimeOrigin::signed(ALICE),
-            10_000 * UNIT
-        ));
     });
 }
 
 #[test]
-fn deposit_doubles_then_decays() {
-    new_test_ext(true).execute_with(|| {
-        assert_eq!(Registry::current_deposit_price(), 1_000 * UNIT);
-        assert_ok!(Registry::register_subnet(
-            RuntimeOrigin::signed(ALICE),
-            1_000 * UNIT
-        ));
-        assert_eq!(Registry::current_deposit_price(), 2_000 * UNIT);
-        assert_noop!(
-            Registry::register_subnet(RuntimeOrigin::signed(BOB), 1_500 * UNIT),
-            Error::<Test>::DepositAboveLimit
-        );
-        System::set_block_number((1 + 7 * DAY) as u64);
-        assert_eq!(Registry::current_deposit_price(), 1_000 * UNIT); // 2,000 x 1/2 = floor
-        System::set_block_number((1 + 14 * DAY) as u64);
-        assert_eq!(Registry::current_deposit_price(), 1_000 * UNIT);
+fn unlocks_by_itself_at_the_daily_check() {
+    new_test_ext(false).execute_with(|| {
+        all_criteria_but(0);
+        go(UNLOCK_MIN_BLOCK + 5);
+        Registry::on_initialize((UNLOCK_MIN_BLOCK + 5) as u64);
+        assert!(!Phase2Enabled::<Test>::get()); // not a day boundary
+        let next_day = UNLOCK_MIN_BLOCK + DAY;
+        go(next_day);
+        Registry::on_initialize(next_day as u64);
+        assert!(Phase2Enabled::<Test>::get());
+        assert_eq!(AuctionStart::<Test>::get(), Some(next_day));
     });
 }
 
 #[test]
-fn deregistration_returns_ninety_percent_and_burns_ten() {
+fn miner_average_rolls_daily_over_30_days() {
+    new_test_ext(false).execute_with(|| {
+        for day in 0..31u32 {
+            go(day * DAY + 10);
+            Registry::note_sn0_epoch(280);
+            go(day * DAY + 400);
+            Registry::note_sn0_epoch(320);
+            if day < 30 {
+                assert_eq!(Registry::miners_average(), None);
+            }
+        }
+        // Day 30's tally rolls in on day 31.
+        assert_eq!(MinerHistory::<Test>::get().len(), 30);
+        assert_eq!(Registry::miners_average(), Some(300));
+        go(31 * DAY + 1);
+        Registry::note_sn0_epoch(0);
+        assert_eq!(MinerHistory::<Test>::get().len(), 30);
+        assert_eq!(Registry::miners_average(), Some(300));
+        go(32 * DAY + 1);
+        Registry::note_sn0_epoch(0);
+        // One day of 0 replaced a day of 300.
+        assert_eq!(Registry::miners_average(), Some(290));
+    });
+}
+
+#[test]
+fn dutch_auction_price_payment_and_metadata() {
     new_test_ext(true).execute_with(|| {
-        let start = Balances::free_balance(ALICE);
-        assert_ok!(Registry::register_subnet(
-            RuntimeOrigin::signed(ALICE),
-            1_000 * UNIT
-        ));
-        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
+        AuctionStart::<Test>::put(1);
+        assert_eq!(Registry::current_price(), Some(50_000 * UNIT));
+        go(1 + DAY);
+        assert_eq!(Registry::current_price(), Some(37_500 * UNIT));
+        assert_noop!(reg(BOB, 37_000 * UNIT), Error::<Test>::DepositAboveLimit);
+        assert_noop!(
+            Registry::register_subnet(
+                RuntimeOrigin::signed(BOB),
+                u128::MAX,
+                vec![],
+                vec![],
+                [0; 32]
+            ),
+            Error::<Test>::EmptyName
+        );
+        assert_noop!(
+            Registry::register_subnet(
+                RuntimeOrigin::signed(BOB),
+                u128::MAX,
+                vec![b'n'; 65],
+                vec![],
+                [0; 32]
+            ),
+            Error::<Test>::NameTooLong
+        );
+
+        let alice = Balances::free_balance(ALICE);
+        let treasury = Balances::free_balance(TREASURY);
         let issuance = Balances::total_issuance();
+        assert_ok!(reg(ALICE, 37_500 * UNIT));
+        assert_eq!(Balances::free_balance(ALICE), alice - 37_500 * UNIT);
+        assert_eq!(Balances::free_balance(TREASURY), treasury + 18_750 * UNIT);
+        assert_eq!(Balances::total_issuance(), issuance - 18_750 * UNIT);
+
+        let info = Subnets::<Test>::get(1).unwrap();
+        assert_eq!(info.owner, Some(ALICE));
+        assert_eq!(info.deposit, 37_500 * UNIT);
+        let meta = Metadata::<Test>::get(1).unwrap();
+        assert_eq!(meta.name.to_vec(), b"Inference".to_vec());
+        assert_eq!(meta.code_hash, [7u8; 32]);
+        assert_eq!(Sales::<Test>::get(), 1);
+
+        // The next auction waits 60 days and starts at 4 x 37,500.
+        let next = 1 + DAY + 60 * DAY;
+        assert_eq!(AuctionStart::<Test>::get(), Some(next));
+        assert_eq!(Registry::current_price(), None);
+        assert_noop!(reg(BOB, u128::MAX), Error::<Test>::NoAuction);
+        go(next);
+        assert_eq!(Registry::current_price(), Some(150_000 * UNIT));
+        go(next + 400 * DAY);
+        assert_eq!(Registry::current_price(), Some(500 * UNIT));
+    });
+}
+
+#[test]
+fn floors_by_sale_number_and_cap_of_eight() {
+    new_test_ext(true).execute_with(|| {
+        AuctionStart::<Test>::put(1);
+        let floors = [1_000u128, 500, 500, 500, 300, 300, 300, 300];
+        for (i, floor) in floors.iter().enumerate() {
+            let at = AuctionStart::<Test>::get().unwrap() + 100 * DAY;
+            go(at);
+            assert_eq!(
+                Registry::current_price(),
+                Some(floor * UNIT),
+                "sale {}",
+                i + 1
+            );
+            assert_ok!(reg(ALICE, floor * UNIT));
+        }
+        assert_eq!(SubnetCount::<Test>::get(), 8);
+        go(AuctionStart::<Test>::get().unwrap() + DAY);
+        assert_eq!(Registry::current_price(), None);
+        assert_noop!(reg(BOB, u128::MAX), Error::<Test>::TooManySubnets);
+
+        // Governance raises the cap: the waiting auction starts now, and sale 9 floors at 200.
+        assert_ok!(Registry::set_max_subnets(RuntimeOrigin::root(), 9));
+        let now = AuctionStart::<Test>::get().unwrap();
+        assert_eq!(Registry::current_price(), Some(1_200 * UNIT)); // 4 x 300
+        go(now + 100 * DAY);
+        assert_eq!(Registry::current_price(), Some(200 * UNIT));
+    });
+}
+
+#[test]
+fn deregistration_after_immunity_refunds_nothing_and_reopens_the_slot() {
+    new_test_ext(true).execute_with(|| {
+        AuctionStart::<Test>::put(1);
+        assert_ok!(Registry::set_max_subnets(RuntimeOrigin::root(), 1));
+        assert_ok!(reg(ALICE, u128::MAX));
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(BOB), 1, 20));
+        let created = 1u32;
         assert_noop!(
             Registry::deregister_subnet(RuntimeOrigin::root(), SN0),
             Error::<Test>::CannotDeregisterSn0
         );
+        go(created + IMMUNITY_BLOCKS - 1);
+        assert_noop!(
+            Registry::deregister_subnet(RuntimeOrigin::root(), 1),
+            Error::<Test>::StillImmune
+        );
+        let alice = Balances::free_balance(ALICE);
+        let issuance = Balances::total_issuance();
+        go(created + IMMUNITY_BLOCKS);
+        assert_noop!(
+            Registry::deregister_subnet(RuntimeOrigin::signed(ALICE), 1),
+            DispatchError::BadOrigin
+        );
         assert_ok!(Registry::deregister_subnet(RuntimeOrigin::root(), 1));
-        assert_eq!(Balances::free_balance(ALICE), start - 100 * UNIT);
-        assert_eq!(Balances::total_issuance(), issuance - 100 * UNIT);
+        assert_eq!(Balances::free_balance(ALICE), alice);
+        assert_eq!(Balances::total_issuance(), issuance);
         assert!(Subnets::<Test>::get(1).is_none());
+        assert!(Metadata::<Test>::get(1).is_none());
         assert_eq!(NeuronCount::<Test>::get(1), 0);
         assert_eq!(SubnetCount::<Test>::get(), 0);
+        // The auction that waited for a free slot starts now, at 4 x 50,000.
+        assert_eq!(AuctionStart::<Test>::get(), Some(created + IMMUNITY_BLOCKS));
+        assert_eq!(Registry::current_price(), Some(200_000 * UNIT));
+    });
+}
+
+#[test]
+fn governance_settings_are_bounded() {
+    new_test_ext(true).execute_with(|| {
+        assert_eq!(MaxSubnets::<Test>::get(), 8);
+        assert_eq!(MinSpacing::<Test>::get(), 60 * DAY);
+        assert_noop!(
+            Registry::set_min_spacing(RuntimeOrigin::signed(ALICE), 30 * DAY),
+            DispatchError::BadOrigin
+        );
+        assert_noop!(
+            Registry::set_min_spacing(RuntimeOrigin::root(), 30 * DAY - 1),
+            Error::<Test>::SpacingTooShort
+        );
+        assert_ok!(Registry::set_min_spacing(RuntimeOrigin::root(), 30 * DAY));
+        AuctionStart::<Test>::put(1);
+        assert_ok!(reg(ALICE, u128::MAX));
+        assert_noop!(
+            Registry::set_max_subnets(RuntimeOrigin::root(), 0),
+            Error::<Test>::BadMaxSubnets
+        );
+        assert_noop!(
+            Registry::set_max_subnets(RuntimeOrigin::root(), 257),
+            Error::<Test>::BadMaxSubnets
+        );
+        assert_ok!(Registry::attest_swap(
+            RuntimeOrigin::root(),
+            [1; 20],
+            [2; 32]
+        ));
+        assert_noop!(
+            Registry::attest_swap(RuntimeOrigin::root(), [3; 20], [4; 32]),
+            Error::<Test>::AlreadyAttested
+        );
     });
 }
 
@@ -268,7 +470,7 @@ fn upgrade_writes_default_tiers_once() {
         let _ = crate::Tiers::<Test>::clear(u32::MAX, None);
         StorageVersion::new(0).put::<Registry>();
         Registry::on_runtime_upgrade();
-        assert_eq!(Registry::on_chain_storage_version(), 1);
+        assert_eq!(Registry::on_chain_storage_version(), 2);
         assert!(crate::Tiers::<Test>::get(0).unwrap().open);
         // A later governance change survives a second upgrade.
         assert_ok!(Registry::set_tier(
@@ -282,5 +484,24 @@ fn upgrade_writes_default_tiers_once() {
         ));
         Registry::on_runtime_upgrade();
         assert_eq!(crate::Tiers::<Test>::get(0).unwrap().weight_ppm, 200_000);
+    });
+}
+
+#[test]
+fn upgrade_to_v2_drops_the_doubling_price_storage() {
+    use polkadot_sdk::frame_support::storage::migration::{get_storage_value, put_storage_value};
+    use polkadot_sdk::frame_support::traits::{GetStorageVersion, StorageVersion};
+    new_test_ext(false).execute_with(|| {
+        StorageVersion::new(1).put::<Registry>();
+        put_storage_value(b"Registry", b"LastRegPrice", b"", 1_000u128);
+        put_storage_value(b"Registry", b"LastRegBlock", b"", 5u32);
+        Registry::on_runtime_upgrade();
+        assert_eq!(Registry::on_chain_storage_version(), 2);
+        assert!(get_storage_value::<u128>(b"Registry", b"LastRegPrice", b"").is_none());
+        assert!(get_storage_value::<u32>(b"Registry", b"LastRegBlock", b"").is_none());
+        // Defaults of the new storage apply without any write.
+        assert_eq!(MaxSubnets::<Test>::get(), 8);
+        assert!(!Phase2Enabled::<Test>::get());
+        assert_eq!(AuctionStart::<Test>::get(), None);
     });
 }

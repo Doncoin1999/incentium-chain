@@ -374,6 +374,7 @@ pub mod pallet {
                 Fortitude::Polite,
             );
             if pot == 0 || out.incentive.iter().all(|x| *x == 0) {
+                pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(0);
                 Self::deposit_event(Event::EpochSkipped { epoch: we });
                 return;
             }
@@ -408,6 +409,8 @@ pub mod pallet {
                     vals += 1;
                 }
             }
+            // Counts towards the SN1 unlock criterion (300 active miners, 30-day average).
+            pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(miners);
             Self::deposit_event(Event::EpochSettled {
                 epoch: we,
                 paid,

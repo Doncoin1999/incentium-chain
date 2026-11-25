@@ -369,6 +369,30 @@ impl pallet_referenda::Config for Runtime {
     type BlockNumberProvider = System;
 }
 
+// ---------------------------------------------------------------- subnet unlock signals
+
+/// Governance facts the subnet registry checks before SN1 unlocks: the sudo key is gone and
+/// enough referenda have been approved.
+pub struct GovernanceSignals;
+impl pallet_subnet_registry::UnlockSignals for GovernanceSignals {
+    fn sudo_removed() -> bool {
+        pallet_sudo::Key::<Runtime>::get().is_none()
+    }
+    fn approved_referenda(at_least: u32) -> u32 {
+        // Bounded scan; stops as soon as `at_least` approvals are found.
+        let mut n = 0u32;
+        for info in pallet_referenda::ReferendumInfoFor::<Runtime>::iter_values().take(1_024) {
+            if matches!(info, pallet_referenda::ReferendumInfo::Approved(..)) {
+                n += 1;
+                if n >= at_least {
+                    break;
+                }
+            }
+        }
+        n
+    }
+}
+
 // ---------------------------------------------------------------- end of the launch period
 
 /// At the end of the launch period: create the disclosed bounties with their curator and
