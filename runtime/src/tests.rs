@@ -534,3 +534,16 @@ fn subnet_unlock_sees_sudo_and_approved_referenda() {
         assert!(!Registry::criteria_met(&Registry::unlock_status()));
     });
 }
+
+#[test]
+fn sn0_keeps_half_of_all_issuance_whatever_the_fund_share() {
+    use frame_support::traits::Get;
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        // 10 % fund: 0.5 / 0.9 of the pot.
+        assert_eq!(configs::Sn0MinPotPpm::get(), 555_556);
+        assert_ok!(Emission::set_fund_share(RuntimeOrigin::root(), 200_000));
+        assert_eq!(configs::Sn0MinPotPpm::get(), 625_000);
+        assert_ok!(Emission::set_fund_share(RuntimeOrigin::root(), 0));
+        assert_eq!(configs::Sn0MinPotPpm::get(), 500_000);
+    });
+}

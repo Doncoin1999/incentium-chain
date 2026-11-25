@@ -54,6 +54,9 @@ parameter_types! {
     pub const MaxPayees: u32 = 64;
     pub const SubnetPot: u64 = POT;
     pub const MinerSharePpm: u32 = 666_667;
+    pub const Sn0MinerSharePpm: u32 = 568_182;
+    /// 50 % of issuance with a 10 % fund share: 0.5 / 0.9 of the pot.
+    pub const Sn0MinPotPpm: u32 = 555_556;
     pub const KappaPpm: u32 = 500_000;
     pub const MaxValidatorPpm: u32 = 100_000;
     pub const MinValidatorStake: u128 = 100;
@@ -71,6 +74,7 @@ impl pallet_subnet_registry::Config for Test {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = RegistryTreasury;
     type Unlock = ();
+    type OnRemoved = Consensus;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -108,6 +112,8 @@ impl pallet_ict_consensus::Config for Test {
     type StakePalletId = StakePalletId;
     type SubnetPot = SubnetPot;
     type MinerSharePpm = MinerSharePpm;
+    type Sn0MinerSharePpm = Sn0MinerSharePpm;
+    type Sn0MinPotPpm = Sn0MinPotPpm;
     type KappaPpm = KappaPpm;
     type MaxValidatorPpm = MaxValidatorPpm;
     type MinValidatorStake = MinValidatorStake;

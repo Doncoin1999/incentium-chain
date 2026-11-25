@@ -46,9 +46,18 @@ impl UnlockSignals for () {
     }
 }
 
+/// Told when a subnet is closed, so stake on it can be released.
+pub trait OnSubnetRemoved {
+    fn subnet_removed(netuid: u16);
+}
+
+impl OnSubnetRemoved for () {
+    fn subnet_removed(_netuid: u16) {}
+}
+
 #[polkadot_sdk::frame_support::pallet]
 pub mod pallet {
-    use crate::{UnlockSignals, WeightInfo};
+    use crate::{OnSubnetRemoved, UnlockSignals, WeightInfo};
     use ict_economics::registry::{auction_price, floor_price, payment_split, start_price};
     use ict_economics::BLOCKS_PER_DAY;
     use polkadot_sdk::frame_support::{
@@ -196,6 +205,8 @@ pub mod pallet {
         type TreasuryAccount: Get<Self::AccountId>;
         /// Governance facts for the unlock criteria.
         type Unlock: UnlockSignals;
+        /// Called when a subnet is closed (consensus releases its stake).
+        type OnRemoved: OnSubnetRemoved;
         /// Burned fee to register a neuron.
         #[pallet::constant]
         type NeuronFee: Get<u128>;
@@ -241,6 +252,10 @@ pub mod pallet {
     /// True once subnet registration has unlocked. It never locks again.
     #[pallet::storage]
     pub type Phase2Enabled<T> = StorageValue<_, bool, ValueQuery>;
+
+    /// Block where subnet registration unlocked (start of the 180-day emission ramp).
+    #[pallet::storage]
+    pub type UnlockedAt<T> = StorageValue<_, u32, OptionQuery>;
 
     /// Block where the current (or next) auction starts.
     #[pallet::storage]
@@ -332,6 +347,7 @@ pub mod pallet {
             );
             if self.phase2_enabled {
                 Phase2Enabled::<T>::put(true);
+                UnlockedAt::<T>::put(0);
                 AuctionStart::<T>::put(0);
             }
             if self.bootstrap_blocks > 0 {
@@ -606,6 +622,7 @@ pub mod pallet {
             let _ = NeuronTier::<T>::clear_prefix(netuid, u32::MAX, None);
             NeuronCount::<T>::remove(netuid);
             SubnetCount::<T>::mutate(|c| *c = c.saturating_sub(1));
+            T::OnRemoved::subnet_removed(netuid);
             if was_full {
                 Self::slot_freed(now);
             }
@@ -936,6 +953,7 @@ pub mod pallet {
                 return false;
             }
             Phase2Enabled::<T>::put(true);
+            UnlockedAt::<T>::put(s.block);
             AuctionStart::<T>::put(s.block);
             Self::deposit_event(Event::RegistrationUnlocked {
                 at: s.block,

@@ -57,6 +57,7 @@ impl pallet_subnet_registry::Config for Test {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = Treasury;
     type Unlock = MockSignals;
+    type OnRemoved = ();
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }

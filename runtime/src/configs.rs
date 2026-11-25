@@ -175,6 +175,8 @@ parameter_types! {
 
     /// Phase 1: miners 60 % and validators 30 % of issuance; the pot holds the 90 %.
     pub const MinerSharePpm: u32 = 666_667;
+    /// After the SN1 unlock SN0 has no owner share and splits 50 : 38 (miners 50 / 88).
+    pub const Sn0MinerSharePpm: u32 = 568_182;
     pub const KappaPpm: u32 = 500_000;
     pub const MaxValidatorPpm: u32 = 100_000;
     pub const MinValidatorStake: Balance = 1_000 * UNIT;
@@ -203,6 +205,7 @@ impl pallet_subnet_registry::Config for Runtime {
     type PalletId = RegistryPalletId;
     type TreasuryAccount = FundAccount;
     type Unlock = crate::governance::GovernanceSignals;
+    type OnRemoved = Consensus;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -233,6 +236,20 @@ impl pallet_work_verify::Config for Runtime {
     type MaxPayees = MaxPayees;
 }
 
+/// SN0 keeps at least 50 % of all issuance. The development fund takes its share before the
+/// pot, so as a share of the pot that is 0.5 / (1 - fund share): 555,556 ppm at 10 %.
+pub struct Sn0MinPotPpm;
+impl frame_support::traits::Get<u32> for Sn0MinPotPpm {
+    fn get() -> u32 {
+        const SN0_MIN_OF_ISSUANCE: u64 = 500_000;
+        let fund = pallet_ict_emission::FundShare::<Runtime>::get() as u64;
+        let pot = 1_000_000u64.saturating_sub(fund).max(1);
+        (SN0_MIN_OF_ISSUANCE * 1_000_000)
+            .div_ceil(pot)
+            .min(1_000_000) as u32
+    }
+}
+
 impl pallet_ict_consensus::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = crate::weights::pallet_ict_consensus::WeightInfo<Runtime>;
@@ -240,6 +257,8 @@ impl pallet_ict_consensus::Config for Runtime {
     type StakePalletId = StakePalletId;
     type SubnetPot = SubnetPot;
     type MinerSharePpm = MinerSharePpm;
+    type Sn0MinerSharePpm = Sn0MinerSharePpm;
+    type Sn0MinPotPpm = Sn0MinPotPpm;
     type KappaPpm = KappaPpm;
     type MaxValidatorPpm = MaxValidatorPpm;
     type MinValidatorStake = MinValidatorStake;
