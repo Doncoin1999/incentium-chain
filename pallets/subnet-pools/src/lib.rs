@@ -297,7 +297,10 @@ pub mod pallet {
             let mut st = Pools::<T>::get(netuid).ok_or(Error::<T>::NoPool)?;
             let mut pool = st.pool();
             let t = pool.sell(alpha_in, min_ict_out, Self::fees()).map_err(Self::err)?;
-            T::Currency::transfer(&Self::pool_account(netuid), &who, t.amount_out, Preservation::Expendable)?;
+            // the pool account always keeps the existential deposit, so it is never reaped
+            // and its balance always covers the real reserve
+            T::Currency::transfer(&Self::pool_account(netuid), &who, t.amount_out, Preservation::Preserve)
+                .map_err(|_| Error::<T>::Insufficient)?;
             st.set_pool(pool);
             Pools::<T>::insert(netuid, st);
             Self::debit(netuid, &hotkey, &who, t.amount_in);
@@ -508,6 +511,8 @@ pub mod pallet {
                     st.open = false;
                 }
             });
+            // Owner Alpha not yet vested is dropped: the subnet has no owner any more, so it is
+            // in effect burned. (Open point for the owner of Incentium to confirm.)
             OwnerVesting::<T>::remove(netuid);
             Self::deposit_event(Event::PoolClosed { netuid });
         }
