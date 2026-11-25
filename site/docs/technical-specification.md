@@ -176,6 +176,8 @@ The controller (owner key, multisig, or the DAO by vote) sets the subnet's setti
 
 **Penalties in subnets.** With penalties on, a validator of the subnet reports a miner's failed work with `report_failed_work(netuid, epoch, uid, evidence)`. When reporters holding at least half of the subnet's active stake (the stake of validators whose weights counted in the last settled epoch) agree, the miner gets no incentive for that epoch; `max_failures` penalties inside `failure_window` ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point; slashing will need 2/3 of active stake). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.
 
+**Runtime API and subnet page.** `SubnetRegistryApi` answers `unlock_status`, `auction`, `price_at(block)` and `subnets` (with each subnet's current share of issuance), so any client reads the same figures the chain uses. incentium.org/subnets shows them live: progress on the four unlock criteria, the auction price now and in 1, 3 and 7 days, and every subnet.
+
 **Open points:** whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.
 
 ## 5. Module `work-verify` (SN0)

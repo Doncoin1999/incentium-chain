@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.7", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11", default-features = false, features = ["derive"] }
-polkadot-sdk = { version = "2610.0.0", default-features = false, features = ["frame-support", "frame-system", "sp-runtime"] }
+polkadot-sdk = { version = "2610.0.0", default-features = false, features = ["frame-support", "frame-system", "sp-runtime", "sp-api"] }
 ict-economics = { path = "../../primitives/ict-economics", default-features = false }
 
 [dev-dependencies]

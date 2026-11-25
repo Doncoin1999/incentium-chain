@@ -13,6 +13,7 @@ pub mod apis;
 pub mod configs;
 pub mod genesis_config_presets;
 pub mod governance;
+pub mod subnet_api;
 pub mod weights;
 
 #[cfg(test)]

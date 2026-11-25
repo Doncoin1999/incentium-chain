@@ -85,7 +85,7 @@ body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-n
 body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
 body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
 body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
-body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+body[data-site="trade"] .ic-nav a[data-site="trade"], body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
 @media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
 @media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
 </style>
@@ -99,6 +99,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
       <a href="https://trade.incentium.org/" data-site="trade">Trade</a>
       <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
       <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
       <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
       <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
       <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
@@ -594,6 +595,7 @@ body[data-site="trade"] .ic-nav a[data-site="trade"] { color: #e8a33d; box-shado
 </tbody>
 </table></div>
 <p><strong>Penalties in subnets.</strong> With penalties on, a validator of the subnet reports a miner's failed work with <code>report_failed_work(netuid, epoch, uid, evidence)</code>. When reporters holding at least half of the subnet's active stake (the stake of validators whose weights counted in the last settled epoch) agree, the miner gets no incentive for that epoch; <code>max_failures</code> penalties inside <code>failure_window</code> ban the hotkey from the subnet. The subnet decides what counts as failed work; the protocol fixes the quorum and the consequences. There is no bond to slash yet (open point; slashing will need 2/3 of active stake). SN0 keeps its own spot checks and bonds (Section 5), and a hotkey banned there is paid in no subnet.</p>
+<p><strong>Runtime API and subnet page.</strong> <code>SubnetRegistryApi</code> answers <code>unlock_status</code>, <code>auction</code>, <code>price_at(block)</code> and <code>subnets</code> (with each subnet's current share of issuance), so any client reads the same figures the chain uses. incentium.org/subnets shows them live: progress on the four unlock criteria, the auction price now and in 1, 3 and 7 days, and every subnet.</p>
 <p><strong>Open points:</strong> whether Incentium gets subnet tokens (Alpha); an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>

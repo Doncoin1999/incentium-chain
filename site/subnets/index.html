@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subnets · Incentium</title>
+<link rel="icon" type="image/svg+xml" href="/brand/incentium-logo-white-on-black.svg">
+<meta name="description" content="Incentium subnets: when SN1 opens, the Dutch auction for subnet slots, and every live subnet. All figures come straight from the chain.">
+<style>
+  :root {
+    --slate: #1c2230; --panel: #242b3a; --line: #39425a; --text: #e9ecf2; --muted: #97a1b4; --lamp: #e8a33d;
+    --good: #6fbf8a; --bad: #d9776b;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--slate); color: var(--text); }
+  body { margin: 0; font: 17px/1.6 var(--sans); }
+  a { color: var(--text); text-decoration-color: var(--lamp); text-underline-offset: 3px; }
+  a:hover { color: var(--lamp); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 24px 80px; }
+  h1 { font: 500 clamp(36px, 6vw, 60px)/1.05 var(--serif); letter-spacing: -.015em; margin: 40px 0 18px; }
+  h2 { font: 500 28px/1.2 var(--serif); margin: 56px 0 8px; }
+  .lede { font-size: 20px; color: var(--muted); max-width: 36em; margin: 0 0 18px; }
+  .note { color: var(--muted); font-size: 15px; }
+  .status { display: inline-block; border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; font-size: 15px; margin: 8px 0 0; }
+  .status b { color: var(--lamp); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 24px; margin: 18px 0; }
+  .crit { display: grid; grid-template-columns: 1fr auto; gap: 6px 18px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .crit:last-child { border-bottom: 0; }
+  .crit h3 { margin: 0; font: 600 17px/1.3 var(--sans); }
+  .crit .val { font: 15px var(--mono); color: var(--muted); text-align: right; }
+  .crit .val.ok { color: var(--good); }
+  .crit p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 15px; }
+  .bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: #1a2030; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--lamp); transition: width .6s; }
+  .bar i.full { background: var(--good); }
+  .big { font: 500 44px/1.1 var(--serif); margin: 4px 0 2px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 16px 0 0; }
+  .grid3 div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .grid3 span { display: block; color: var(--muted); font-size: 14px; }
+  .grid3 b { font: 500 20px var(--serif); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; font-family: var(--mono); }
+  code { font: 14px var(--mono); background: #1a2030; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+  .scroll { overflow-x: auto; }
+  .tag { font-size: 13px; border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
+  .tag.dead { color: var(--bad); border-color: var(--bad); }
+  ol.how { padding-left: 22px; color: var(--muted); } ol.how li { margin: 6px 0; }
+</style>
+</head>
+<body data-site="subnets">
+<!-- ic:topbar -->
+<style>
+/* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+.ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
+.ic-brand img { width: 30px; height: 28px; display: block; }
+.ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
+.ic-brand:hover span { color: #e8a33d; }
+.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
+.ic-nav::-webkit-scrollbar { display: none; }
+.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
+.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-nav .ic-short { display: none; }
+@media (max-width: 1180px) { .ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; } }
+.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
+.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
+body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
+body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
+body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
+body[data-site="trade"] .ic-nav a[data-site="trade"], body[data-site="subnets"] .ic-nav a[data-site="subnets"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
+@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+</style>
+<header class="ic-top">
+  <div class="ic-in">
+    <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
+      <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
+    </a>
+    <nav class="ic-nav" aria-label="Incentium">
+      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
+      <a href="https://trade.incentium.org/" data-site="trade">Trade</a>
+      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
+      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
+      <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
+      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
+      <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
+      <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
+      <a href="https://incentium.org/events/" data-site="events"><span class="ic-long">Events &amp; Presentations</span><span class="ic-short">Events</span></a>
+      <a href="https://git.incentium.org/incentium/incentium-chain">Code</a>
+      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
+    </nav>
+  </div>
+</header>
+<!-- /ic:topbar -->
+<main class="wrap">
+  <h1>Subnets</h1>
+  <p class="lede">Subnet registration opens by itself when four criteria are met on the chain. Nobody switches it on, and nobody approves a buyer. Every figure on this page is read from the chain as you watch.</p>
+  <span class="status" id="status">Connecting to the chain…</span>
+
+  <h2>When SN1 opens</h2>
+  <p class="note">All four must hold at the same time. The chain checks once a day; anyone may also ask it to check now (<code>registry.tryUnlock</code>).</p>
+  <div class="card" id="criteria">
+    <div class="crit"><h3>Day 180 after genesis</h3><span class="val" id="c-day">–</span><div class="bar"><i id="b-day"></i></div><p id="p-day">Mainnet started on 18 November 2026, so day 180 is about 17 May 2027.</p></div>
+    <div class="crit"><h3>300 active SN0 miners, 30-day average</h3><span class="val" id="c-miners">–</span><div class="bar"><i id="b-miners"></i></div><p id="p-miners">An active miner is one paid in an epoch: not caught by a failed spot check and not banned.</p></div>
+    <div class="crit"><h3>Governance runs by itself</h3><span class="val" id="c-gov">–</span><div class="bar"><i id="b-gov"></i></div><p>The sudo key is gone and at least 3 referenda have been approved.</p></div>
+    <div class="crit"><h3>Trading is audited</h3><span class="val" id="c-swap">–</span><div class="bar"><i id="b-swap"></i></div><p>Governance has attested that the ICT⇄USDC swap contract on Base is audited and has no pause key.</p></div>
+  </div>
+
+  <h2>The auction</h2>
+  <div class="card" id="auction"><p class="note">Waiting for the chain…</p></div>
+
+  <h2>Rules</h2>
+  <div class="card">
+    <table>
+      <tr><th>Price</th><td>Dutch auction. SN1 starts at 50,000 ICT, every later slot at 4 × what the previous one sold for. The price falls 25 % a day, smoothly per block, down to a floor. The first buyer at the current price wins.</td></tr>
+      <tr><th>Floor</th><td>1st slot 1,000 ICT · 2nd–4th 500 · 5th–8th 300 · 9th and later 200</td></tr>
+      <tr><th>Payment</th><td>Not refunded. Half goes to the on-chain treasury, half is burned.</td></tr>
+      <tr><th>Pace</th><td>One slot at a time, 60 days between a sale and the next auction.</td></tr>
+      <tr><th>Cap</th><td>8 subnets until 2029. Then the cap doubles by itself (16, 32 … 256) when every slot has been taken for 90 days, at least 75 % of subnets pay at least 10 miners, and 180 days have passed since the last raise.</td></tr>
+      <tr><th>Leaving</th><td>No subnet is voted out for being weak. A subnet that paid no 3 miners in any epoch for 30 days (after its 180-day immunity) can be removed by anyone. Incentium governance keeps an emergency brake against abuse.</td></tr>
+      <tr><th>Issuance</th><td>10 % to the treasury. SN0 keeps at least half of all issuance; the other subnets share the rest by their stake, phased in over 180 days after SN1 opens. Each subnet pays 50 % to miners, 38 % to validators and 12 % to its owner.</td></tr>
+      <tr><th>Control</th><td>One key, then optionally a multisig, then optionally its stakers as a DAO. Control only moves forward. Full rules in the <a href="https://incentium.org/spec/">technical specification</a>, Section 4.</td></tr>
+    </table>
+  </div>
+
+  <h2>Subnets now</h2>
+  <div class="card scroll" id="subnets"><p class="note">Waiting for the chain…</p></div>
+  <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>SubnetRegistryApi</code>. Any Incentium node gives the same answers.</p>
+</main>
+<!-- ic:footer -->
+<style>
+/* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
+   python3 scripts/sync_topbar.py. */
+.ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
+.ic-foot .ic-fbrand img { width: 24px; height: 22px; }
+.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav a { color: #c3cad8; text-decoration: none; }
+.ic-foot nav a:hover { color: #e8a33d; }
+.ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+</style>
+<footer class="ic-foot">
+  <div class="ic-in">
+    <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
+    <nav aria-label="Incentium sites">
+      <a href="https://incentium.org/">Home</a>
+      <a href="https://incentium.org/mine/">Mine ICT</a>
+      <a href="https://trade.incentium.org/">Trade ICT</a>
+      <a href="https://chat.incentium.org/">Chat</a>
+      <a href="https://explorer.incentium.org/">Explorer</a>
+      <a href="https://faucet.incentium.org/">Faucet</a>
+      <a href="https://incentium.org/whitepaper/">Whitepaper</a>
+      <a href="https://incentium.org/spec/">Technical specification</a>
+      <a href="https://incentium.org/events/">Events &amp; Presentations</a>
+      <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
+      <a href="https://auth.incentium.org/admin">Admin</a>
+    </nav>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+  </div>
+</footer>
+<!-- /ic:footer -->
+<script>
+/*ic:lib*/
+const IC = (() => {
+  const UNIT = 1000000000n;
+
+  // ---- SCALE decoding (little endian)
+  class Reader {
+    constructor(hex) {
+      const h = hex.startsWith("0x") ? hex.slice(2) : hex;
+      this.b = new Uint8Array(h.length / 2);
+      for (let i = 0; i < this.b.length; i++) this.b[i] = parseInt(h.substr(2 * i, 2), 16);
+      this.i = 0;
+    }
+    u8() { return this.b[this.i++]; }
+    bool() { return this.u8() === 1; }
+    uint(n) { let x = 0n; for (let k = 0; k < n; k++) x |= BigInt(this.b[this.i + k]) << BigInt(8 * k); this.i += n; return x; }
+    u16() { return Number(this.uint(2)); }
+    u32() { return Number(this.uint(4)); }
+    u128() { return this.uint(16); }
+    compact() {
+      const m = this.b[this.i] & 3;
+      if (m === 0) return this.u8() >> 2;
+      if (m === 1) return this.u16() >> 2;
+      if (m === 2) return this.u32() >>> 2;
+      const len = (this.u8() >> 2) + 4;
+      return Number(this.uint(len));
+    }
+    bytes(n) { const out = this.b.slice(this.i, this.i + n); this.i += n; return out; }
+    vecBytes() { return this.bytes(this.compact()); }
+    option(f) { return this.u8() === 1 ? f() : null; }
+    vec(f) { const n = this.compact(), out = []; for (let k = 0; k < n; k++) out.push(f()); return out; }
+  }
+
+  const decode = {
+    unlockStatus(hex) {
+      const r = new Reader(hex);
+      return {
+        unlocked: r.bool(), block: r.u32(), minBlock: r.u32(),
+        minersAvg: r.option(() => r.u32()), minerDays: r.u32(), minMiners: r.u32(),
+        sudoRemoved: r.bool(), approvedReferenda: r.u32(), minReferenda: r.u32(),
+        swapAttested: r.bool(),
+      };
+    },
+    auction(hex) {
+      const r = new Reader(hex);
+      return {
+        now: r.u32(), price: r.option(() => r.u128()), startBlock: r.option(() => r.u32()),
+        startPrice: r.u128(), floor: r.u128(), nextSale: r.u32(), subnetCount: r.u16(),
+        maxSubnets: r.u16(), minSpacing: r.u32(), fullSince: r.option(() => r.u32()),
+        lastCapRaise: r.option(() => r.u32()),
+      };
+    },
+    optionU128(hex) { const r = new Reader(hex); return r.option(() => r.u128()); },
+    subnets(hex) {
+      const r = new Reader(hex);
+      const td = new TextDecoder();
+      return r.vec(() => ({
+        netuid: r.u16(), owner: r.option(() => r.bytes(32)),
+        control: ["Key", "Multisig", "DAO"][r.u8()] || "?",
+        created: r.u32(), pricePaid: r.u128(),
+        name: td.decode(r.vecBytes()), description: td.decode(r.vecBytes()),
+        codeHash: r.bytes(32), neurons: r.u16(), stake: r.u128(), emissionPpm: r.u32(),
+        immuneUntil: r.u32(), minersAvg: r.option(() => r.u32()), dead: r.bool(),
+      }));
+    },
+  };
+
+  // ---- BLAKE2b (RFC 7693), for SS58 checksums
+  function blake2b(input, outlen) {
+    const MASK = (1n << 64n) - 1n;
+    const IV = [0x6a09e667f3bcc908n, 0xbb67ae8584caa73bn, 0x3c6ef372fe94f82bn, 0xa54ff53a5f1d36f1n,
+      0x510e527fade682d1n, 0x9b05688c2b3e6c1fn, 0x1f83d9abfb41bd6bn, 0x5be0cd19137e2179n];
+    const S = [[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15],[14,10,4,8,9,15,13,6,1,12,0,2,11,7,5,3],
+      [11,8,12,0,5,2,15,13,10,14,3,6,7,1,9,4],[7,9,3,1,13,12,11,14,2,6,5,10,4,0,15,8],
+      [9,0,5,7,2,4,10,15,14,1,11,12,6,8,3,13],[2,12,6,10,0,11,8,3,4,13,7,5,15,14,1,9],
+      [12,5,1,15,14,13,4,10,0,7,6,3,9,2,8,11],[13,11,7,14,12,1,3,9,5,0,15,4,8,6,2,10],
+      [6,15,14,9,11,3,0,8,12,2,13,7,1,4,10,5],[10,2,8,4,7,6,1,5,15,11,9,14,3,12,13,0]];
+    const rotr = (x, n) => ((x >> BigInt(n)) | (x << BigInt(64 - n))) & MASK;
+    const h = IV.slice();
+    h[0] ^= 0x01010000n ^ BigInt(outlen);
+    const blocks = Math.max(1, Math.ceil(input.length / 128));
+    let t = 0n;
+    for (let b = 0; b < blocks; b++) {
+      const chunk = new Uint8Array(128);
+      chunk.set(input.subarray(b * 128, b * 128 + 128));
+      t += BigInt(Math.max(0, Math.min(128, input.length - b * 128)));
+      const m = [];
+      for (let i = 0; i < 16; i++) {
+        let w = 0n;
+        for (let j = 7; j >= 0; j--) w = (w << 8n) | BigInt(chunk[i * 8 + j]);
+        m.push(w);
+      }
+      const v = h.concat(IV);
+      v[12] ^= t & MASK; v[13] ^= t >> 64n;
+      if (b === blocks - 1) v[14] ^= MASK;
+      const G = (a, bb, c, d, x, y) => {
+        v[a] = (v[a] + v[bb] + x) & MASK; v[d] = rotr(v[d] ^ v[a], 32);
+        v[c] = (v[c] + v[d]) & MASK; v[bb] = rotr(v[bb] ^ v[c], 24);
+        v[a] = (v[a] + v[bb] + y) & MASK; v[d] = rotr(v[d] ^ v[a], 16);
+        v[c] = (v[c] + v[d]) & MASK; v[bb] = rotr(v[bb] ^ v[c], 63);
+      };
+      for (let r = 0; r < 12; r++) {
+        const s = S[r % 10];
+        G(0, 4, 8, 12, m[s[0]], m[s[1]]); G(1, 5, 9, 13, m[s[2]], m[s[3]]);
+        G(2, 6, 10, 14, m[s[4]], m[s[5]]); G(3, 7, 11, 15, m[s[6]], m[s[7]]);
+        G(0, 5, 10, 15, m[s[8]], m[s[9]]); G(1, 6, 11, 12, m[s[10]], m[s[11]]);
+        G(2, 7, 8, 13, m[s[12]], m[s[13]]); G(3, 4, 9, 14, m[s[14]], m[s[15]]);
+      }
+      for (let i = 0; i < 8; i++) h[i] ^= v[i] ^ v[i + 8];
+    }
+    const out = new Uint8Array(outlen);
+    for (let i = 0; i < outlen; i++) out[i] = Number((h[i >> 3] >> BigInt(8 * (i & 7))) & 0xffn);
+    return out;
+  }
+
+  // ---- SS58 address (generic prefix 42: addresses start with 5)
+  const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  function base58(bytes) {
+    let x = 0n;
+    for (const b of bytes) x = (x << 8n) | BigInt(b);
+    let s = "";
+    while (x > 0n) { s = B58[Number(x % 58n)] + s; x /= 58n; }
+    for (const b of bytes) { if (b === 0) s = "1" + s; else break; }
+    return s;
+  }
+  function ss58(pubkey, prefix = 42) {
+    const payload = new Uint8Array(33);
+    payload[0] = prefix; payload.set(pubkey, 1);
+    const pre = new TextEncoder().encode("SS58PRE");
+    const msg = new Uint8Array(pre.length + payload.length);
+    msg.set(pre); msg.set(payload, pre.length);
+    const sum = blake2b(msg, 64);
+    const full = new Uint8Array(35);
+    full.set(payload); full[33] = sum[0]; full[34] = sum[1];
+    return base58(full);
+  }
+
+  // ---- formatting
+  function ict(x, digits = 0) {
+    const neg = x < 0n; if (neg) x = -x;
+    const whole = x / UNIT, frac = x % UNIT;
+    let s = whole.toLocaleString("en-US");
+    if (digits > 0) s += "." + frac.toString().padStart(9, "0").slice(0, digits);
+    return (neg ? "-" : "") + s;
+  }
+  function u32hex(n) {
+    let s = "0x";
+    for (let i = 0; i < 4; i++) s += ((n >>> (8 * i)) & 255).toString(16).padStart(2, "0");
+    return s;
+  }
+  return { Reader, decode, blake2b, ss58, ict, u32hex, UNIT };
+})();
+/*ic:endlib*/
+
+(() => {
+  if (typeof document === "undefined") return;
+  const RPC = "wss://rpc.incentium.org";
+  const BLOCK_S = 12, DAY = 7200;
+  const $ = (id) => document.getElementById(id);
+  let ws, nextId = 1, pending = new Map(), head = 0, busy = false, lastRun = 0;
+
+  const call = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    ws.send(JSON.stringify({ id, jsonrpc: "2.0", method, params }));
+  });
+  const api = (fn, arg = "0x") => call("state_call", ["SubnetRegistryApi_" + fn, arg]);
+
+  const when = (block) => {
+    const ms = Date.now() + (block - head) * BLOCK_S * 1000;
+    return new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+  };
+  const days = (blocks) => Math.max(0, Math.ceil(blocks / DAY));
+  const bar = (id, frac) => { const el = $(id); el.style.width = Math.min(100, Math.max(0, frac * 100)) + "%"; el.classList.toggle("full", frac >= 1); };
+  const val = (id, text, ok) => { const el = $(id); el.textContent = text; el.classList.toggle("ok", !!ok); };
+
+  function showStatus(s) {
+    val("c-day", `day ${Math.floor(s.block / DAY)} of ${s.minBlock / DAY}`, s.block >= s.minBlock);
+    bar("b-day", s.block / s.minBlock);
+    $("p-day").textContent = s.block >= s.minBlock
+      ? "Reached."
+      : `About ${days(s.minBlock - s.block)} days left, around ${when(s.minBlock)}.`;
+    const avg = s.minersAvg;
+    val("c-miners", avg === null ? `${s.minerDays} of 30 days recorded` : `${avg} of ${s.minMiners}`, avg !== null && avg >= s.minMiners);
+    bar("b-miners", avg === null ? s.minerDays / 30 * 0.25 : avg / s.minMiners);
+    const govOk = s.sudoRemoved && s.approvedReferenda >= s.minReferenda;
+    val("c-gov", `sudo ${s.sudoRemoved ? "removed" : "present"} · ${Math.min(s.approvedReferenda, s.minReferenda)} of ${s.minReferenda} referenda`, govOk);
+    bar("b-gov", ((s.sudoRemoved ? 1 : 0) + Math.min(s.approvedReferenda, s.minReferenda) / s.minReferenda) / 2);
+    val("c-swap", s.swapAttested ? "attested" : "not yet", s.swapAttested);
+    bar("b-swap", s.swapAttested ? 1 : 0);
+    const met = [s.block >= s.minBlock, avg !== null && avg >= s.minMiners, govOk, s.swapAttested].filter(Boolean).length;
+    $("status").innerHTML = s.unlocked
+      ? "Subnet registration is <b>open</b>."
+      : `<b>${met} of 4</b> criteria met. SN1 opens by itself when all four are green.`;
+  }
+
+  async function showAuction(a, unlocked) {
+    const el = $("auction");
+    const sale = a.nextSale, sn = `SN${sale}`;
+    if (!unlocked) {
+      el.innerHTML = `<p>The first auction (for the slot that becomes SN1) starts in the block where registration opens. It starts at <b>${IC.ict(a.startPrice)} ICT</b> and falls 25 % a day to a floor of <b>${IC.ict(a.floor)} ICT</b>.</p>`;
+      return;
+    }
+    if (a.price === null) {
+      const why = a.subnetCount >= a.maxSubnets
+        ? `All ${a.maxSubnets} slots are taken. The next auction starts when a slot frees up or the cap rises.`
+        : `The next auction starts at block ${a.startBlock.toLocaleString("en")}, around ${when(a.startBlock)}.`;
+      el.innerHTML = `<p>No auction is running. ${why}</p><div class="grid3"><div><span>Start price</span><b>${IC.ict(a.startPrice)} ICT</b></div><div><span>Floor</span><b>${IC.ict(a.floor)} ICT</b></div><div><span>Subnets</span><b>${a.subnetCount} of ${a.maxSubnets}</b></div></div>`;
+      return;
+    }
+    const later = await Promise.all([1, 3, 7].map((d) => api("price_at", IC.u32hex(head + d * DAY)).then(IC.decode.optionU128)));
+    el.innerHTML = `<span class="note">Slot number ${sale} is on sale now</span>
+      <div class="big">${IC.ict(a.price, 2)} ICT</div>
+      <div class="grid3">
+        <div><span>In 1 day</span><b>${IC.ict(later[0] ?? a.floor)} ICT</b></div>
+        <div><span>In 3 days</span><b>${IC.ict(later[1] ?? a.floor)} ICT</b></div>
+        <div><span>In 7 days</span><b>${IC.ict(later[2] ?? a.floor)} ICT</b></div>
+        <div><span>Floor</span><b>${IC.ict(a.floor)} ICT</b></div>
+        <div><span>Started at</span><b>${IC.ict(a.startPrice)} ICT</b></div>
+        <div><span>Subnets</span><b>${a.subnetCount} of ${a.maxSubnets}</b></div>
+      </div>
+      <h3 style="margin:22px 0 4px;font:600 17px var(--sans)">How to buy</h3>
+      <ol class="how">
+        <li>Open <a href="https://polkadot.js.org/apps/?rpc=${encodeURIComponent(RPC)}#/extrinsics">Polkadot.js Apps</a> with your Incentium wallet (Talisman, SubWallet or the Polkadot.js extension).</li>
+        <li>Choose <code>registry.registerSubnet</code>: <code>maxPrice</code> is the most you will pay, in base units (1 ICT = 1,000,000,000); then the subnet's name, description and the 32-byte hash of your incentive code.</li>
+        <li>Submit. If someone buys first, or the price is above your limit, nothing is charged.</li>
+      </ol>
+      <p class="note">Half of the price goes to the treasury and half is burned. Nothing is refunded.</p>`;
+  }
+
+  function showSubnets(list) {
+    const el = $("subnets");
+    const rows = list.map((s) => {
+      const name = s.netuid === 0 ? "SN0 · Inference (protocol)" : `SN${s.netuid} · ${esc(s.name || "unnamed")}`;
+      const owner = s.netuid === 0 ? "Incentium governance" : s.owner ? `<span title="${IC.ss58(s.owner)}">${short(IC.ss58(s.owner))}</span> · ${s.control}` : s.control;
+      const immune = s.netuid === 0 ? "" : s.immuneUntil > head ? `immune ${days(s.immuneUntil - head)} more days` : "";
+      const tags = (s.dead ? '<span class="tag dead">dead: can be removed</span> ' : "") + (immune ? `<span class="tag">${immune}</span>` : "");
+      return `<tr><td>${name}${s.description ? `<br><span class="note">${esc(s.description)}</span>` : ""}</td>
+        <td>${owner}</td>
+        <td class="num">${IC.ict(s.stake)}</td>
+        <td class="num">${(s.emissionPpm / 10000).toFixed(2)} %</td>
+        <td class="num">${s.neurons}</td>
+        <td class="num">${s.minersAvg ?? "–"}</td>
+        <td>${tags}</td></tr>`;
+    }).join("");
+    el.innerHTML = `<table><thead><tr><th>Subnet</th><th>Owner · control</th><th class="num">Stake (ICT)</th><th class="num">Share of issuance</th><th class="num">Neurons</th><th class="num">Paid miners (avg)</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const short = (a) => a.slice(0, 6) + "…" + a.slice(-6);
+
+  function fallback() {
+    // Before the runtime upgrade that adds SubnetRegistryApi: show what the block height tells.
+    const minBlock = 180 * DAY;
+    val("c-day", `day ${Math.floor(head / DAY)} of 180`, head >= minBlock);
+    bar("b-day", head / minBlock);
+    $("p-day").textContent = `About ${days(minBlock - head)} days left, around ${when(minBlock)}.`;
+    for (const k of ["miners", "gov", "swap"]) val("c-" + k, "after the upgrade", false);
+    $("status").innerHTML = "Live criteria appear once the chain runs <b>runtime version 10</b>. Until then this page shows the block height only.";
+    $("auction").innerHTML = '<p class="note">The auction opens with SN1. Its live price appears here after the runtime upgrade.</p>';
+    $("subnets").innerHTML = '<p class="note">SN0 · Inference, run by the protocol. Other subnets can be bought once SN1 opens.</p>';
+  }
+
+  async function refresh() {
+    if (busy || Date.now() - lastRun < 10000) return;
+    busy = true; lastRun = Date.now();
+    try {
+      const st = IC.decode.unlockStatus(await api("unlock_status"));
+      showStatus(st);
+      await showAuction(IC.decode.auction(await api("auction")), st.unlocked);
+      showSubnets(IC.decode.subnets(await api("subnets")));
+    } catch (e) {
+      fallback();
+    } finally {
+      busy = false;
+    }
+  }
+
+  function connect() {
+    try { ws = new WebSocket(RPC); } catch (e) { return down(); }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ id: 0, jsonrpc: "2.0", method: "chain_subscribeNewHeads", params: [] }));
+    };
+    ws.onmessage = (m) => {
+      const d = JSON.parse(m.data);
+      if (d.id && pending.has(d.id)) {
+        const p = pending.get(d.id); pending.delete(d.id);
+        return d.error ? p.reject(d.error) : p.resolve(d.result);
+      }
+      const h = d.params && d.params.result;
+      if (h && h.number) { head = parseInt(h.number, 16); refresh(); }
+    };
+    ws.onerror = down;
+    ws.onclose = () => { for (const p of pending.values()) p.reject("closed"); pending.clear(); setTimeout(connect, 10000); };
+  }
+  function down() { $("status").textContent = "The chain cannot be reached right now. This page tries again every 10 seconds."; }
+  connect();
+})();
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGES = {                                   # page -> shared parts it carries
     "site/index.html": ["topbar", "footer"],
     "site/mine/index.html": ["topbar", "footer"],
+    "site/subnets/index.html": ["topbar", "footer"],
     "explorer/web/index.html": ["topbar", "footer"],
     "chat/web/index.html": ["topbar"],         # a full-height app: no footer
     "site/spec/index.html": ["topbar", "footer"],   # made by scripts/build_docs.py

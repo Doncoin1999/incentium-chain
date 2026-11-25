@@ -326,6 +326,45 @@ pub mod pallet {
     pub const PENALTY_QUORUM_PPM: u128 = 500_000;
     pub const MAX_REPORTERS: u32 = 64;
 
+    /// The slot on sale, for incentium.org's subnet page.
+    #[derive(Clone, Encode, Decode, PartialEq, Eq, Debug, TypeInfo)]
+    pub struct AuctionInfo {
+        pub now: u32,
+        /// Current price; `None` when no auction runs.
+        pub price: Option<u128>,
+        /// Block the current (or next) auction starts.
+        pub start_block: Option<u32>,
+        pub start_price: u128,
+        pub floor: u128,
+        /// Number of the next sale (1 = SN1's slot).
+        pub next_sale: u32,
+        pub subnet_count: u16,
+        pub max_subnets: u16,
+        pub min_spacing: u32,
+        pub full_since: Option<u32>,
+        pub last_cap_raise: Option<u32>,
+    }
+
+    /// One subnet, for incentium.org's subnet page.
+    #[derive(Clone, Encode, Decode, PartialEq, Eq, Debug, TypeInfo)]
+    pub struct SubnetSummary<AccountId> {
+        pub netuid: NetUid,
+        pub owner: Option<AccountId>,
+        pub control: ControlKind,
+        pub created: u32,
+        pub price_paid: u128,
+        pub name: Vec<u8>,
+        pub description: Vec<u8>,
+        pub code_hash: [u8; 32],
+        pub neurons: u16,
+        pub stake: u128,
+        /// Share of all issuance this subnet gets now, in ppm (filled in by the runtime).
+        pub emission_ppm: u32,
+        pub immune_until: u32,
+        pub miners_avg: Option<u32>,
+        pub dead: bool,
+    }
+
     #[pallet::pallet]
     #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
@@ -1524,6 +1563,80 @@ pub mod pallet {
             }
         }
 
+        /// Price the slot on sale would have at `block`, if nothing changes before then.
+        pub fn price_at(block: u32) -> Option<u128> {
+            if !Phase2Enabled::<T>::get() || SubnetCount::<T>::get() >= MaxSubnets::<T>::get() {
+                return None;
+            }
+            let start = AuctionStart::<T>::get()?;
+            if block < start {
+                return None;
+            }
+            let sale = Sales::<T>::get() + 1;
+            Some(auction_price(
+                Self::next_start_price(),
+                (block - start) as u64,
+                floor_price(sale),
+            ))
+        }
+
+        pub fn auction_info() -> AuctionInfo {
+            let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
+            let sale = Sales::<T>::get() + 1;
+            AuctionInfo {
+                now,
+                price: Self::current_price(),
+                start_block: AuctionStart::<T>::get(),
+                start_price: Self::next_start_price(),
+                floor: floor_price(sale),
+                next_sale: sale,
+                subnet_count: SubnetCount::<T>::get(),
+                max_subnets: MaxSubnets::<T>::get(),
+                min_spacing: MinSpacing::<T>::get(),
+                full_since: FullSince::<T>::get(),
+                last_cap_raise: LastCapRaise::<T>::get(),
+            }
+        }
+
+        /// Every subnet, SN0 first (the runtime fills in `emission_ppm`).
+        pub fn subnet_summaries() -> Vec<SubnetSummary<T::AccountId>> {
+            let mut out: Vec<SubnetSummary<T::AccountId>> = Subnets::<T>::iter()
+                .map(|(netuid, info)| {
+                    let meta = Metadata::<T>::get(netuid);
+                    let created: u32 = info.created.saturated_into();
+                    SubnetSummary {
+                        netuid,
+                        owner: info.owner,
+                        control: Control::<T>::get(netuid),
+                        created,
+                        price_paid: info.deposit,
+                        name: meta.as_ref().map(|m| m.name.to_vec()).unwrap_or_default(),
+                        description: meta
+                            .as_ref()
+                            .map(|m| m.description.to_vec())
+                            .unwrap_or_default(),
+                        code_hash: meta.map(|m| m.code_hash).unwrap_or_default(),
+                        neurons: NeuronCount::<T>::get(netuid),
+                        stake: T::StakeInfo::total(netuid),
+                        emission_ppm: 0,
+                        immune_until: if netuid == SN0 {
+                            0
+                        } else {
+                            created.saturating_add(IMMUNITY_BLOCKS)
+                        },
+                        miners_avg: if netuid == SN0 {
+                            Self::miners_average()
+                        } else {
+                            Self::subnet_miners_average(netuid)
+                        },
+                        dead: Self::is_dead(netuid),
+                    }
+                })
+                .collect();
+            out.sort_by_key(|s| s.netuid);
+            out
+        }
+
         /// 30-day average of active SN0 miners, once 30 days are recorded.
         pub fn miners_average() -> Option<u32> {
             let h = MinerHistory::<T>::get();
@@ -1850,6 +1963,28 @@ pub mod pallet {
 
         fn next_free_netuid() -> Option<NetUid> {
             (1..=NetUid::MAX).find(|n| !Subnets::<T>::contains_key(n))
+        }
+    }
+}
+
+/// Runtime API behind incentium.org's subnet page: the unlock criteria, the auction and the
+/// subnets, computed by the chain itself so the page never shows its own arithmetic.
+pub mod runtime_api {
+    use super::pallet::{AuctionInfo, SubnetSummary, UnlockStatus};
+    extern crate alloc;
+    use alloc::vec::Vec;
+    use codec::Codec;
+
+    polkadot_sdk::sp_api::decl_runtime_apis! {
+        pub trait SubnetRegistryApi<AccountId> where AccountId: Codec {
+            /// Where each SN1 unlock criterion stands.
+            fn unlock_status() -> UnlockStatus;
+            /// The slot on sale (or the next one).
+            fn auction() -> AuctionInfo;
+            /// Price of the slot on sale at a future block, if nothing changes before then.
+            fn price_at(block: u32) -> Option<u128>;
+            /// Every subnet, SN0 first.
+            fn subnets() -> Vec<SubnetSummary<AccountId>>;
         }
     }
 }
