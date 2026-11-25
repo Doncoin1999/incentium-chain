@@ -197,4 +197,8 @@ mod runtime {
     pub type Launch = governance::pallet_launch;
     #[runtime::pallet_index(31)]
     pub type Emergency = governance::pallet_emergency;
+    /// Alpha tokens and subnet pools (spec Section 7). Wired to the registry and
+    /// consensus in a later step; until then no pool is opened.
+    #[runtime::pallet_index(32)]
+    pub type SubnetPools = pallet_subnet_pools;
 }

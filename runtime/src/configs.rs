@@ -315,3 +315,49 @@ impl pallet_ict_swap::Config for Runtime {
     type DepositDisputeWindow = SwapDepositDisputeWindow;
     type MaxBlockGap = SwapMaxBlockGap;
 }
+
+// ------------------------------------------------------------------ subnet pools
+
+/// What the registry tells the pools about subnets.
+pub struct RegistrySubnets;
+impl pallet_subnet_pools::SubnetInfo<AccountId> for RegistrySubnets {
+    fn exists(netuid: u16) -> bool {
+        netuid != pallet_subnet_registry::SN0 && pallet_subnet_registry::Subnets::<Runtime>::contains_key(netuid)
+    }
+    fn owner(netuid: u16) -> Option<AccountId> {
+        if !Self::exists(netuid) {
+            return None;
+        }
+        match pallet_subnet_registry::Control::<Runtime>::get(netuid) {
+            pallet_subnet_registry::ControlKind::Dao => Some(crate::Registry::dao_account(netuid)),
+            _ => pallet_subnet_registry::Subnets::<Runtime>::get(netuid).and_then(|s| s.owner),
+        }
+    }
+    fn is_neuron(netuid: u16, hotkey: &AccountId) -> bool {
+        Self::exists(netuid) && pallet_subnet_registry::NeuronUid::<Runtime>::contains_key(netuid, hotkey)
+    }
+    fn name(netuid: u16) -> alloc::vec::Vec<u8> {
+        pallet_subnet_registry::Metadata::<Runtime>::get(netuid)
+            .map(|m| m.name.into_inner())
+            .unwrap_or_default()
+    }
+}
+
+parameter_types! {
+    pub const SubnetPoolsPalletId: PalletId = PalletId(*b"ict/alph");
+    /// 0.5 % per trade, half burned (proposed).
+    pub const PoolFeePpm: u32 = 5_000;
+    pub const PoolFeeBurnPpm: u32 = 500_000;
+    /// Smallest stake or unstake: 0.01 ICT or Alpha.
+    pub const PoolMinTrade: u128 = UNIT / 100;
+}
+
+impl pallet_subnet_pools::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type PalletId = SubnetPoolsPalletId;
+    type Subnets = RegistrySubnets;
+    type FeePpm = PoolFeePpm;
+    type FeeBurnPpm = PoolFeeBurnPpm;
+    type MinTrade = PoolMinTrade;
+}

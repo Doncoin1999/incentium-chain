@@ -6899,6 +6899,7 @@ dependencies = [
  "pallet-ict-consensus",
  "pallet-ict-emission",
  "pallet-ict-swap",
+ "pallet-subnet-pools",
  "pallet-subnet-registry",
  "pallet-weights",
  "pallet-work-verify",

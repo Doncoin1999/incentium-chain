@@ -636,3 +636,17 @@ fn an_emergency_referendum_authorizes_an_upgrade_within_hours() {
         );
     });
 }
+
+#[test]
+fn subnet_pools_are_in_the_runtime_and_empty_until_a_subnet_is_sold() {
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        assert!(crate::SubnetPools::summaries().is_empty());
+        assert_eq!(crate::SubnetPools::quote_stake(1, UNIT), None);
+        // SN0 has no Alpha: nothing can be staked there through the pools
+        assert!(crate::SubnetPools::stake(signed(K::Alice), 0, acc(K::Alice), UNIT, 0).is_err());
+        assert_eq!(
+            <crate::SubnetPools as polkadot_sdk::frame_support::traits::PalletInfoAccess>::index(),
+            32
+        );
+    });
+}
