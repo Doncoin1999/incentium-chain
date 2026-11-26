@@ -276,3 +276,25 @@ fn the_read_api_shows_candidates_the_reserve_and_how_many_could_halt_the_chain()
         assert!(alice.genesis && alice.producing && !alice.candidate);
     });
 }
+
+/// Fixed encodings shared with scripts/test_validators_page.js (the page's decoders).
+#[test]
+fn read_api_encoding_matches_the_validators_page() {
+    use pallet_block_producers::runtime_api::{Overview, ValidatorInfo};
+    let u = UNIT;
+    let o = Overview {
+        era: 12, slots: 20, elected: 3, producing: 7, candidates: 5, nominators: 40,
+        total_backing: 5_000 * u, min_validator_bond: 100 * u, min_nominator_bond: 10 * u,
+        reserve_active: true, streak: 4, streak_needed: 30, min_independent: 7,
+        pot: 144 * u, last_era_payout: 150 * u, to_halt: 2,
+    };
+    let v = |g: bool| ValidatorInfo {
+        stash: acc(K::Alice), candidate: !g, producing: true, genesis: g,
+        self_bond: 1_000 * u, backing: 1_500 * u, nominators: 3, commission_ppb: 50_000_000,
+        blocked: false, points_last_era: 400, points_this_era: 60,
+    };
+    let ov = sp_core::hexdisplay::HexDisplay::from(&o.encode()).to_string();
+    let vs = sp_core::hexdisplay::HexDisplay::from(&vec![v(false), v(true)].encode()).to_string();
+    assert_eq!(format!("0x{ov}"), "0x0c0000001400000003000000070000000500000028000000005039278c040000000000000000000000e8764817000000000000000000000000e40b5402000000000000000000000001040000001e0000000700000000a01187210000000000000000000000005cb2ec22000000000000000000000002000000");
+    assert_eq!(format!("0x{vs}"), "0x08d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d0101000010a5d4e800000000000000000000000098f73e5d01000000000000000000000300000080f0fa0200900100003c000000d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d0001010010a5d4e800000000000000000000000098f73e5d01000000000000000000000300000080f0fa0200900100003c000000");
+}
