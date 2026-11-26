@@ -569,4 +569,13 @@ mod tests {
             assert_eq!(p.y + p.waiting + held + burned_alpha, stock_in, "Alpha conserved at step {i}");
         }
     }
+
+    #[test]
+    fn page_quotes_match() {
+        // the same cases as scripts/test_pools_page.js (IC.decode.quote on incentium.org/pools)
+        let pool = |x, y| AlphaPool { x, y, trading: true, ..Default::default() };
+        assert_eq!(pool(ict(500), ict(12_500)).quote_buy(ict(100), DEFAULT_FEES).unwrap().amount_out, 2_074_645_537_948);
+        assert_eq!(pool(ict(500), ict(12_500)).quote_sell(ict(1_000), DEFAULT_FEES).unwrap().amount_out, 36_865_505_742);
+        assert!(pool(10, 10).quote_buy(1, DEFAULT_FEES).is_none());
+    }
 }
