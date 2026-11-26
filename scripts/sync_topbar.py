@@ -24,6 +24,7 @@ PAGES = {                                   # page -> shared parts it carries
     "site/events/index.html": ["topbar", "footer"],
     "site/subnets/index.html": ["topbar", "footer"],
     "site/pools/index.html": ["topbar", "footer"],
+    "site/validators/index.html": ["topbar", "footer"],
 }
 PARTS = ["topbar", "footer"]
 
