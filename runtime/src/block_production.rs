@@ -158,6 +158,14 @@ impl OnUnbalanced<Credit<AccountId, Balances>> for FeesToPot {
     }
 }
 
+/// Sizes for staking benchmarks (pallet_staking's own test config exists only with std, so
+/// the on-chain build needs its own).
+pub struct StakingBenchmarkingConfig;
+impl pallet_staking::BenchmarkingConfig for StakingBenchmarkingConfig {
+    type MaxValidators = ConstU32<100>;
+    type MaxNominators = ConstU32<1_000>;
+}
+
 impl pallet_staking::Config for Runtime {
     type OldCurrency = Balances;
     type Currency = Balances;
@@ -190,7 +198,7 @@ impl pallet_staking::Config for Runtime {
     type MaxControllersInDeprecationBatch = ConstU32<100>;
     type EventListeners = ();
     type Filter = frame_support::traits::Nothing;
-    type BenchmarkingConfig = pallet_staking::TestBenchmarkingConfig;
+    type BenchmarkingConfig = StakingBenchmarkingConfig;
     type WeightInfo = ();
 }
 
