@@ -29,7 +29,7 @@ fn merge(a: &mut serde_json::Value, b: serde_json::Value) {
     }
 }
 
-fn ext_from_preset(preset: &str) -> sp_io::TestExternalities {
+pub(crate) fn ext_from_preset(preset: &str) -> sp_io::TestExternalities {
     let patch: serde_json::Value = serde_json::from_slice(
         &genesis_config_presets::get_preset(&preset.into()).expect("preset exists"),
     )

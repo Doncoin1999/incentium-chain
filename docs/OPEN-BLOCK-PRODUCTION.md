@@ -73,7 +73,17 @@ Aura stays as block engine. GRANDPA equivocation reporting is switched on
   returns nothing and the genesis keys keep producing.
 - The genesis keys need no funds and are never slashed (they have no exposure).
 
+## Status (26 Nov 2026)
+
+Runtime 12 on `feat/npos`, on top of runtime 10/11 (mainnet line). Tests: 10 runtime tests for
+election, reserve, the 30-era rule, offline, era payout from the pot, minimum slash and the
+migration; all earlier tests still pass; the node builds.
+
 ## Open after this branch
 
-Validators tab on incentium.org, one-line installer, more bootnodes, testnet rehearsal with external
-candidates, benchmarks for the new pallet.
+- `session.set_keys` needs an ownership proof signed by the new keys: the installer must create
+  keys and proof on the node (rotate keys with owner) and submit them with `bond` and `validate`.
+- Validators tab on incentium.org, one-line installer, more bootnodes.
+- Testnet rehearsal with external candidates; the testnet runs its own branch (with Revive), so
+  this is merged there first.
+- Benchmarked weights for the new pallets (the defaults are used for now).
