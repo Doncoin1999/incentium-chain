@@ -678,3 +678,81 @@ fn governance_page_fixture() {
         println!("FUNDKEY={}", hex(&frame_system::Account::<Runtime>::hashed_key_for(&fund)));
     });
 }
+
+// ---------------------------------------------------------------- parameters track
+
+#[test]
+fn the_parameters_track_changes_listed_parameters_only() {
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        use governance::CustomOrigin;
+        let origin = || RuntimeOrigin::from(CustomOrigin::Parameters);
+        let set = |c: RuntimeCall| Parameters::set(origin(), Box::new(c));
+        // listed: carried out with Root
+        assert_ok!(set(RuntimeCall::Emission(pallet_ict_emission::Call::set_validator_share { ppm: 10_000 })));
+        assert_eq!(pallet_ict_emission::ValidatorShare::<Runtime>::get(), 10_000);
+        assert_ok!(set(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 30 })));
+        assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 30);
+        // the pallet's own bounds still hold
+        assert!(set(RuntimeCall::Emission(pallet_ict_emission::Call::set_fund_share { ppm: 900_000 })).is_err());
+        // not listed: refused
+        for c in [
+            RuntimeCall::System(frame_system::Call::authorize_upgrade { code_hash: sp_core::H256::zero() }),
+            RuntimeCall::Registry(pallet_subnet_registry::Call::deregister_subnet { netuid: 1 }),
+            RuntimeCall::BlockProducers(pallet_block_producers::Call::end_reserve {}),
+            RuntimeCall::Balances(pallet_balances::Call::force_set_balance { who: acc(K::Bob).into(), new_free: 1 }),
+        ] {
+            assert_eq!(
+                set(c),
+                Err(governance::pallet_parameters::Error::<Runtime>::NotAParameter.into())
+            );
+        }
+        // other origins cannot use it
+        assert!(Parameters::set(signed(K::Alice), Box::new(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 5 }))).is_err());
+        assert!(Parameters::set(RuntimeOrigin::from(CustomOrigin::Emergency), Box::new(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 5 }))).is_err());
+    });
+}
+
+#[test]
+fn a_parameters_referendum_passes_and_takes_effect() {
+    use frame_support::traits::{schedule::DispatchTime, StorePreimage};
+    use pallet_conviction_voting::{AccountVote, Conviction, Vote};
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        let call = RuntimeCall::Parameters(governance::pallet_parameters::Call::set {
+            call: Box::new(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 33 })),
+        });
+        let proposal = <Preimage as StorePreimage>::bound(call).unwrap();
+        let origin: OriginCaller = governance::CustomOrigin::Parameters.into();
+        assert_ok!(Referenda::submit(signed(K::Alice), Box::new(origin), proposal, DispatchTime::After(0)));
+        assert_eq!(
+            pallet_referenda::ReferendumInfoFor::<Runtime>::get(0).map(|i| match i {
+                pallet_referenda::ReferendumInfo::Ongoing(s) => s.track,
+                _ => 99,
+            }),
+            Some(governance::TRACK_PARAMETERS)
+        );
+        assert_ok!(Referenda::place_decision_deposit(signed(K::Alice), 0));
+        for k in [K::Alice, K::Bob, K::Charlie, K::Dave, K::Eve, K::Ferdie] {
+            let bal = Balances::free_balance(acc(k));
+            if bal < 2 * UNIT {
+                continue;
+            }
+            assert_ok!(ConvictionVoting::vote(
+                signed(k),
+                0,
+                AccountVote::Standard { vote: Vote { aye: true, conviction: Conviction::Locked1x }, balance: bal - UNIT }
+            ));
+        }
+        for _ in 0..(4 * DAYS) {
+            let b = System::block_number() + 1;
+            System::set_block_number(b);
+            Scheduler::on_initialize(b);
+            if pallet_staking::ValidatorCount::<Runtime>::get() == 33 {
+                break;
+            }
+        }
+        assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 33, "the referendum took effect");
+        // prepare 1 day + confirm 1 day + enactment 1 day, plus scheduling
+        assert!(System::block_number() <= 3 * DAYS + DAYS / 2, "took {} blocks", System::block_number());
+    });
+}

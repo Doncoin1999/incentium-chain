@@ -63,6 +63,8 @@ pub mod pallet_custom_origins {
         SmallSpender,
         /// Authorizes a runtime upgrade only (bug fixes; hours, not weeks).
         Emergency,
+        /// Changes protocol parameters from a fixed list only (runtime 12).
+        Parameters,
     }
 }
 
@@ -111,6 +113,49 @@ impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::trait
     #[cfg(feature = "runtime-benchmarks")]
     fn try_successful_origin() -> Result<O, ()> {
         Ok(O::from(CustomOrigin::Emergency))
+    }
+}
+
+/// The Parameters track's origin.
+pub struct EnsureParameters;
+impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::traits::EnsureOrigin<O>
+    for EnsureParameters
+{
+    type Success = ();
+    fn try_origin(o: O) -> Result<(), O> {
+        o.into().and_then(|o| match o {
+            CustomOrigin::Parameters => Ok(()),
+            other => Err(O::from(other)),
+        })
+    }
+    #[cfg(feature = "runtime-benchmarks")]
+    fn try_successful_origin() -> Result<O, ()> {
+        Ok(O::from(CustomOrigin::Parameters))
+    }
+}
+
+/// The calls the Parameters track may make, each within the bounds its own pallet enforces.
+/// Everything else (runtime upgrades, the subnet emergency brake, the swap attestation, ending
+/// the genesis keys' reserve) stays on the Root track.
+pub struct ParameterCalls;
+impl frame_support::traits::Contains<RuntimeCall> for ParameterCalls {
+    fn contains(c: &RuntimeCall) -> bool {
+        use pallet_ict_emission::Call as Em;
+        use pallet_staking::Call as St;
+        use pallet_subnet_registry::Call as Reg;
+        matches!(
+            c,
+            RuntimeCall::Emission(Em::set_fund_share { .. } | Em::set_validator_share { .. })
+                | RuntimeCall::Registry(
+                    Reg::set_min_spacing { .. } | Reg::set_max_subnets { .. } | Reg::set_tier { .. }
+                )
+                | RuntimeCall::Staking(
+                    St::set_validator_count { .. }
+                        | St::increase_validator_count { .. }
+                        | St::scale_validator_count { .. }
+                        | St::set_staking_configs { .. }
+                )
+        )
     }
 }
 
@@ -292,6 +337,7 @@ pub const TRACK_ROOT: u16 = 0;
 pub const TRACK_TREASURER: u16 = 1;
 pub const TRACK_SMALL_SPENDER: u16 = 2;
 pub const TRACK_EMERGENCY: u16 = 3;
+pub const TRACK_PARAMETERS: u16 = 4;
 
 const fn pct(x: u32) -> Perbill {
     Perbill::from_percent(x)
@@ -307,7 +353,7 @@ const fn linear(floor: u32, ceil: u32) -> Curve {
     }
 }
 
-const TRACKS: [Track<u16, Balance, BlockNumber>; 4] = [
+const TRACKS: [Track<u16, Balance, BlockNumber>; 5] = [
     Track {
         id: TRACK_ROOT,
         info: TrackInfo {
@@ -367,6 +413,22 @@ const TRACKS: [Track<u16, Balance, BlockNumber>; 4] = [
             min_support: linear(20, 50),
         },
     },
+    // Protocol parameters from a fixed list (ParameterCalls): faster and lighter than Root,
+    // stricter than spending.
+    Track {
+        id: TRACK_PARAMETERS,
+        info: TrackInfo {
+            name: s("parameters"),
+            max_deciding: 5,
+            decision_deposit: 50 * UNIT,
+            prepare_period: DAYS,
+            decision_period: 7 * DAYS,
+            confirm_period: DAYS,
+            min_enactment_period: DAYS,
+            min_approval: linear(60, 100),
+            min_support: linear(3, 30),
+        },
+    },
 ];
 
 pub struct TracksInfo;
@@ -386,6 +448,7 @@ impl pallet_referenda::TracksInfo<Balance, BlockNumber> for TracksInfo {
             Ok(CustomOrigin::Treasurer) => Ok(TRACK_TREASURER),
             Ok(CustomOrigin::SmallSpender) => Ok(TRACK_SMALL_SPENDER),
             Ok(CustomOrigin::Emergency) => Ok(TRACK_EMERGENCY),
+            Ok(CustomOrigin::Parameters) => Ok(TRACK_PARAMETERS),
             Err(_) => Err(()),
         }
     }
@@ -654,4 +717,73 @@ pub mod pallet_emergency {
 impl pallet_emergency::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type EmergencyOrigin = EnsureEmergency;
+}
+
+// ---------------------------------------------------------------- parameters track
+
+/// The Parameters track dispatches a call from `ParameterCalls` with Root, and nothing else.
+#[polkadot_sdk::frame_support::pallet]
+pub mod pallet_parameters {
+    use alloc::boxed::Box;
+    use polkadot_sdk::frame_support::{
+        dispatch::{GetDispatchInfo, PostDispatchInfo},
+        pallet_prelude::*,
+        traits::Contains,
+    };
+    use polkadot_sdk::frame_system::pallet_prelude::*;
+    use polkadot_sdk::sp_runtime::traits::Dispatchable;
+
+    #[pallet::config]
+    pub trait Config: polkadot_sdk::frame_system::Config {
+        #[allow(deprecated)]
+        type RuntimeEvent: From<Event<Self>>
+            + IsType<<Self as polkadot_sdk::frame_system::Config>::RuntimeEvent>;
+        type RuntimeCall: Parameter
+            + Dispatchable<RuntimeOrigin = Self::RuntimeOrigin, PostInfo = PostDispatchInfo>
+            + GetDispatchInfo;
+        type ParametersOrigin: EnsureOrigin<Self::RuntimeOrigin>;
+        type Allowed: Contains<<Self as Config>::RuntimeCall>;
+    }
+
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
+
+    #[pallet::event]
+    #[pallet::generate_deposit(pub(super) fn deposit_event)]
+    pub enum Event<T: Config> {
+        /// A parameter change decided on the Parameters track was carried out.
+        ParameterSet { result: DispatchResult },
+    }
+
+    #[pallet::error]
+    pub enum Error<T> {
+        /// This call is not a parameter the Parameters track may change.
+        NotAParameter,
+    }
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        #[pallet::call_index(0)]
+        #[pallet::weight({
+            let di = call.get_dispatch_info();
+            (T::DbWeight::get().reads(1).saturating_add(di.call_weight), di.class)
+        })]
+        pub fn set(origin: OriginFor<T>, call: Box<<T as Config>::RuntimeCall>) -> DispatchResult {
+            T::ParametersOrigin::ensure_origin(origin)?;
+            ensure!(T::Allowed::contains(&call), Error::<T>::NotAParameter);
+            let result = call
+                .dispatch(polkadot_sdk::frame_system::RawOrigin::Root.into())
+                .map(|_| ())
+                .map_err(|e| e.error);
+            Self::deposit_event(Event::ParameterSet { result });
+            result
+        }
+    }
+}
+
+impl pallet_parameters::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type RuntimeCall = RuntimeCall;
+    type ParametersOrigin = EnsureParameters;
+    type Allowed = ParameterCalls;
 }
