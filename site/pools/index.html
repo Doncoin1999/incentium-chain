@@ -49,6 +49,18 @@
   .scroll { overflow-x: auto; }
   .tag { font-size: 13px; border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
   .tag.dead { color: var(--bad); border-color: var(--bad); }
+  .tag.wait { color: var(--muted); border-style: dashed; }
+  #trade label { display: block; margin: 10px 0 4px; }
+  #trade select, #trade input[type=number] { display: block; width: 100%; max-width: 560px; margin-top: 4px; padding: 7px 8px; background: #11151e; color: inherit; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  #trade .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
+  #trade h3 { margin: 20px 0 8px; }
+  .meta { color: var(--muted); font-size: 14px; margin: 6px 0; }
+  .btn { padding: 8px 14px; border-radius: 6px; border: 1px solid #4f7cff; background: #4f7cff; color: #fff; font: 600 14px/1.2 system-ui, sans-serif; cursor: pointer; }
+  .btn.ghost { background: transparent; color: #9fb6ff; padding: 4px 10px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .tabs { display: flex; gap: 6px; margin: 14px 0 4px; }
+  .tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 14px/1.2 system-ui, sans-serif; cursor: pointer; }
+  .tab.on { color: #fff; border-color: #4f7cff; background: #1d2a4d; }
   ol.how { padding-left: 22px; color: var(--muted); } ol.how li { margin: 6px 0; }
   .notice { border-left: 3px solid var(--lamp); }
   .notice h3 { margin: 0 0 6px; font: 600 18px/1.3 var(--sans); }
@@ -116,12 +128,12 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
 <!-- /ic:topbar -->
 <main class="wrap">
   <h1>Subnet pools</h1>
-  <p class="lede">Every subnet has its own token, Alpha, issued like ICT. Staking on a subnet means buying its Alpha in a pool that nobody owns. This page lists every pool, read straight from the chain as you watch.</p>
+  <p class="lede">Every subnet has its own token, Alpha, issued like ICT. Staking on a subnet means buying its Alpha in a pool that nobody owns, and Alpha pays its holders in ICT. This page lists every pool, read straight from the chain as you watch, and lets you stake from your own wallet.</p>
   <span class="status" id="status">Connecting to the chain…</span>
 
   <div class="card notice" id="notice">
     <h3>There are no subnets yet</h3>
-    <p>Subnet registration opens by itself once four criteria are met on the chain, at the earliest on day 180 (about 17 May 2027). You can follow them on the <a href="/subnets/">Subnets page</a>.</p>
+    <p>Subnet registration opens by itself once five criteria are met on the chain, at the earliest on day 180 (about 17 May 2027). You can follow them on the <a href="/subnets/">Subnets page</a>.</p>
     <p>When the first subnet has been bought and the Alpha module is live, its pool appears below by itself. Nothing on this page has to change for that to happen.</p>
   </div>
 
@@ -130,7 +142,30 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
 
   <h2>Stake and unstake</h2>
   <div class="card" id="trade">
-    <p class="note">Staking (buying Alpha) and unstaking (selling it) straight from Talisman or SubWallet opens here when the Alpha module is live, first on the testnet. You sign in your own wallet; no server stands in between, and the page shows what you get before you sign.</p>
+    <p class="note">Sign in your own wallet (Talisman, SubWallet or the polkadot.js extension). This page never sees your keys, and it shows what you get before you sign. Every trade carries a price limit: if the price moves further before your trade is included, it is refused and nothing changes.</p>
+    <button class="btn" id="w-connect">Connect wallet</button>
+    <div id="w-form" hidden>
+      <label>Account <select id="w-acct"></select></label>
+      <div class="meta" id="w-bal"></div>
+      <div class="tabs"><button class="tab on" data-tab="stake">Stake</button><button class="tab" data-tab="unstake">Unstake</button></div>
+      <div id="t-stake">
+        <label>Subnet <select id="s-net"></select></label>
+        <label>Validator <select id="s-hot"></select></label>
+        <label>ICT to stake <input id="s-amt" type="number" min="0" step="any" placeholder="e.g. 100"></label>
+      </div>
+      <div id="t-unstake" hidden>
+        <label>Position <select id="u-pos"></select></label>
+        <label>Alpha to sell <input id="u-amt" type="number" min="0" step="any" placeholder="e.g. 1000"></label>
+      </div>
+      <label>Price limit <select id="w-slip">
+        <option value="5000">0.5 %</option><option value="10000" selected>1 %</option><option value="30000">3 %</option><option value="100000">10 %</option>
+      </select></label>
+      <div class="meta" id="w-quote"></div>
+      <div class="row"><button class="btn" id="w-go">Stake</button></div>
+      <div class="meta" id="w-msg"></div>
+      <h3>Your positions</h3>
+      <div class="scroll" id="w-pos"><p class="note">No Alpha yet.</p></div>
+    </div>
   </div>
 
   <h2>How the pools work</h2>
@@ -138,16 +173,17 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
     <ul class="rules">
       <li><b>Issued like ICT.</b> Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. None exists when a subnet opens; then exactly 7,200 are issued a day, halving on ICT's curve from the subnet's own first day, up to 21,000,000. No owner or DAO can change this.</li>
       <li><b>Half is a bonus for the work.</b> 3,600 a day go to the subnet's miners, validators and owner, 50/38/12, on top of their pay in ICT. The owner's part is released over 6 months.</li>
-      <li><b>Half goes to the pool's stock.</b> It is sold only to buyers, at the pool's price, and at most one day's issuance a day.</li>
+      <li><b>Half is stock.</b> It waits outside the pool and is released into it block by block. While the price is more than 20 % below its 30-day average, the stock is held back and released later.</li>
+      <li><b>Alpha pays ICT.</b> The validators' 38 % of the subnet's ICT goes to everyone with Alpha staked with them; each validator keeps a take of 0–18 % that it chooses, and lowers or raises (at most once a month). Nothing buys Alpha back.</li>
       <li><b>Staking is buying.</b> Staking ICT on a subnet puts it in the pool and gives you Alpha, staked with a validator you choose. Unstaking sells the Alpha back. The subnet's share of issuance follows the ICT in its pool.</li>
-      <li><b>No deposit, no owner.</b> A pool starts at the slot's auction price ÷ 1,000,000 per Alpha, with no ICT in it. Its account has no key: only trades move what is in it.</li>
-      <li><b>Fees.</b> 0.5 % per trade, half burned and half left in the pool. From Phase 3, user revenue buys Alpha for the stakers.</li>
-      <li><b>When a subnet ends.</b> No more Alpha is issued, but the pool stays open for unstaking.</li>
+      <li><b>Opening.</b> For the first 10 days nothing can be traded: the stock collects and half of the auction price waits for the pool. Then the pool opens at a start price worked out on chain from the ICT an Alpha is expected to pay (20 % required return), with real ICT and Alpha only.</li>
+      <li><b>Nobody owns it.</b> The pool's account has no key: only trades move what is in it. 0.5 % per trade, half burned and half left in the pool.</li>
+      <li><b>When a subnet ends.</b> No more Alpha is issued, waiting stock is burned, and the pool stays open for unstaking.</li>
     </ul>
-    <p class="notice-risk"><b>Staking on a subnet carries price risk.</b> If you stake 1,000 ICT you do not necessarily get 1,000 ICT back: you get what your Alpha is worth when you unstake. In a subnet with few users the daily stock pushes the price down, and many stakers leaving at once push it further.</p>
+    <p class="notice-risk"><b>Staking on a subnet carries price risk.</b> If you stake 1,000 ICT you get the dividends plus what your Alpha is worth when you unstake, not necessarily 1,000 ICT. With 7,200 new Alpha a day the price of each Alpha tends to fall while the dividends make up for it; many stakers leaving at once push it down hard.</p>
     <p class="note">Full rules: <a href="/whitepaper/#65-alpha-tokens-and-pools">whitepaper, Section 6.5</a> and the <a href="/spec/">technical specification</a>, Section 7.</p>
   </div>
-  <p class="note">Data from <code>wss://rpc.incentium.org</code> through the runtime API <code>SubnetPoolsApi</code>. Any Incentium node gives the same answers. Nothing here is an offer to sell or a solicitation to buy.</p>
+  <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>SubnetPoolsApi</code>. Add <code>?net=testnet</code> to the address to see the testnet. Any Incentium node gives the same answers. Nothing here is an offer to sell or a solicitation to buy.</p>
 </main>
 <!-- ic:footer -->
 <style>
@@ -237,6 +273,16 @@ const IC = (() => {
         lastCapRaise: r.option(() => r.u32()),
       };
     },
+    /** Swap quote as the chain computes it: fee (at least 1 base unit) off the input, then
+     *  out = reserveOut * net / (reserveIn + net), rounded down. */
+    quote(reserveIn, reserveOut, amountIn, feePpm) {
+      if (amountIn <= 0n || reserveIn <= 0n || reserveOut <= 0n) return 0n;
+      let fee = amountIn * BigInt(feePpm) / 1000000n;
+      if (feePpm > 0 && fee < 1n) fee = 1n;
+      const net = amountIn - fee;
+      const out = reserveOut * net / (reserveIn + net);
+      return out >= reserveOut ? 0n : out;
+    },
     optionU128(hex) { const r = new Reader(hex); return r.option(() => r.u128()); },
     pools(hex) {
       const r = new Reader(hex);
@@ -246,7 +292,7 @@ const IC = (() => {
         price: r.u128(), ictReserve: r.u128(), alphaReserve: r.u128(),
         alphaIssued: r.u128(), alphaStaked: r.u128(),
         bonusToday: r.u128(), bonusMinted: r.u128(),
-        stock: r.u128(), soldToday: r.u128(), feePpm: r.u32(),
+        stock: r.u128(), releasedToday: r.u128(), feePpm: r.u32(),
       }));
     },
     subnets(hex) {
@@ -353,8 +399,10 @@ const IC = (() => {
 (() => {
   if (typeof document === "undefined") return;
   // Every public RPC, tried in turn: a page keeps working when one server is down.
-  const RPCS = ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  const testnet = new URLSearchParams(location.search).get("net") === "testnet";
+  const RPCS = testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
   let rpcAt = 0, RPC = RPCS[0];
+  if (document.getElementById("rpc-name")) document.getElementById("rpc-name").textContent = RPC;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   let ws, nextId = 1, pending = new Map(), busy = false, lastRun = 0;
@@ -373,6 +421,12 @@ const IC = (() => {
     return s;
   }
 
+  function poolState(p) {
+    if (p.open) return '<span class="tag">open</span>';
+    if (p.ictReserve === 0n) return '<span class="tag wait">first 10 days: opens by itself</span>';
+    return '<span class="tag dead">subnet removed: selling only</span>';
+  }
+
   function showPools(list) {
     const live = list.filter((p) => p.netuid !== 0);
     $("notice").hidden = live.length > 0;
@@ -382,15 +436,15 @@ const IC = (() => {
     }
     const rows = live.map((p) => `<tr>
       <td>SN${p.netuid}<small>${esc(p.name || "Unnamed")}</small></td>
-      <td class="num">${price(p.price)}</td>
+      <td class="num">${p.open ? price(p.price) : "–"}</td>
       <td class="num">${a(p.ictReserve)}</td>
       <td class="num">${a(p.alphaIssued)}<small>${a(p.alphaStaked)} staked</small></td>
-      <td class="num">${a(p.soldToday)}<small>${a(p.stock)} in stock</small></td>
+      <td class="num">${a(p.releasedToday)}<small>${a(p.stock)} waiting</small></td>
       <td class="num">${a(p.bonusToday)}</td>
-      <td>${p.open ? '<span class="tag">open</span>' : '<span class="tag dead">subnet removed: selling only</span>'}</td>
+      <td>${poolState(p)}</td>
     </tr>`).join("");
     $("pools").innerHTML = `<table>
-      <tr><th>Subnet</th><th class="num">Price, ICT per Alpha</th><th class="num">ICT in pool</th><th class="num">Alpha issued</th><th class="num">Sold from pool today</th><th class="num">Bonus today</th><th></th></tr>
+      <tr><th>Subnet</th><th class="num">Price, ICT per Alpha</th><th class="num">ICT in pool</th><th class="num">Alpha issued</th><th class="num">Stock released today</th><th class="num">Bonus today</th><th></th></tr>
       ${rows}</table>`;
   }
 
@@ -408,6 +462,7 @@ const IC = (() => {
       const pools = IC.decode.pools(await state("SubnetPoolsApi_pools"));
       $("status").innerHTML = `<b>${pools.filter((p) => p.netuid !== 0).length}</b> pools live`;
       showPools(pools);
+      wallet.setPools(pools);
     } catch (e) {
       const n = await subnetCount();
       const others = n === null ? 0 : Math.max(0, n - 1);
@@ -419,6 +474,185 @@ const IC = (() => {
       busy = false;
     }
   }
+
+  // ---- staking through the visitor's own wallet extension (site/assets/wallet.js)
+  const wallet = (() => {
+    let api = null, pools = [], positions = [], tab = "stake";
+    const msg = (t) => { $("w-msg").textContent = t; };
+    const load = () => new Promise((ok, fail) => {
+      if (window.IctWallet) return ok();
+      const sc = document.createElement("script");
+      sc.src = "/assets/wallet.js"; sc.onload = ok; sc.onerror = () => fail(new Error("could not load the wallet library"));
+      document.head.appendChild(sc);
+    });
+    const parse = (v) => {
+      v = String(v).trim();
+      if (!/^\d+(\.\d{0,9})?$/.test(v) || Number(v) <= 0) return null;
+      const [w, f = ""] = v.split(".");
+      return BigInt(w) * IC.UNIT + BigInt((f + "000000000").slice(0, 9));
+    };
+    const fresh = async (netuid) => {
+      const hex = (await api.rpc.state.call("SubnetPoolsApi_pools", "0x")).toHex();
+      pools = IC.decode.pools(hex);
+      return pools.find((p) => p.netuid === netuid);
+    };
+    const who = () => $("w-acct").value;
+
+    async function loadPositions() {
+      positions = [];
+      const me = who();
+      for (const p of pools.filter((p) => p.netuid !== 0)) {
+        const entries = await api.query.subnetPools.positions.entries(p.netuid);
+        for (const [key, val] of entries) {
+          const [, hotkey, staker] = key.args;
+          if (staker.toString() !== me) continue;
+          const alpha = val.toBigInt();
+          const acc = (await api.query.subnetPools.accPerAlpha(p.netuid, hotkey)).toBigInt();
+          const debt = (await api.query.subnetPools.debt([p.netuid, hotkey, staker])).toBigInt();
+          const due = alpha * acc / 1000000000000000000n - debt;
+          positions.push({ netuid: p.netuid, hotkey: hotkey.toString(), alpha, due: due > 0n ? due : 0n, price: p.price });
+        }
+      }
+      $("w-pos").innerHTML = positions.length
+        ? `<table><tr><th>Subnet</th><th>Validator</th><th class="num">Alpha</th><th class="num">Worth now, ICT</th><th class="num">Dividends due, ICT</th><th></th></tr>${positions.map((x, k) => `<tr>
+            <td>SN${x.netuid}</td><td><code>${esc(x.hotkey.slice(0, 8))}…</code></td>
+            <td class="num">${a(x.alpha, 2)}</td><td class="num">${a(x.alpha * x.price / IC.UNIT, 2)}</td>
+            <td class="num">${a(x.due, 4)}</td>
+            <td>${x.due > 0n ? `<button class="btn ghost" data-claim="${k}">Take out</button>` : ""}</td></tr>`).join("")}</table>`
+        : '<p class="note">No Alpha yet.</p>';
+      $("u-pos").innerHTML = positions.length
+        ? positions.map((x, k) => `<option value="${k}">SN${x.netuid} · ${esc(x.hotkey.slice(0, 8))}… · ${a(x.alpha, 2)} Alpha</option>`).join("")
+        : '<option value="">no position</option>';
+      document.querySelectorAll("[data-claim]").forEach((b) => {
+        b.onclick = () => {
+          const x = positions[Number(b.dataset.claim)];
+          send(api.tx.subnetPools.claimDividends(x.netuid, x.hotkey), `Dividends from SN${x.netuid}`);
+        };
+      });
+    }
+
+    async function loadValidators() {
+      const netuid = Number($("s-net").value);
+      if (!netuid) { $("s-hot").innerHTML = '<option value="">no open pool</option>'; return; }
+      const entries = await api.query.registry.neurons.entries(netuid);
+      const rows = [];
+      for (const [, hk] of entries) {
+        const h = hk.toString();
+        const stake = (await api.query.subnetPools.hotkeyStake(netuid, h)).toBigInt();
+        const take = (await api.query.subnetPools.takes(h)).ppm.toNumber();
+        rows.push({ h, stake, take });
+      }
+      rows.sort((x, y) => (y.stake > x.stake ? 1 : y.stake < x.stake ? -1 : 0));
+      $("s-hot").innerHTML = rows.length
+        ? rows.map((r) => `<option value="${esc(r.h)}">${esc(r.h.slice(0, 8))}…${esc(r.h.slice(-4))} · take ${(r.take / 10000).toFixed(1)} % · ${a(r.stake, 0)} Alpha staked</option>`).join("")
+        : '<option value="">no neurons yet</option>';
+    }
+
+    function fillNets() {
+      const open = pools.filter((p) => p.netuid !== 0 && p.open);
+      const keep = $("s-net").value;
+      $("s-net").innerHTML = open.length
+        ? open.map((p) => `<option value="${p.netuid}">SN${p.netuid} · ${esc(p.name || "Unnamed")} · ${price(p.price)} ICT per Alpha</option>`).join("")
+        : '<option value="">no open pool yet</option>';
+      if (open.some((p) => String(p.netuid) === keep)) $("s-net").value = keep;
+    }
+
+    async function quote() {
+      $("w-quote").textContent = "";
+      const slip = BigInt($("w-slip").value);
+      try {
+        if (tab === "stake") {
+          const netuid = Number($("s-net").value), amt = parse($("s-amt").value);
+          if (!netuid || !amt) return null;
+          const p = await fresh(netuid);
+          const out = IC.decode.quote(p.ictReserve, p.alphaReserve, amt, p.feePpm);
+          const min = out * (1000000n - slip) / 1000000n;
+          $("w-quote").textContent = `You get about ${a(out, 2)} Alpha (at least ${a(min, 2)}), ${price(amt * IC.UNIT / (out || 1n))} ICT per Alpha.`;
+          return { tx: api.tx.subnetPools.stake(netuid, $("s-hot").value, amt, min), what: `Stake ${a(amt, 2)} ICT on SN${netuid}` };
+        }
+        const x = positions[Number($("u-pos").value)], amt = parse($("u-amt").value);
+        if (!x || !amt) return null;
+        if (amt > x.alpha) { $("w-quote").textContent = "That is more Alpha than this position holds."; return null; }
+        const p = await fresh(x.netuid);
+        const out = IC.decode.quote(p.alphaReserve, p.ictReserve, amt, p.feePpm);
+        const min = out * (1000000n - slip) / 1000000n;
+        $("w-quote").textContent = `You get about ${a(out, 4)} ICT (at least ${a(min, 4)}). Dividends due are paid out with it.`;
+        return { tx: api.tx.subnetPools.unstake(x.netuid, x.hotkey, amt, min), what: `Unstake ${a(amt, 2)} Alpha on SN${x.netuid}` };
+      } catch (e) { $("w-quote").textContent = "Could not get a quote: " + (e.message || e); return null; }
+    }
+
+    async function balance() {
+      if (!api || !who()) return;
+      const { data } = await api.query.system.account(who());
+      $("w-bal").textContent = `${IC.ict(data.free.toBigInt(), 2)} ICT free`;
+    }
+
+    async function send(tx, what) {
+      const { web3FromAddress } = window.IctWallet;
+      const inj = await web3FromAddress(who());
+      msg(`${what}: confirm in your wallet…`);
+      $("w-go").disabled = true;
+      try {
+        await new Promise((ok, fail) => {
+          tx.signAndSend(who(), { signer: inj.signer }, ({ status, dispatchError }) => {
+            if (dispatchError) {
+              let t = dispatchError.toString();
+              if (dispatchError.isModule) { const d = api.registry.findMetaError(dispatchError.asModule); t = `${d.section}.${d.name}: ${d.docs.join(" ")}`; }
+              return fail(new Error(t));
+            }
+            if (status.isInBlock) msg(`${what}: in a block, waiting for finality`);
+            if (status.isFinalized) ok();
+          }).catch(fail);
+        });
+        msg(`${what}: done and final.`);
+        lastRun = 0; refresh(); balance(); loadPositions();
+      } catch (e) {
+        const t = String(e.message || e);
+        msg(t.includes("SlippageExceeded") ? `${what}: refused, the price moved past your limit. Nothing changed.` : `${what} failed: ${t}`);
+      } finally { $("w-go").disabled = false; }
+    }
+
+    async function connectWallet() {
+      const b = $("w-connect"); b.disabled = true; b.textContent = "Connecting…";
+      try {
+        await load();
+        const W = window.IctWallet;
+        const ext = await W.web3Enable("Incentium subnet pools");
+        if (!ext.length) throw new Error("no wallet extension found, or access was refused. Install Talisman, SubWallet or polkadot.js and allow incentium.org.");
+        const accounts = await W.web3Accounts({ ss58Format: 42 });
+        if (!accounts.length) throw new Error("the wallet has no accounts shared with this site");
+        api = await W.ApiPromise.create({ provider: new W.WsProvider([RPC, ...RPCS.filter((u) => u !== RPC)]), noInitWarn: true });
+        if (!api.tx.subnetPools) throw new Error("this chain has no Alpha module yet. Try the testnet: add ?net=testnet to the address.");
+        $("w-acct").innerHTML = accounts.map((x) => `<option value="${esc(x.address)}">${esc(x.meta.name || "account")} · ${esc(x.address.slice(0, 8))}…${esc(x.address.slice(-6))}</option>`).join("");
+        b.hidden = true; $("w-form").hidden = false;
+        await fresh(0).catch(() => {});
+        fillNets(); await loadValidators(); balance(); loadPositions();
+      } catch (e) { b.disabled = false; b.textContent = "Connect wallet"; $("w-form").hidden = false; msg(e.message || String(e)); }
+    }
+
+    if (typeof document !== "undefined" && $("w-connect")) {
+      $("w-connect").onclick = connectWallet;
+      $("w-acct").onchange = () => { balance(); loadPositions(); };
+      $("s-net").onchange = () => { loadValidators(); quote(); };
+      ["s-amt", "u-amt"].forEach((id) => { $(id).oninput = quote; });
+      ["s-hot", "u-pos", "w-slip"].forEach((id) => { $(id).onchange = quote; });
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.onclick = () => {
+          tab = t.dataset.tab;
+          document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("on", x === t));
+          $("t-stake").hidden = tab !== "stake"; $("t-unstake").hidden = tab !== "unstake";
+          $("w-go").textContent = tab === "stake" ? "Stake" : "Unstake";
+          quote();
+        };
+      });
+      $("w-go").onclick = async () => {
+        const q = await quote();
+        if (!q) return msg("Fill in the amount first.");
+        send(q.tx, q.what);
+      };
+    }
+    return { setPools(list) { pools = list; if (api) fillNets(); } };
+  })();
 
   function connect() {
     try { ws = new WebSocket(RPC); } catch (e) { return down(); }

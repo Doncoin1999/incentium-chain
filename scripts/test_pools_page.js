@@ -35,10 +35,19 @@ assert.strictEqual(p[0].alphaStaked, 120000n * U);
 assert.strictEqual(p[0].bonusToday, 3600n * U);
 assert.strictEqual(p[0].bonusMinted, 540000n * U);
 assert.strictEqual(p[0].stock, 1200n * U);
-assert.strictEqual(p[0].soldToday, 2400n * U);
+assert.strictEqual(p[0].releasedToday, 2400n * U);
 assert.strictEqual(p[0].feePpm, 5000);
 assert.strictEqual(p[1].name, "Søk");
 assert.strictEqual(p[1].open, false);
 assert.strictEqual(p[1].bonusMinted, 6n);
 assert.strictEqual(IC.decode.pools("0x00").length, 0);
-console.log("pools page decoder: ok");
+
+// The quote must match ict_economics::alpha::AlphaPool::swap exactly (fee at least 1 base unit,
+// out = reserveOut * net / (reserveIn + net), rounded down). Cases mirrored in Rust by
+// alpha::tests::page_quotes_match (same numbers).
+const q = IC.decode.quote;
+assert.strictEqual(q(500n * U, 12500n * U, 100n * U, 5000), 2074645537948n);   // stake 100 ICT into 500 / 12,500
+assert.strictEqual(q(12500n * U, 500n * U, 1000n * U, 5000), 36865505742n);    // sell 1,000 Alpha
+assert.strictEqual(q(10n, 10n, 1n, 5000), 0n);                                   // the minimum fee eats a 1-unit trade
+assert.strictEqual(q(0n, 10n, 5n, 5000), 0n);                                    // closed pool
+console.log("pools page decoder and quote: ok");

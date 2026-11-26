@@ -108,16 +108,17 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
 <!-- /ic:topbar -->
 <main class="wrap">
   <h1>Subnets</h1>
-  <p class="lede">Subnet registration opens by itself when four criteria are met on the chain. Nobody switches it on, and nobody approves a buyer. Every figure on this page is read from the chain as you watch.</p>
+  <p class="lede">Subnet registration opens by itself when five criteria are met on the chain. Nobody switches it on, and nobody approves a buyer. Every figure on this page is read from the chain as you watch.</p>
   <span class="status" id="status">Connecting to the chain…</span>
 
   <h2>When SN1 opens</h2>
-  <p class="note">All four must hold at the same time. The chain checks once a day; anyone may also ask it to check now (<code>registry.tryUnlock</code>).</p>
+  <p class="note">All five must hold at the same time. The chain checks once a day; anyone may also ask it to check now (<code>registry.tryUnlock</code>).</p>
   <div class="card" id="criteria">
     <div class="crit"><h3>Day 180 after genesis</h3><span class="val" id="c-day">–</span><div class="bar"><i id="b-day"></i></div><p id="p-day">Mainnet started on 18 November 2026, so day 180 is about 17 May 2027.</p></div>
     <div class="crit"><h3>300 active SN0 miners, 30-day average</h3><span class="val" id="c-miners">–</span><div class="bar"><i id="b-miners"></i></div><p id="p-miners">An active miner is one paid in an epoch: not caught by a failed spot check and not banned.</p></div>
     <div class="crit"><h3>Governance runs by itself</h3><span class="val" id="c-gov">–</span><div class="bar"><i id="b-gov"></i></div><p>The sudo key is gone and at least 3 referenda have been approved.</p></div>
     <div class="crit"><h3>Trading is audited</h3><span class="val" id="c-swap">–</span><div class="bar"><i id="b-swap"></i></div><p>Governance has attested that the ICT⇄USDC swap contract on Base is audited and has no pause key.</p></div>
+    <div class="crit"><h3>Alpha is live</h3><span class="val" id="c-alpha">–</span><div class="bar"><i id="b-alpha"></i></div><p>The Alpha module is part of the runtime, so every subnet sold gets its own token and pool (<a href="/pools/">Subnet pools</a>).</p></div>
   </div>
 
   <h2>The auction</h2>
@@ -128,18 +129,18 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
     <table>
       <tr><th>Price</th><td>Dutch auction. SN1 starts at 50,000 ICT, every later slot at 4 × what the previous one sold for. The price falls 25 % a day, smoothly per block, down to a floor. The first buyer at the current price wins.</td></tr>
       <tr><th>Floor</th><td>1st slot 1,000 ICT · 2nd–4th 500 · 5th–8th 300 · 9th and later 200</td></tr>
-      <tr><th>Payment</th><td>Not refunded. Half goes to the on-chain treasury, half is burned.</td></tr>
+      <tr><th>Payment</th><td>Not refunded. Half is burned. The other half goes into the subnet's Alpha pool as its starting ICT, as far as the pool can match it; the rest goes to the on-chain treasury.</td></tr>
       <tr><th>Pace</th><td>One slot at a time, 60 days between a sale and the next auction.</td></tr>
       <tr><th>Cap</th><td>8 subnets until 2029. Then the cap doubles by itself (16, 32 … 256) when every slot has been taken for 90 days, at least 75 % of subnets pay at least 10 miners, and 180 days have passed since the last raise.</td></tr>
       <tr><th>Leaving</th><td>No subnet is voted out for being weak. A subnet that paid no 3 miners in any epoch for 30 days (after its 180-day immunity) can be removed by anyone. Incentium governance keeps an emergency brake against abuse.</td></tr>
-      <tr><th>Issuance</th><td>10 % to the treasury. SN0 keeps at least half of all issuance; the other subnets share the rest by their stake, phased in over 180 days after SN1 opens. Each subnet pays 50 % to miners, 38 % to validators and 12 % to its owner.</td></tr>
+      <tr><th>Issuance</th><td>10 % to the treasury. SN0 keeps at least half of all issuance; the other subnets share the rest by the ICT in their pools, phased in over 180 days after SN1 opens. Each subnet pays 50 % to miners, 38 % to validators and their stakers (each validator keeps a take of 0–18 %, the rest is paid in ICT to the Alpha staked with it) and 12 % to its owner.</td></tr>
       <tr><th>Control</th><td>One key, then optionally a multisig, then optionally its stakers as a DAO. Control only moves forward. Full rules in the <a href="https://incentium.org/spec/">technical specification</a>, Section 4.</td></tr>
     </table>
   </div>
 
   <h2>Subnets now</h2>
   <div class="card scroll" id="subnets"><p class="note">Waiting for the chain…</p></div>
-  <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>SubnetRegistryApi</code>. Any Incentium node gives the same answers.</p>
+  <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>SubnetRegistryApi</code>. Any Incentium node gives the same answers. Add <code>?net=testnet</code> to the address to see the testnet.</p>
 </main>
 <!-- ic:footer -->
 <style>
@@ -218,6 +219,8 @@ const IC = (() => {
         minersAvg: r.option(() => r.u32()), minerDays: r.u32(), minMiners: r.u32(),
         sudoRemoved: r.bool(), approvedReferenda: r.u32(), minReferenda: r.u32(),
         swapAttested: r.bool(),
+        // added with the Alpha module (fifth criterion); older runtimes end before it
+        alphaInstalled: r.i < r.b.length ? r.bool() : false,
       };
     },
     auction(hex) {
@@ -334,8 +337,10 @@ const IC = (() => {
 (() => {
   if (typeof document === "undefined") return;
   // Every public RPC, tried in turn: a page keeps working when one server is down.
-  const RPCS = ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  const testnet = new URLSearchParams(location.search).get("net") === "testnet";
+  const RPCS = testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
   let rpcAt = 0, RPC = RPCS[0];
+  if (document.getElementById("rpc-name")) document.getElementById("rpc-name").textContent = RPC;
   const BLOCK_S = 12, DAY = 7200;
   const $ = (id) => document.getElementById(id);
   let ws, nextId = 1, pending = new Map(), head = 0, busy = false, lastRun = 0;
@@ -369,10 +374,12 @@ const IC = (() => {
     bar("b-gov", ((s.sudoRemoved ? 1 : 0) + Math.min(s.approvedReferenda, s.minReferenda) / s.minReferenda) / 2);
     val("c-swap", s.swapAttested ? "attested" : "not yet", s.swapAttested);
     bar("b-swap", s.swapAttested ? 1 : 0);
-    const met = [s.block >= s.minBlock, avg !== null && avg >= s.minMiners, govOk, s.swapAttested].filter(Boolean).length;
+    val("c-alpha", s.alphaInstalled ? "installed" : "not yet", s.alphaInstalled);
+    bar("b-alpha", s.alphaInstalled ? 1 : 0);
+    const met = [s.block >= s.minBlock, avg !== null && avg >= s.minMiners, govOk, s.swapAttested, s.alphaInstalled].filter(Boolean).length;
     $("status").innerHTML = s.unlocked
       ? "Subnet registration is <b>open</b>."
-      : `<b>${met} of 4</b> criteria met. SN1 opens by itself when all four are green.`;
+      : `<b>${met} of 5</b> criteria met. SN1 opens by itself when all five are green.`;
   }
 
   async function showAuction(a, unlocked) {
