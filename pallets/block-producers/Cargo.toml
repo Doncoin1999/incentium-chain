@@ -8,7 +8,7 @@ license.workspace = true
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.7", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11", default-features = false, features = ["derive"] }
-polkadot-sdk = { version = "2610.0.0", default-features = false, features = ["frame-support", "frame-system", "sp-runtime", "sp-staking", "pallet-staking", "pallet-session"] }
+polkadot-sdk = { version = "2610.0.0", default-features = false, features = ["frame-support", "frame-system", "sp-runtime", "sp-staking", "pallet-staking", "pallet-session", "sp-api"] }
 
 [features]
 default = ["std"]

@@ -123,6 +123,17 @@ pallet_revive::impl_runtime_apis_plus_revive_traits!(
         }
     }
 
+    impl pallet_block_producers::runtime_api::BlockProducersApi<Block, AccountId> for Runtime {
+        fn overview() -> pallet_block_producers::runtime_api::Overview {
+            let pot = crate::Balances::free_balance(crate::block_production::ValidatorPot::get());
+            crate::BlockProducers::overview(pot)
+        }
+
+        fn validators() -> Vec<pallet_block_producers::runtime_api::ValidatorInfo<AccountId>> {
+            crate::BlockProducers::validators()
+        }
+    }
+
     impl sp_consensus_grandpa::GrandpaApi<Block> for Runtime {
         fn grandpa_authorities() -> sp_consensus_grandpa::AuthorityList {
             Grandpa::grandpa_authorities()

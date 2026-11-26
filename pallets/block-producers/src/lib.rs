@@ -179,6 +179,98 @@ pub mod pallet {
         }
     }
 
+    // ------------------------------------------------------------ read API
+
+    impl<T: Config> Pallet<T>
+    where
+        T::CurrencyBalance: Into<u128>,
+        T: polkadot_sdk::pallet_session::Config<
+            ValidatorId = <T as polkadot_sdk::frame_system::Config>::AccountId,
+        >,
+    {
+        /// Every candidate and elected validator, for incentium.org/validators.
+        pub fn validators() -> Vec<crate::runtime_api::ValidatorInfo<T::AccountId>> {
+            use alloc::collections::BTreeSet;
+            let era = pallet_staking::ActiveEra::<T>::get().map(|e| e.index).unwrap_or(0);
+            let last_points = if era > 0 {
+                pallet_staking::ErasRewardPoints::<T>::get(era - 1)
+            } else {
+                Default::default()
+            };
+            let now_points = pallet_staking::ErasRewardPoints::<T>::get(era);
+            let genesis = GenesisValidators::<T>::get();
+            let session: BTreeSet<T::AccountId> =
+                polkadot_sdk::pallet_session::Validators::<T>::get().into_iter().collect();
+            let mut all: BTreeSet<T::AccountId> =
+                pallet_staking::Validators::<T>::iter_keys().collect();
+            all.extend(session.iter().cloned());
+            all.into_iter()
+                .map(|stash| {
+                    let prefs = pallet_staking::Validators::<T>::get(&stash);
+                    let bond: u128 = pallet_staking::Ledger::<T>::get(&stash)
+                        .map(|l| l.active.into())
+                        .unwrap_or(0);
+                    let exposure = pallet_staking::ErasStakersOverview::<T>::get(era, &stash);
+                    crate::runtime_api::ValidatorInfo {
+                        candidate: pallet_staking::Validators::<T>::contains_key(&stash),
+                        producing: session.contains(&stash),
+                        genesis: genesis.contains(&stash),
+                        self_bond: bond,
+                        backing: exposure.as_ref().map(|e| e.total.into()).unwrap_or(0),
+                        nominators: exposure.as_ref().map(|e| e.nominator_count).unwrap_or(0),
+                        commission_ppb: prefs.commission.deconstruct(),
+                        blocked: prefs.blocked,
+                        points_last_era: last_points.individual.get(&stash).copied().unwrap_or(0),
+                        points_this_era: now_points.individual.get(&stash).copied().unwrap_or(0),
+                        stash,
+                    }
+                })
+                .collect()
+        }
+
+        /// Network-wide figures; `pot` is the reward pot's balance (known to the runtime).
+        pub fn overview(pot: u128) -> crate::runtime_api::Overview {
+            let era = pallet_staking::ActiveEra::<T>::get().map(|e| e.index).unwrap_or(0);
+            // fewest elected validators whose combined backing exceeds a third of all backing
+            let mut backing: Vec<u128> = pallet_staking::ErasStakersOverview::<T>::iter_prefix(era)
+                .map(|(_, e)| e.total.into())
+                .collect();
+            backing.sort_unstable_by(|a, b| b.cmp(a));
+            let total: u128 = backing.iter().sum();
+            let mut acc = 0u128;
+            let mut to_halt = 0u32;
+            for b in backing.iter() {
+                if total > 0 && acc * 3 > total {
+                    break;
+                }
+                acc += *b;
+                to_halt += 1;
+            }
+            crate::runtime_api::Overview {
+                era,
+                slots: pallet_staking::ValidatorCount::<T>::get(),
+                elected: backing.len() as u32,
+                producing: polkadot_sdk::pallet_session::Validators::<T>::get().len() as u32,
+                candidates: pallet_staking::Validators::<T>::count(),
+                nominators: pallet_staking::Nominators::<T>::count(),
+                total_backing: total,
+                min_validator_bond: pallet_staking::MinValidatorBond::<T>::get().into(),
+                min_nominator_bond: pallet_staking::MinNominatorBond::<T>::get().into(),
+                reserve_active: ReserveActive::<T>::get(),
+                streak: Streak::<T>::get(),
+                streak_needed: T::StreakEras::get(),
+                min_independent: T::MinIndependent::get(),
+                pot,
+                last_era_payout: if era > 0 {
+                    pallet_staking::ErasValidatorReward::<T>::get(era - 1).map(Into::into).unwrap_or(0)
+                } else {
+                    0
+                },
+                to_halt: if total == 0 { 0 } else { to_halt },
+            }
+        }
+    }
+
     // ------------------------------------------------------------ session manager
 
     impl<T: Config> polkadot_sdk::pallet_session::SessionManager<T::AccountId> for Pallet<T> {
@@ -235,6 +327,63 @@ pub mod pallet {
         ) -> Res {
             let raised: Vec<Perbill> = slash_fraction.iter().map(|f| (*f).max(Min::get())).collect();
             Inner::on_offence(offenders, &raised, session)
+        }
+    }
+}
+
+pub mod runtime_api {
+    extern crate alloc;
+    use alloc::vec::Vec;
+    use codec::{Codec, Decode, Encode};
+    use scale_info::TypeInfo;
+
+    /// One candidate or producing validator.
+    #[derive(Clone, Encode, Decode, TypeInfo, Debug, PartialEq, Eq)]
+    pub struct ValidatorInfo<AccountId> {
+        pub stash: AccountId,
+        /// Stands as a candidate in staking.
+        pub candidate: bool,
+        /// In the current session's block-producer set.
+        pub producing: bool,
+        /// One of the genesis keys.
+        pub genesis: bool,
+        pub self_bond: u128,
+        /// Total backing in the current era (zero if not elected).
+        pub backing: u128,
+        pub nominators: u32,
+        /// Commission in parts per billion.
+        pub commission_ppb: u32,
+        pub blocked: bool,
+        pub points_last_era: u32,
+        pub points_this_era: u32,
+    }
+
+    #[derive(Clone, Encode, Decode, TypeInfo, Debug, PartialEq, Eq)]
+    pub struct Overview {
+        pub era: u32,
+        pub slots: u32,
+        pub elected: u32,
+        pub producing: u32,
+        pub candidates: u32,
+        pub nominators: u32,
+        pub total_backing: u128,
+        pub min_validator_bond: u128,
+        pub min_nominator_bond: u128,
+        pub reserve_active: bool,
+        pub streak: u32,
+        pub streak_needed: u32,
+        pub min_independent: u32,
+        /// Reward pot now (paid out at the end of the era).
+        pub pot: u128,
+        pub last_era_payout: u128,
+        /// Fewest elected validators that together hold more than a third of the backing.
+        pub to_halt: u32,
+    }
+
+    polkadot_sdk::sp_api::decl_runtime_apis! {
+        pub trait BlockProducersApi<AccountId> where AccountId: Codec {
+            fn overview() -> Overview;
+            fn validators() -> Vec<ValidatorInfo<AccountId>>;
         }
     }
 }

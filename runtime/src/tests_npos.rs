@@ -253,3 +253,26 @@ fn fewer_than_seven_independents_reset_the_streak() {
         assert!(pallet_block_producers::ReserveActive::<Runtime>::get());
     });
 }
+
+#[test]
+fn the_read_api_shows_candidates_the_reserve_and_how_many_could_halt_the_chain() {
+    ext().execute_with(|| {
+        stand(K::Bob, E::Bob, 1_000 * UNIT);
+        run_with_author(2 * ERA + 1, Some(acc(K::Bob)));
+        let o = BlockProducers::overview(7 * UNIT);
+        assert_eq!((o.elected, o.producing, o.candidates), (1, 2, 1));
+        assert!(o.reserve_active);
+        assert_eq!((o.streak_needed, o.min_independent), (30, 7));
+        assert_eq!(o.min_validator_bond, 100 * UNIT);
+        assert_eq!(o.total_backing, 1_000 * UNIT);
+        assert_eq!(o.to_halt, 1);
+        assert_eq!(o.pot, 7 * UNIT);
+        let v = BlockProducers::validators();
+        let bob = v.iter().find(|x| x.stash == acc(K::Bob)).unwrap();
+        assert!(bob.candidate && bob.producing && !bob.genesis);
+        assert_eq!(bob.self_bond, 1_000 * UNIT);
+        assert!(bob.points_this_era > 0);
+        let alice = v.iter().find(|x| x.stash == alice_validator()).unwrap();
+        assert!(alice.genesis && alice.producing && !alice.candidate);
+    });
+}
