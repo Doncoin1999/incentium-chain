@@ -19,6 +19,8 @@ pub mod weights;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_npos;
 
 extern crate alloc;
 use alloc::vec::Vec;

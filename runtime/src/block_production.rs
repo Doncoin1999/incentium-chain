@@ -19,8 +19,6 @@ use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_runtime::{traits::OpaqueKeys, Perbill};
 use sp_staking::{EraIndex, SessionIndex};
 
-pub type BlockNumber = u32;
-
 parameter_types! {
     /// A session lasts 6 hours.
     pub const SessionPeriod: BlockNumber = 1_800;
