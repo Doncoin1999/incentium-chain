@@ -66,7 +66,13 @@ class Chain:
             call = self.s.compose_call("Sudo", "sudo", {"call": call})
         r = self.s.submit_extrinsic(self.s.create_signed_extrinsic(call=call, keypair=kp), wait_for_inclusion=True)
         if not r.is_success:
-            sys.exit(f"{module}.{fn} failed: {r.error_message}")
+            detail = r.error_message or [e.value for e in r.triggered_events if e.value["event_id"] in ("ExtrinsicFailed", "Sudid")]
+            sys.exit(f"{module}.{fn} failed: {detail}")
+        if sudo:
+            for e in r.triggered_events:
+                v = e.value
+                if v["event_id"] == "Sudid" and "Err" in str(v["attributes"]):
+                    sys.exit(f"{module}.{fn} under sudo failed: {v['attributes']}")
         print(f"{module}.{fn} ok")
         return r
 
@@ -77,12 +83,12 @@ class Chain:
         return self.q("System", "Account", [addr])["data"]["free"]
 
     def fund(self, addr, amount):
-        """Testnet ICT for the rehearsal: from the faucet if it has enough, else by sudo."""
-        if self.free(self.faucet.ss58_address) > amount + 10 * UNIT:
-            self.submit(self.faucet, "Balances", "transfer_keep_alive", {"dest": addr, "value": amount})
-        elif self.q("Sudo", "Key") == self.operator.ss58_address:
+        """Testnet ICT for the rehearsal: by sudo if the operator holds it, else from the faucet."""
+        if self.q("Sudo", "Key") == self.operator.ss58_address:
             self.submit(self.operator, "Balances", "force_set_balance",
                         {"who": addr, "new_free": self.free(addr) + amount}, sudo=True)
+        elif self.free(self.faucet.ss58_address) > amount + 10 * UNIT:
+            self.submit(self.faucet, "Balances", "transfer_keep_alive", {"dest": addr, "value": amount})
         else:
             sys.exit(f"cannot fund {addr}: the faucet is short and the operator is not sudo")
 
