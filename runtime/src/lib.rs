@@ -10,6 +10,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 #[macro_use]
 mod benchmarks;
 pub mod apis;
+pub mod block_production;
 pub mod configs;
 pub mod genesis_config_presets;
 pub mod governance;
@@ -61,7 +62,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     authoring_version: 1,
     // 9: pallet-revive (EVM). 10: subnet registration, issuance sharing, subnet control.
     // 11: Emergency track (authorize a runtime upgrade by hash).
-    spec_version: 11,
+    spec_version: 12,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: the transaction extensions changed (EthSetOrigin added).
@@ -176,7 +177,8 @@ impl frame_support::traits::OnRuntimeUpgrade for CreateReviveAccount {
 }
 
 #[allow(unused_parens)]
-type Migrations = (CreateReviveAccount,);
+/// Runtime 12: open block production (docs/OPEN-BLOCK-PRODUCTION.md).
+type Migrations = (CreateReviveAccount, block_production::InitBlockProduction);
 
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -262,4 +264,21 @@ mod runtime {
 
     #[runtime::pallet_index(31)]
     pub type Emergency = governance::pallet_emergency;
+
+    // Open block production (block_production.rs). BlockProducers first, so its genesis is
+    // built before Session asks it for the first set.
+    #[runtime::pallet_index(40)]
+    pub type BlockProducers = pallet_block_producers;
+    #[runtime::pallet_index(41)]
+    pub type Authorship = pallet_authorship;
+    #[runtime::pallet_index(42)]
+    pub type Staking = pallet_staking;
+    #[runtime::pallet_index(43)]
+    pub type Offences = pallet_offences;
+    #[runtime::pallet_index(44)]
+    pub type Historical = pallet_session::historical;
+    #[runtime::pallet_index(45)]
+    pub type Session = pallet_session;
+    #[runtime::pallet_index(46)]
+    pub type VoterList = pallet_bags_list<Instance1>;
 }

@@ -65,8 +65,8 @@ impl frame_system::Config for Runtime {
 
 impl pallet_aura::Config for Runtime {
     type AuthorityId = AuraId;
-    type DisabledValidators = ();
-    type MaxAuthorities = ConstU32<32>;
+    type DisabledValidators = crate::Session;
+    type MaxAuthorities = ConstU32<128>;
     type AllowMultipleBlocksPerSlot = ConstBool<false>;
     type SlotDuration = pallet_aura::MinimumPeriodTimesTwo<Runtime>;
 }
@@ -74,11 +74,17 @@ impl pallet_aura::Config for Runtime {
 impl pallet_grandpa::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
-    type MaxAuthorities = ConstU32<32>;
-    type MaxNominators = ConstU32<0>;
-    type MaxSetIdSessionEntries = ConstU64<0>;
-    type KeyOwnerProof = sp_core::Void;
-    type EquivocationReportSystem = ();
+    type MaxAuthorities = ConstU32<128>;
+    type MaxNominators = crate::block_production::MaxBackersPerWinner;
+    /// Sessions in the bonding period: equivocations can be reported that far back.
+    type MaxSetIdSessionEntries = ConstU64<28>;
+    type KeyOwnerProof = sp_session::MembershipProof;
+    type EquivocationReportSystem = pallet_grandpa::EquivocationReportSystem<
+        Self,
+        crate::Offences,
+        crate::Historical,
+        crate::block_production::ReportLongevity,
+    >;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -123,7 +129,8 @@ pub type IctWeightToFee = pallet_revive::evm::fees::BlockRatioFee<1, FEE_DIVISOR
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = FungibleAdapter<Balances, ()>;
+    /// Fees go to the block producers' reward pot (until runtime 12 they were burned).
+    type OnChargeTransaction = FungibleAdapter<Balances, crate::block_production::FeesToPot>;
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IctWeightToFee;
     type LengthToFee = IdentityFee<Balance>;
@@ -198,6 +205,7 @@ impl pallet_ict_emission::Config for Runtime {
     type Currency = Balances;
     type FundAccount = FundAccount;
     type SubnetPot = SubnetPot;
+    type ValidatorPot = crate::block_production::ValidatorPot;
 }
 
 impl pallet_subnet_registry::Config for Runtime {

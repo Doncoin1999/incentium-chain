@@ -133,23 +133,25 @@ pallet_revive::impl_runtime_apis_plus_revive_traits!(
         }
 
         fn submit_report_equivocation_unsigned_extrinsic(
-            _equivocation_proof: sp_consensus_grandpa::EquivocationProof<
+            equivocation_proof: sp_consensus_grandpa::EquivocationProof<
                 <Block as BlockT>::Hash,
                 NumberFor<Block>,
             >,
-            _key_owner_proof: sp_consensus_grandpa::OpaqueKeyOwnershipProof,
+            key_owner_proof: sp_consensus_grandpa::OpaqueKeyOwnershipProof,
         ) -> Option<()> {
-            None
+            let key_owner_proof = key_owner_proof.decode()?;
+            Grandpa::submit_unsigned_equivocation_report(equivocation_proof, key_owner_proof)
         }
 
         fn generate_key_ownership_proof(
             _set_id: sp_consensus_grandpa::SetId,
-            _authority_id: GrandpaId,
+            authority_id: GrandpaId,
         ) -> Option<sp_consensus_grandpa::OpaqueKeyOwnershipProof> {
-            // NOTE: this is the only implementation possible since we've
-            // defined our key owner proof type as a bottom type (i.e. a type
-            // with no values).
-            None
+            use codec::Encode;
+            use polkadot_sdk::frame_support::traits::KeyOwnerProofSystem;
+            crate::Historical::prove((sp_consensus_grandpa::KEY_TYPE, authority_id))
+                .map(|p| p.encode())
+                .map(sp_consensus_grandpa::OpaqueKeyOwnershipProof::new)
         }
     }
 

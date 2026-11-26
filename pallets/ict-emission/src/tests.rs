@@ -1,4 +1,4 @@
-use crate::{mock::*, Error, FundShare, Halvings, TotalIssued};
+use crate::{mock::*, Error, FundShare, Halvings, TotalIssued, ValidatorShare};
 use ict_economics::{emission::next_threshold, UNIT};
 use polkadot_sdk::frame_support::{assert_noop, assert_ok, traits::Hooks};
 use polkadot_sdk::sp_runtime::DispatchError;
@@ -16,8 +16,29 @@ fn issues_one_ict_per_block_split_ten_percent() {
     new_test_ext().execute_with(|| {
         run_blocks(10);
         assert_eq!(TotalIssued::<Test>::get(), 10 * UNIT);
-        assert_eq!(Balances::free_balance(FUND), UNIT);
+        // 10 % outside the subnets: 8 % to the fund, 2 % to the block producers
+        assert_eq!(Balances::free_balance(FUND), 8 * UNIT / 10);
+        assert_eq!(Balances::free_balance(VPOT), 2 * UNIT / 10);
         assert_eq!(Balances::free_balance(POT), 9 * UNIT);
+    });
+}
+
+#[test]
+fn validator_share_only_by_root_and_never_above_the_fund_share() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(
+            Emission::set_validator_share(RuntimeOrigin::signed(1), 10_000),
+            DispatchError::BadOrigin
+        );
+        assert_noop!(
+            Emission::set_validator_share(RuntimeOrigin::root(), 100_001),
+            Error::<Test>::ValidatorShareTooHigh
+        );
+        assert_ok!(Emission::set_validator_share(RuntimeOrigin::root(), 0));
+        assert_eq!(ValidatorShare::<Test>::get(), 0);
+        run_blocks(10);
+        assert_eq!(Balances::free_balance(FUND), UNIT);
+        assert_eq!(Balances::free_balance(VPOT), 0);
     });
 }
 
@@ -52,7 +73,9 @@ fn fund_share_only_by_root_and_bounded() {
         assert_ok!(Emission::set_fund_share(RuntimeOrigin::root(), 50_000));
         assert_eq!(FundShare::<Test>::get(), 50_000);
         run_blocks(20);
-        assert_eq!(Balances::free_balance(FUND), UNIT); // 5 % of 20 ICT
+        // 5 % of 20 ICT outside the subnets; the producers' 2 % comes out of it
+        assert_eq!(Balances::free_balance(FUND), 6 * UNIT / 10);
+        assert_eq!(Balances::free_balance(VPOT), 4 * UNIT / 10);
     });
 }
 

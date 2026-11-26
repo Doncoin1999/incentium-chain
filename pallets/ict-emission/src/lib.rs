@@ -45,6 +45,10 @@ pub mod pallet {
         /// Account holding issuance for subnets until it is allocated.
         #[pallet::constant]
         type SubnetPot: Get<Self::AccountId>;
+        /// Reward pot of the block producers: receives `ValidatorShare`, carved out of the
+        /// development-fund share (docs/OPEN-BLOCK-PRODUCTION.md).
+        #[pallet::constant]
+        type ValidatorPot: Get<Self::AccountId>;
     }
 
     /// ICT issued since genesis, in base units (1 ICT = 10^9).
@@ -63,6 +67,16 @@ pub mod pallet {
     /// Development fund share of issuance, in ppm (proposed 10 %).
     #[pallet::storage]
     pub type FundShare<T> = StorageValue<_, u32, ValueQuery, DefaultFundShare>;
+
+    #[pallet::type_value]
+    pub fn DefaultValidatorShare() -> u32 {
+        20_000
+    }
+
+    /// Part of the fund share that goes to the block producers' reward pot, in ppm of
+    /// issuance (2 %, decided 26 Nov 2026). Never more than the fund share itself.
+    #[pallet::storage]
+    pub type ValidatorShare<T> = StorageValue<_, u32, ValueQuery, DefaultValidatorShare>;
 
     #[pallet::genesis_config]
     #[derive(polkadot_sdk::frame_support::DefaultNoBound)]
@@ -91,12 +105,16 @@ pub mod pallet {
         Halved { halvings: u8, total_issued: u128 },
         /// The fund share was changed by governance.
         FundShareSet { ppm: u32 },
+        /// The block producers' share was changed by governance.
+        ValidatorShareSet { ppm: u32 },
     }
 
     #[pallet::error]
     pub enum Error<T> {
         /// The fund share is above the allowed maximum.
         FundShareTooHigh,
+        /// The block producers' share would exceed the fund share.
+        ValidatorShareTooHigh,
     }
 
     #[pallet::hooks]
@@ -119,6 +137,18 @@ pub mod pallet {
             Self::deposit_event(Event::FundShareSet { ppm });
             Ok(())
         }
+
+        /// Change the block producers' share of issuance, carved out of the fund share
+        /// (governance only).
+        #[pallet::call_index(1)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_fund_share())]
+        pub fn set_validator_share(origin: OriginFor<T>, ppm: u32) -> DispatchResult {
+            ensure_root(origin)?;
+            ensure!(ppm <= FundShare::<T>::get(), Error::<T>::ValidatorShareTooHigh);
+            ValidatorShare::<T>::put(ppm);
+            Self::deposit_event(Event::ValidatorShareSet { ppm });
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
@@ -135,7 +165,13 @@ pub mod pallet {
             }
             let split = emission::split(issued, FundShare::<T>::get() as u128);
             // Minting can only fail on overflow of total issuance, which the cap rules out.
-            let _ = T::Currency::mint_into(&T::FundAccount::get(), split.fund);
+            let to_validators = (issued.saturating_mul(ValidatorShare::<T>::get() as u128)
+                / 1_000_000)
+                .min(split.fund);
+            let _ = T::Currency::mint_into(&T::FundAccount::get(), split.fund - to_validators);
+            if to_validators > 0 {
+                let _ = T::Currency::mint_into(&T::ValidatorPot::get(), to_validators);
+            }
             let _ = T::Currency::mint_into(&T::SubnetPot::get(), split.subnets);
             TotalIssued::<T>::put(s.total_issued);
             if s.halvings != before {
