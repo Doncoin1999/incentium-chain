@@ -62,6 +62,14 @@
   .join { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
   .join h3 { margin: 0 0 8px; font: 600 18px/1.3 var(--sans); }
   .join ol { padding-left: 20px; } .join li { margin: 6px 0; }
+  #voter label { display: block; margin: 10px 0 4px; }
+  #voter select, #voter input[type=number] { display: block; width: 100%; margin-top: 4px; padding: 7px 8px; background: #11151e; color: inherit; border: 1px solid #2f3749; border-radius: 6px; font: inherit; }
+  #voter .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  #voter .row label { display: inline; margin: 0; }
+  .btn { padding: 8px 14px; border-radius: 6px; border: 1px solid #4f7cff; background: #4f7cff; color: #fff; font: 600 14px/1.2 var(--sans); cursor: pointer; }
+  .btn.ghost { background: transparent; color: #9fb6ff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .tag { font-size: 12px; color: #97a1b4; border: 1px solid #2f3749; border-radius: 4px; padding: 0 4px; }
   pre.cmd { margin: 8px 0; }
   pre.cmd code { display: block; white-space: pre-wrap; word-break: break-all; padding: 10px 12px; }
   .ref { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
@@ -152,19 +160,43 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
       <tr><td>Treasurer</td><td>Spend from the treasury, any amount</td><td class="num">10 ICT</td><td>1 day preparing, up to 7 days deciding, 1 day confirming, takes effect 1 day later</td><td>Approval 100 % → 50 %; support 25 % → 2 %</td></tr>
       <tr><td>Small spender</td><td>Spend up to 1,000 ICT</td><td class="num">1 ICT</td><td>4 hours preparing, up to 3 days deciding, 6 hours confirming, takes effect 1 day later</td><td>Approval 100 % → 50 %; support 10 % → 1 %</td></tr>
       <tr><td>Emergency</td><td>Only authorize a runtime upgrade that fixes a bug</td><td class="num">1,000 ICT</td><td>1 hour preparing, up to 2 days deciding, 3 hours confirming, takes effect 1 hour later</td><td>Approval 100 % → 90 %; support 50 % → 20 %</td></tr>
+      <tr><td>Parameters <span class="tag">runtime 12</span></td><td>Only change protocol settings from a fixed list: the fund's and the block producers' share of emission, subnet spacing, the number of subnets and the subnet tiers, and the number of block producers and the staking minimums. Each pallet's own limits still apply.</td><td class="num">50 ICT</td><td>1 day preparing, up to 7 days deciding, 1 day confirming, takes effect 1 day later</td><td>Approval 100 % → 60 %; support 30 % → 3 %</td></tr>
     </table>
     <p class="note">Approval is the share of aye votes; support is the aye votes as a share of all ICT. Both thresholds fall in a straight line over the decision period, and a referendum passes once both are met and stay met for the whole confirmation period. Votes can be locked for longer to weigh more (conviction): 0.1× with no lock, then 1× to 6× for 1 to 32 lock periods.</p>
   </div>
 
   <h2>Take part</h2>
   <div class="join">
-    <div class="card">
-      <h3>Vote</h3>
-      <ol>
-        <li>Open the referendum in <a id="apps-ref" href="https://polkadot.js.org/apps/?rpc=wss://rpc.incentium.org#/referenda">polkadot.js apps</a> with Talisman or SubWallet.</li>
-        <li>Vote aye or nay with any amount of ICT, and choose how long to lock it.</li>
-        <li>Your ICT stays yours; it is only locked for the period you chose.</li>
-      </ol>
+    <div class="card" id="voter">
+      <h3>Vote from this page</h3>
+      <p class="note">Signing happens in your own wallet (Talisman, SubWallet or the polkadot.js extension). This page never sees your keys. Your ICT stays yours and is only locked for the period you choose.</p>
+      <button class="btn" id="w-connect">Connect wallet</button>
+      <div id="w-form" hidden>
+        <label>Account <select id="w-acct"></select></label>
+        <div class="meta" id="w-bal"></div>
+        <label>Referendum <select id="w-ref"></select></label>
+        <div class="row">
+          <label><input type="radio" name="w-side" value="aye" checked> Aye</label>
+          <label><input type="radio" name="w-side" value="nay"> Nay</label>
+        </div>
+        <label>Amount (ICT) <input id="w-amt" type="number" min="0" step="any" placeholder="e.g. 100"></label>
+        <label>Lock <select id="w-conv">
+          <option value="None">no lock: counts 0.1×</option>
+          <option value="Locked1x" selected>1 period (7 days): 1×</option>
+          <option value="Locked2x">2 periods (14 days): 2×</option>
+          <option value="Locked3x">4 periods (28 days): 3×</option>
+          <option value="Locked4x">8 periods (56 days): 4×</option>
+          <option value="Locked5x">16 periods (112 days): 5×</option>
+          <option value="Locked6x">32 periods (224 days): 6×</option>
+        </select></label>
+        <div class="row">
+          <button class="btn" id="w-vote">Vote</button>
+          <button class="btn ghost" id="w-remove">Remove my vote</button>
+          <button class="btn ghost" id="w-deposit" hidden>Place decision deposit</button>
+        </div>
+        <div class="meta" id="w-msg"></div>
+      </div>
+      <p class="note">Or use <a id="apps-ref" href="https://polkadot.js.org/apps/?rpc=wss://rpc.incentium.org#/referenda">polkadot.js apps</a>. After a lock ends, unlock your ICT there (Governance → Referenda → unlock).</p>
     </div>
     <div class="card">
       <h3>Propose</h3>
@@ -421,17 +453,17 @@ const IC = (() => {
   const twox64concat = (b) => twox64(b) + toHex(b);
 
   // ---- governance decoders (pallet_referenda 50, conviction voting tally, bounties 50)
-  const TRACK_NAMES = { 0: "Root", 1: "Treasurer", 2: "Small spender", 3: "Emergency" };
-  const CUSTOM_ORIGINS = ["Treasurer", "SmallSpender", "Emergency"];
+  const TRACK_NAMES = { 0: "Root", 1: "Treasurer", 2: "Small spender", 3: "Emergency", 4: "Parameters" };
+  const CUSTOM_ORIGINS = ["Treasurer", "SmallSpender", "Emergency", "Parameters"];
   // known calls: [pallet index, call index] -> name
   const CALLS = {
     "0,0": "System.remark", "0,2": "System.set_code", "0,7": "System.remark_with_event",
     "0,9": "System.authorize_upgrade", "0,10": "System.authorize_upgrade_without_checks",
     "4,0": "Balances.transfer_allow_death", "4,3": "Balances.transfer_keep_alive",
-    "10,0": "Emission.set_fund_share",
+    "10,0": "Emission.set_fund_share", "10,1": "Emission.set_validator_share",
     "22,3": "Treasury.spend_local", "22,5": "Treasury.spend",
     "23,0": "Bounties.propose_bounty", "23,1": "Bounties.approve_bounty",
-    "31,0": "Emergency.authorize_upgrade",
+    "31,0": "Emergency.authorize_upgrade", "34,0": "Parameters.set",
   };
   function origin(r) {
     const p = r.u8();
@@ -506,7 +538,7 @@ const IC = (() => {
   const K = IC.keys, D = IC.decode;
   // treasury account: "modl" + "ict/fund" + zeros
   const fund = new Uint8Array(32); fund.set(new TextEncoder().encode("modlict/fund"));
-  const PERIODS = { 0: [7200, 50400, 7200], 1: [7200, 50400, 7200], 2: [1200, 21600, 1800], 3: [300, 14400, 900] };
+  const PERIODS = { 0: [7200, 50400, 7200], 1: [7200, 50400, 7200], 2: [1200, 21600, 1800], 3: [300, 14400, 900], 4: [7200, 50400, 7200] };
   let ws, nextId = 1, pending = new Map(), busy = false, lastRun = 0;
   const call = (method, params) => new Promise((resolve, reject) => {
     const id = nextId++;
@@ -576,6 +608,7 @@ const IC = (() => {
         stat(ict(treasury), "ICT in the treasury"),
         stat(count, "referenda so far"),
       ].join("");
+      wallet.setOpen(open.map(([i, r]) => ({ i, track: r.trackName, needsDeposit: !r.decisionDeposit })));
       $("open").innerHTML = open.length ? open.reverse().map(([i, r]) => refCard(i, r, issuance)).join("") : '<p class="note">No referendum is open.</p>';
       const past = refs.filter(([, r]) => r.state !== "Ongoing").reverse();
       $("past").innerHTML = past.length
@@ -598,6 +631,101 @@ const IC = (() => {
       $("status").textContent = "Could not read governance from the chain right now.";
     } finally { busy = false; }
   }
+
+  // ---- signing through the visitor's own wallet extension (site/assets/wallet.js)
+  const wallet = (() => {
+    let api = null, accounts = [], openRefs = [];
+    const msg = (t) => { $("w-msg").textContent = t; };
+    const load = () => new Promise((ok, fail) => {
+      if (window.IctWallet) return ok();
+      const sc = document.createElement("script");
+      sc.src = "/assets/wallet.js"; sc.onload = ok; sc.onerror = () => fail(new Error("could not load the wallet library"));
+      document.head.appendChild(sc);
+    });
+    async function balance() {
+      const a = $("w-acct").value; if (!a || !api) return;
+      const { data } = await api.query.system.account(a);
+      const locks = await api.query.balances.locks(a);
+      const locked = locks.reduce((m, l) => (l.amount.toBigInt() > m ? l.amount.toBigInt() : m), 0n);
+      $("w-bal").textContent = `${IC.ict(data.free.toBigInt(), 2)} ICT free, ${IC.ict(locked, 2)} ICT locked by votes or staking`;
+    }
+    function fillRefs() {
+      const sel = $("w-ref"); if (!sel) return;
+      const keep = sel.value;
+      sel.innerHTML = openRefs.length ? openRefs.map((r) => `<option value="${r.i}">#${r.i} · ${esc(r.track)}</option>`).join("") : '<option value="">no open referendum</option>';
+      if (openRefs.some((r) => String(r.i) === keep)) sel.value = keep;
+      const cur = openRefs.find((r) => String(r.i) === sel.value);
+      $("w-deposit").hidden = !(cur && cur.needsDeposit);
+      $("w-vote").disabled = $("w-remove").disabled = !cur;
+    }
+    async function send(tx, what) {
+      const from = $("w-acct").value;
+      const { web3FromAddress } = window.IctWallet;
+      const inj = await web3FromAddress(from);
+      msg(`${what}: confirm in your wallet…`);
+      const btns = ["w-vote", "w-remove", "w-deposit"].map($);
+      btns.forEach((b) => (b.disabled = true));
+      try {
+        await new Promise((ok, fail) => {
+          tx.signAndSend(from, { signer: inj.signer }, ({ status, dispatchError }) => {
+            if (dispatchError) {
+              let t = dispatchError.toString();
+              if (dispatchError.isModule) { const d = api.registry.findMetaError(dispatchError.asModule); t = `${d.section}.${d.name}: ${d.docs.join(" ")}`; }
+              return fail(new Error(t));
+            }
+            if (status.isInBlock) msg(`${what}: in block ${status.asInBlock.toHex().slice(0, 12)}…, waiting for finality`);
+            if (status.isFinalized) ok();
+          }).catch(fail);
+        });
+        msg(`${what}: done and final.`);
+        lastRun = 0; refresh(); balance();
+      } catch (e) { msg(`${what} failed: ${e.message || e}`); }
+      finally { btns.forEach((b) => (b.disabled = false)); fillRefs(); }
+    }
+    async function connectWallet() {
+      const b = $("w-connect"); b.disabled = true; b.textContent = "Connecting…";
+      try {
+        await load();
+        const W = window.IctWallet;
+        const ext = await W.web3Enable("Incentium governance");
+        if (!ext.length) throw new Error("no wallet extension found, or access was refused. Install Talisman, SubWallet or polkadot.js and allow incentium.org.");
+        accounts = await W.web3Accounts({ ss58Format: 42 });
+        if (!accounts.length) throw new Error("the wallet has no accounts shared with this site");
+        api = await W.ApiPromise.create({ provider: new W.WsProvider(RPC), noInitWarn: true });
+        $("w-acct").innerHTML = accounts.map((a) => `<option value="${esc(a.address)}">${esc(a.meta.name || "account")} · ${esc(a.address.slice(0, 8))}…${esc(a.address.slice(-6))}</option>`).join("");
+        b.hidden = true; $("w-form").hidden = false;
+        fillRefs(); balance();
+      } catch (e) { b.disabled = false; b.textContent = "Connect wallet"; $("w-form").hidden = false; msg(e.message || String(e)); }
+    }
+    function amount() {
+      const v = $("w-amt").value.trim();
+      if (!/^\d+(\.\d{0,9})?$/.test(v) || Number(v) <= 0) throw new Error("enter an amount of ICT");
+      const [w, f = ""] = v.split(".");
+      return BigInt(w) * IC.UNIT + BigInt((f + "000000000").slice(0, 9));
+    }
+    if (typeof document !== "undefined" && $("w-connect")) {
+      $("w-connect").onclick = connectWallet;
+      $("w-acct").onchange = balance;
+      $("w-ref").onchange = fillRefs;
+      $("w-vote").onclick = () => {
+        try {
+          const ref = Number($("w-ref").value), bal = amount();
+          const aye = document.querySelector('input[name="w-side"]:checked').value === "aye";
+          const tx = api.tx.convictionVoting.vote(ref, { Standard: { vote: { aye, conviction: $("w-conv").value }, balance: bal } });
+          send(tx, `Vote ${aye ? "aye" : "nay"} on #${ref}`);
+        } catch (e) { msg(e.message); }
+      };
+      $("w-remove").onclick = () => {
+        const ref = Number($("w-ref").value);
+        send(api.tx.convictionVoting.removeVote(null, ref), `Remove vote on #${ref}`);
+      };
+      $("w-deposit").onclick = () => {
+        const ref = Number($("w-ref").value);
+        send(api.tx.referenda.placeDecisionDeposit(ref), `Decision deposit for #${ref}`);
+      };
+    }
+    return { setOpen(list) { openRefs = list; if (api) fillRefs(); } };
+  })();
 
   function connect() {
     try { ws = new WebSocket(RPC); } catch (e) { return down(); }
