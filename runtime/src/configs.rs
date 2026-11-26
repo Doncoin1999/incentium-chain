@@ -211,6 +211,7 @@ impl pallet_subnet_registry::Config for Runtime {
     type Unlock = crate::governance::GovernanceSignals;
     type StakeInfo = Consensus;
     type OnRemoved = Consensus;
+    type Sale = AlphaPools;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -260,6 +261,7 @@ impl pallet_ict_consensus::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = crate::weights::pallet_ict_consensus::WeightInfo<Runtime>;
     type StakeCurrency = Balances;
+    type Alpha = AlphaPools;
     type StakePalletId = StakePalletId;
     type SubnetPot = SubnetPot;
     type MinerSharePpm = MinerSharePpm;
@@ -371,6 +373,47 @@ impl pallet_subnet_pools::IssuanceInfo for PoolIssuance {
             .saturating_sub(pallet_ict_emission::TotalIssued::<Runtime>::get());
         let per_day = (ict_economics::emission::block_reward(halvings) * ict_economics::BLOCKS_PER_DAY as u128).max(1);
         (left / per_day) as u64
+    }
+}
+
+/// The Alpha pools, as the registry and consensus see them (decided 26 Nov 2026).
+pub struct AlphaPools;
+type Pools = crate::SubnetPools;
+use pallet_subnet_pools::PoolsInterface as _;
+
+impl pallet_subnet_registry::SubnetSale<AccountId> for AlphaPools {
+    fn pools_installed() -> bool {
+        true
+    }
+    fn subnet_sold(netuid: u16, buyer: &AccountId, amount: u128) -> sp_runtime::DispatchResult {
+        Pools::register_pool(netuid, buyer, amount)
+    }
+}
+
+impl pallet_ict_consensus::AlphaHooks<AccountId> for AlphaPools {
+    fn active() -> bool {
+        true
+    }
+    fn stake_ict(netuid: u16) -> u128 {
+        Pools::stake_ict(netuid)
+    }
+    fn alpha_stake(netuid: u16, hotkey: &AccountId) -> u128 {
+        Pools::alpha_stake(netuid, hotkey)
+    }
+    fn total_alpha(netuid: u16) -> u128 {
+        Pools::total_alpha_stake(netuid)
+    }
+    fn staker_alpha(netuid: u16, who: &AccountId) -> u128 {
+        Pools::staker_alpha(netuid, who)
+    }
+    fn on_epoch(netuid: u16, blocks: u32, miners: &[(AccountId, u128)], validators: &[(AccountId, u128)]) {
+        Pools::on_epoch(netuid, blocks, miners, validators)
+    }
+    fn pay_validator(netuid: u16, source: &AccountId, hotkey: &AccountId, amount: u128) -> bool {
+        Pools::pay_validator_ict(netuid, source, hotkey, amount).is_ok()
+    }
+    fn subnet_removed(netuid: u16) {
+        Pools::close_pool(netuid)
     }
 }
 

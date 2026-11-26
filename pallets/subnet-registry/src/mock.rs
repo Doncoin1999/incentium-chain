@@ -36,6 +36,21 @@ parameter_types! {
     pub const Treasury: u64 = TREASURY;
     pub static SudoRemoved: bool = false;
     pub static ApprovedReferenda: u32 = 0;
+    pub static AlphaInstalled: bool = true;
+    pub static PoolsOn: bool = false;
+}
+
+/// Stands in for the Alpha module: takes the pool half of a sale to POOLS.
+pub const POOLS: u64 = 77;
+pub struct MockSale;
+impl pallet_subnet_registry::SubnetSale<u64> for MockSale {
+    fn pools_installed() -> bool {
+        PoolsOn::get()
+    }
+    fn subnet_sold(_netuid: u16, buyer: &u64, amount: u128) -> polkadot_sdk::sp_runtime::DispatchResult {
+        use polkadot_sdk::frame_support::traits::{fungible::Mutate, tokens::Preservation};
+        <Balances as Mutate<u64>>::transfer(buyer, &POOLS, amount, Preservation::Preserve).map(|_| ())
+    }
 }
 
 pub const TREASURY: u64 = 99;
@@ -76,6 +91,9 @@ impl pallet_subnet_registry::UnlockSignals for MockSignals {
     fn approved_referenda(_at_least: u32) -> u32 {
         ApprovedReferenda::get()
     }
+    fn alpha_installed() -> bool {
+        AlphaInstalled::get()
+    }
 }
 
 impl pallet_subnet_registry::Config for Test {
@@ -87,6 +105,7 @@ impl pallet_subnet_registry::Config for Test {
     type Unlock = MockSignals;
     type StakeInfo = MockStake;
     type OnRemoved = ();
+    type Sale = MockSale;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
