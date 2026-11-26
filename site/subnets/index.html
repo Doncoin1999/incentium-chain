@@ -333,7 +333,9 @@ const IC = (() => {
 
 (() => {
   if (typeof document === "undefined") return;
-  const RPC = "wss://rpc.incentium.org";
+  // Every public RPC, tried in turn: a page keeps working when one server is down.
+  const RPCS = ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  let rpcAt = 0, RPC = RPCS[0];
   const BLOCK_S = 12, DAY = 7200;
   const $ = (id) => document.getElementById(id);
   let ws, nextId = 1, pending = new Map(), head = 0, busy = false, lastRun = 0;
@@ -470,7 +472,17 @@ const IC = (() => {
       if (h && h.number) { head = parseInt(h.number, 16); refresh(); }
     };
     ws.onerror = down;
-    ws.onclose = () => { for (const p of pending.values()) p.reject("closed"); pending.clear(); setTimeout(connect, 10000); };
+    let opened = false;
+    ws.addEventListener("open", () => { opened = true; });
+    ws.onclose = () => {
+      for (const p of pending.values()) p.reject("closed"); pending.clear();
+      if (!opened && RPCS.length > 1) {  // this server is unreachable: try the next one soon
+        rpcAt = (rpcAt + 1) % RPCS.length; RPC = RPCS[rpcAt];
+        const n = document.getElementById("rpc-name"); if (n) n.textContent = RPC;
+        return setTimeout(connect, rpcAt ? 1000 : 10000);
+      }
+      setTimeout(connect, 10000);
+    };
   }
   function down() { $("status").textContent = "The chain cannot be reached right now. This page tries again every 10 seconds."; }
   connect();

@@ -31,6 +31,10 @@ BIN="$D/incentium-node"
 BASE="$D/data-$NET"
 SPEC="$SRC/chain-specs/incentium-$NET-raw.json"
 RPC_PORT=9944
+# Boot nodes beyond the two in the chain spec (the spec file stays unchanged so its sha256 holds).
+EXTRA_BOOT_mainnet="/ip4/94.72.107.58/tcp/30333/p2p/12D3KooWQdXvwW1R5u5bwqDqb6jAo1dRWGLbHTn8XDGKLuPQubyu"
+EXTRA_BOOT_testnet=""
+EXTRA_BOOT="$(eval echo "\$EXTRA_BOOT_$NET")"
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -68,7 +72,7 @@ Wants=network-online.target
 [Service]
 User=$USER
 ExecStart=$BIN --chain $SPEC --base-path $BASE --validator --name "$NAME" \
-  --port 30333 --rpc-port $RPC_PORT --rpc-methods unsafe --no-telemetry
+  --port 30333 --rpc-port $RPC_PORT --rpc-methods unsafe --no-telemetry${EXTRA_BOOT:+ --bootnodes $EXTRA_BOOT}
 Restart=always
 RestartSec=10
 LimitNOFILE=65536

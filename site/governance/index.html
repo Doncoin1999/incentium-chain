@@ -531,7 +531,9 @@ const IC = (() => {
 (() => {
   if (typeof document === "undefined") return;
   const testnet = new URLSearchParams(location.search).get("net") === "testnet";
-  const RPC = testnet ? "wss://testnet-rpc.incentium.org" : "wss://rpc.incentium.org";
+  // Every public RPC, tried in turn: a page keeps working when one server is down.
+  const RPCS = testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  let rpcAt = 0, RPC = RPCS[0];
   const $ = (id) => document.getElementById(id);
   $("rpc-name").textContent = RPC;
   $("apps-ref").href = "https://polkadot.js.org/apps/?rpc=" + RPC + "#/referenda";
@@ -691,7 +693,7 @@ const IC = (() => {
         if (!ext.length) throw new Error("no wallet extension found, or access was refused. Install Talisman, SubWallet or polkadot.js and allow incentium.org.");
         accounts = await W.web3Accounts({ ss58Format: 42 });
         if (!accounts.length) throw new Error("the wallet has no accounts shared with this site");
-        api = await W.ApiPromise.create({ provider: new W.WsProvider(RPC), noInitWarn: true });
+        api = await W.ApiPromise.create({ provider: new W.WsProvider([RPC, ...RPCS.filter((u) => u !== RPC)]), noInitWarn: true });
         $("w-acct").innerHTML = accounts.map((a) => `<option value="${esc(a.address)}">${esc(a.meta.name || "account")} · ${esc(a.address.slice(0, 8))}…${esc(a.address.slice(-6))}</option>`).join("");
         b.hidden = true; $("w-form").hidden = false;
         fillRefs(); balance();
@@ -742,7 +744,17 @@ const IC = (() => {
       if (d.params && d.params.result && d.params.result.number) refresh();
     };
     ws.onerror = down;
-    ws.onclose = () => { for (const p of pending.values()) p.reject("closed"); pending.clear(); setTimeout(connect, 10000); };
+    let opened = false;
+    ws.addEventListener("open", () => { opened = true; });
+    ws.onclose = () => {
+      for (const p of pending.values()) p.reject("closed"); pending.clear();
+      if (!opened && RPCS.length > 1) {  // this server is unreachable: try the next one soon
+        rpcAt = (rpcAt + 1) % RPCS.length; RPC = RPCS[rpcAt];
+        const n = document.getElementById("rpc-name"); if (n) n.textContent = RPC;
+        return setTimeout(connect, rpcAt ? 1000 : 10000);
+      }
+      setTimeout(connect, 10000);
+    };
   }
   function down() { $("status").textContent = "The chain cannot be reached right now. This page tries again every 10 seconds."; }
   connect();

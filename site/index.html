@@ -230,7 +230,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
       <table class="net">
         <tr><th>Explorer</th><td><a href="https://explorer.incentium.org">explorer.incentium.org</a></td></tr>
         <tr><th>Faucet</th><td><a href="https://faucet.incentium.org">faucet.incentium.org</a>, 10 test ICT a day</td></tr>
-        <tr><th>RPC</th><td><code>wss://rpc.incentium.org</code></td></tr>
+        <tr><th>RPC</th><td><code>wss://rpc.incentium.org</code> (reserve: <code>wss://rpc2.incentium.org</code>)</td></tr>
         <tr><th>Wallets</th><td>Talisman, SubWallet or Polkadot.js: add a network with the RPC above</td></tr>
         <tr><th>Coin</th><td>ICT, 9 decimals, 21,000,000 maximum supply</td></tr>
         <tr><th>Addresses</th><td>Standard Substrate addresses, starting with <code>5</code></td></tr>
@@ -402,9 +402,13 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
       `<span>Next settlement in about <b>${left} min</b></span>`;
   }
 
+  let rpcAt = 0;
   function connect() {
     let ws;
-    try { ws = new WebSocket("wss://rpc.incentium.org"); } catch (e) { return fail(); }
+    const RPCS = ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+    let opened = false;
+    try { ws = new WebSocket(RPCS[rpcAt % RPCS.length]); } catch (e) { return fail(); }
+    ws.addEventListener("open", () => { opened = true; });
     ws.onopen = () => ws.send(JSON.stringify({ id: 1, jsonrpc: "2.0", method: "chain_subscribeNewHeads", params: [] }));
     ws.onmessage = (m) => {
       const d = JSON.parse(m.data);
@@ -412,7 +416,7 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
       if (head && head.number) show(parseInt(head.number, 16));
     };
     ws.onerror = fail;
-    ws.onclose = () => setTimeout(connect, 10000);
+    ws.onclose = () => { if (!opened) { rpcAt++; return setTimeout(connect, rpcAt % 2 ? 1000 : 10000); } setTimeout(connect, 10000); };
   }
   function fail() {
     read.innerHTML = "<span>The testnet cannot be reached right now. This page tries again every 10 seconds.</span>";
