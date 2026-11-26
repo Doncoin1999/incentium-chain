@@ -130,8 +130,6 @@ def cmd_unlock(c, a):
 def cmd_buy(c, a):
     if c.q("Registry", "Subnets", [NETUID]):
         return print("SN1 is already sold")
-    price = c.s.runtime_call("SubnetRegistryApi", "auction", []).value
-    print(f"auction: {price}")
     need = a.max_price * UNIT
     if c.free(c.operator.ss58_address) < need + 10 * UNIT:
         c.fund(c.operator.ss58_address, need + 20 * UNIT)
