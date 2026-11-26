@@ -837,3 +837,30 @@ fn a_parameters_referendum_passes_and_takes_effect() {
         assert!(System::block_number() <= 3 * DAYS + DAYS / 2, "took {} blocks", System::block_number());
     });
 }
+
+/// Metadata and the exact calls the governance page's wallet panel builds, for
+/// scripts/test_wallet_calls.js.
+#[test]
+fn wallet_calls_fixture() {
+    use codec::Encode;
+    use pallet_conviction_voting::{AccountVote, Conviction, Vote};
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+    let md = Runtime::metadata_at_version(15).expect("v15");
+    std::fs::write("/tmp/ict_metadata.bin", &md[..]).unwrap();
+    let vote = RuntimeCall::ConvictionVoting(pallet_conviction_voting::Call::vote {
+        poll_index: 3,
+        vote: AccountVote::Standard { vote: Vote { aye: true, conviction: Conviction::Locked2x }, balance: 100 * UNIT + 5 },
+    });
+    let nay = RuntimeCall::ConvictionVoting(pallet_conviction_voting::Call::vote {
+        poll_index: 3,
+        vote: AccountVote::Standard { vote: Vote { aye: false, conviction: Conviction::None }, balance: UNIT },
+    });
+    let remove = RuntimeCall::ConvictionVoting(pallet_conviction_voting::Call::remove_vote { class: None, index: 3 });
+    let dep = RuntimeCall::Referenda(pallet_referenda::Call::place_decision_deposit { index: 3 });
+    let params = RuntimeCall::Parameters(governance::pallet_parameters::Call::set {
+        call: Box::new(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 33 })),
+    });
+    let out: Vec<String> = [vote, nay, remove, dep, params].iter().map(|c| sp_core::hexdisplay::HexDisplay::from(&c.encode()).to_string()).collect();
+    std::fs::write("/tmp/ict_calls.txt", out.join("\n")).unwrap();
+    });
+}
