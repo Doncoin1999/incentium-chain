@@ -15,6 +15,11 @@
 //!   - SN0 has no owner and splits 50 : 38 between miners and validators
 //!     (`Sn0MinerSharePpm`). Before the unlock SN0 keeps `MinerSharePpm`.
 //! - Closing a subnet releases its stake into the normal unbonding queue.
+//! - Once the Alpha module is installed (`AlphaHooks::active`, decided 26 Nov 2026), SN1 and
+//!   later use it instead of ICT staking: a subnet's share follows the ICT in its pool, a
+//!   validator's weight follows the Alpha staked on it, validators are paid through the pool
+//!   (their take, the rest as ICT dividends to their stakers), and each settled epoch issues
+//!   the subnet's Alpha and pays the bonus. SN0 is unchanged.
 //! - Settlement is spread out: the epoch's first block shares the pot and settles SN0, and
 //!   each following block settles one further subnet, so 256 subnets fit in one epoch.
 //! - The on-chain computation is replaced by off-chain Yuma with a zk proof later.
@@ -31,8 +36,52 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+/// The Alpha module, as consensus sees it (implemented by the runtime over subnet pools).
+pub trait AlphaHooks<AccountId> {
+    /// True once SN1 and later use Alpha pools instead of ICT staking.
+    fn active() -> bool;
+    /// ICT that counts as the subnet's stake: its pool's ICT.
+    fn stake_ict(netuid: u16) -> u128;
+    /// Alpha staked on `hotkey` (validator weight).
+    fn alpha_stake(netuid: u16, hotkey: &AccountId) -> u128;
+    /// All Alpha staked in the subnet.
+    fn total_alpha(netuid: u16) -> u128;
+    /// Alpha `who` holds in the subnet, on all hotkeys (votes).
+    fn staker_alpha(netuid: u16, who: &AccountId) -> u128;
+    /// One settled epoch of `blocks` blocks: issue Alpha, pay the bonus by these ICT payments.
+    fn on_epoch(netuid: u16, blocks: u32, miners: &[(AccountId, u128)], validators: &[(AccountId, u128)]);
+    /// Pay validator `hotkey` `amount` ICT from `source`: its take, the rest to its stakers.
+    fn pay_validator(netuid: u16, source: &AccountId, hotkey: &AccountId, amount: u128) -> bool;
+    /// The subnet was closed.
+    fn subnet_removed(netuid: u16);
+}
+
+impl<AccountId> AlphaHooks<AccountId> for () {
+    fn active() -> bool {
+        false
+    }
+    fn stake_ict(_: u16) -> u128 {
+        0
+    }
+    fn alpha_stake(_: u16, _: &AccountId) -> u128 {
+        0
+    }
+    fn total_alpha(_: u16) -> u128 {
+        0
+    }
+    fn staker_alpha(_: u16, _: &AccountId) -> u128 {
+        0
+    }
+    fn on_epoch(_: u16, _: u32, _: &[(AccountId, u128)], _: &[(AccountId, u128)]) {}
+    fn pay_validator(_: u16, _: &AccountId, _: &AccountId, _: u128) -> bool {
+        false
+    }
+    fn subnet_removed(_: u16) {}
+}
+
 #[polkadot_sdk::frame_support::pallet]
 pub mod pallet {
+    use crate::AlphaHooks;
     use crate::WeightInfo;
     use ict_economics::{mul_div, yuma::yuma_lite, PPM};
     use pallet_subnet_registry::{NetUid, NeuronCount, NeuronUid, Neurons, Subnets, SN0};
@@ -69,6 +118,8 @@ pub mod pallet {
         /// Weights of this pallet's calls (benchmarked in the runtime).
         type WeightInfo: WeightInfo;
         type StakeCurrency: Mutate<Self::AccountId, Balance = u128>;
+        /// Alpha pools for SN1 and later (`()` before the Alpha module is installed).
+        type Alpha: AlphaHooks<Self::AccountId>;
         #[pallet::constant]
         type StakePalletId: Get<PalletId>;
         /// Account where `ict-emission` mints subnet issuance.
@@ -224,6 +275,8 @@ pub mod pallet {
 
     #[pallet::error]
     pub enum Error<T> {
+        /// SN1 and later are staked by buying Alpha in the subnet's pool.
+        UseAlphaPools,
         NotSn0Neuron,
         BelowMinimumStake,
         InsufficientStake,
@@ -358,6 +411,7 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[pallet::weight(<T as Config>::WeightInfo::stake())]
         pub fn stake_subnet(origin: OriginFor<T>, netuid: NetUid, amount: u128) -> DispatchResult {
+            ensure!(!T::Alpha::active(), Error::<T>::UseAlphaPools);
             let who = ensure_signed(origin)?;
             ensure!(netuid != SN0, Error::<T>::UseSn0Calls);
             ensure!(
@@ -490,6 +544,8 @@ pub mod pallet {
         fn stake_on(netuid: NetUid, who: &T::AccountId) -> u128 {
             if netuid == SN0 {
                 Stake::<T>::get(who)
+            } else if T::Alpha::active() {
+                T::Alpha::alpha_stake(netuid, who)
             } else {
                 SubnetStake::<T>::get(netuid, who)
             }
@@ -520,7 +576,14 @@ pub mod pallet {
             } else {
                 Subnets::<T>::iter_keys()
                     .filter(|n| *n != SN0)
-                    .map(|n| (n, SubnetTotalStake::<T>::get(n)))
+                    .map(|n| {
+                        let st = if T::Alpha::active() {
+                            T::Alpha::stake_ict(n)
+                        } else {
+                            SubnetTotalStake::<T>::get(n)
+                        };
+                        (n, st)
+                    })
                     .filter(|(_, st)| *st > 0)
                     .collect()
             };
@@ -661,7 +724,13 @@ pub mod pallet {
                 T::MaxValidatorPpm::get() as u128,
             );
             let pot_acct = T::SubnetPot::get();
+            let alpha = netuid != SN0 && T::Alpha::active();
+            let epoch_blocks = <T as pallet_weights::Config>::EpochLength::get() as u32;
             if slice == 0 || out.incentive.iter().all(|x| *x == 0) {
+                if alpha {
+                    // Alpha is issued every epoch; with nobody paid its bonus goes to the stock
+                    T::Alpha::on_epoch(netuid, epoch_blocks, &[], &[]);
+                }
                 if netuid == SN0 {
                     pallet_subnet_registry::Pallet::<T>::note_sn0_epoch(0);
                     Self::deposit_event(Event::EpochSkipped { epoch: we });
@@ -695,6 +764,8 @@ pub mod pallet {
                 .unwrap_or(0);
             let to_validators = slice.saturating_sub(to_miners).saturating_sub(owner_part);
             let mut miners = 0u32;
+            let mut miners_paid: Vec<(T::AccountId, u128)> = Vec::new();
+            let mut validators_paid: Vec<(T::AccountId, u128)> = Vec::new();
             for (uid, inc) in out.incentive.iter().enumerate() {
                 if *inc == 0 {
                     continue;
@@ -709,16 +780,34 @@ pub mod pallet {
                     if Self::pay(&pot_acct, &hk, amt, launch, netuid == SN0) {
                         paid += amt;
                         miners += 1;
+                        if alpha {
+                            miners_paid.push((hk, amt));
+                        }
                     }
                 }
             }
             let mut vals = 0u32;
             for (i, d) in out.dividends.iter().enumerate() {
                 let amt = mul_div(to_validators, *d, PPM);
-                if amt > 0 && Self::pay(&pot_acct, &validators[i], amt, launch, false) {
+                if amt == 0 {
+                    continue;
+                }
+                let ok = if alpha {
+                    // the validator's take, the rest as ICT dividends to its Alpha stakers
+                    T::Alpha::pay_validator(netuid, &pot_acct, &validators[i], amt)
+                } else {
+                    Self::pay(&pot_acct, &validators[i], amt, launch, false)
+                };
+                if ok {
                     paid += amt;
                     vals += 1;
+                    if alpha {
+                        validators_paid.push((validators[i].clone(), amt));
+                    }
                 }
+            }
+            if alpha {
+                T::Alpha::on_epoch(netuid, epoch_blocks, &miners_paid, &validators_paid);
             }
             if netuid == SN0 {
                 // Counts towards the SN1 unlock criterion (300 active miners, 30-day average).
@@ -745,11 +834,20 @@ pub mod pallet {
 
     impl<T: Config> pallet_subnet_registry::SubnetStakeInfo<T::AccountId> for Pallet<T> {
         fn stake_of(netuid: u16, who: &T::AccountId) -> u128 {
+            if netuid != SN0 && T::Alpha::active() {
+                T::Alpha::staker_alpha(netuid, who)
+            } else {
+                Self::stake_on(netuid, who)
+            }
+        }
+        fn validator_stake(netuid: u16, who: &T::AccountId) -> u128 {
             Self::stake_on(netuid, who)
         }
         fn total(netuid: u16) -> u128 {
             if netuid == SN0 {
                 TotalStake::<T>::get()
+            } else if T::Alpha::active() {
+                T::Alpha::total_alpha(netuid)
             } else {
                 SubnetTotalStake::<T>::get(netuid)
             }
@@ -779,6 +877,7 @@ pub mod pallet {
             }
             SubnetTotalStake::<T>::remove(netuid);
             LastActiveStake::<T>::remove(netuid);
+            T::Alpha::subnet_removed(netuid);
             Self::deposit_event(Event::SubnetStakeReleased {
                 netuid,
                 stakers,

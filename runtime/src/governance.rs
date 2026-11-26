@@ -497,6 +497,10 @@ impl pallet_subnet_registry::UnlockSignals for GovernanceSignals {
         }
         n
     }
+    fn alpha_installed() -> bool {
+        // the subnet pools pallet is part of this runtime
+        true
+    }
 }
 
 // ---------------------------------------------------------------- end of the launch period

@@ -1,14 +1,15 @@
 //! # Subnet registry pallet (spec Section 4, subnet registration specification of 25 Nov 2026)
 //!
 //! - SN0 exists from genesis and has no owner.
-//! - Subnet registration unlocks by itself, in the first daily check where all four criteria
+//! - Subnet registration unlocks by itself, in the first daily check where all five criteria
 //!   hold: day 180, at least 300 active SN0 miners as a 30-day average, sudo removed with at
-//!   least 3 approved referenda, and the Base swap contract attested by governance as audited
-//!   and immutable. Nobody switches it on.
+//!   least 3 approved referenda, the Base swap contract attested by governance as audited
+//!   and immutable, and the Alpha module installed. Nobody switches it on.
 //! - Slots are sold by Dutch auction (see `ict_economics::registry`): SN1 starts at
 //!   50,000 ICT, later slots at 4 x the previous sale price, falling 25 % a day to a floor.
 //!   The buyer publishes name, description and the hash of the incentive code in the same call.
-//! - The payment is not refunded: half to the treasury, half burned.
+//! - The payment is not refunded: half is burned; the other half goes to the subnet's Alpha
+//!   pool once the Alpha module is installed (to the treasury before that).
 //! - One slot at a time: the next auction starts `MinSpacing` (60 days) after a sale, and only
 //!   while fewer than `MaxSubnets` (8) subnets exist. A new subnet cannot be deregistered for
 //!   180 days.
@@ -42,6 +43,8 @@ pub trait UnlockSignals {
     fn sudo_removed() -> bool;
     /// Number of approved referenda, counted up to `at_least` (counting may stop there).
     fn approved_referenda(at_least: u32) -> u32;
+    /// True once the Alpha module (subnet pools) is part of the runtime.
+    fn alpha_installed() -> bool;
 }
 
 impl UnlockSignals for () {
@@ -50,6 +53,26 @@ impl UnlockSignals for () {
     }
     fn approved_referenda(_at_least: u32) -> u32 {
         0
+    }
+    fn alpha_installed() -> bool {
+        false
+    }
+}
+
+/// Where the pool half of a slot payment goes (implemented by the Alpha module).
+pub trait SubnetSale<AccountId> {
+    /// True if sold subnets get an Alpha pool; otherwise the half goes to the treasury.
+    fn pools_installed() -> bool;
+    /// Register the pool of `netuid`, moving `amount` ICT from `buyer` into it.
+    fn subnet_sold(netuid: u16, buyer: &AccountId, amount: u128) -> polkadot_sdk::sp_runtime::DispatchResult;
+}
+
+impl<AccountId> SubnetSale<AccountId> for () {
+    fn pools_installed() -> bool {
+        false
+    }
+    fn subnet_sold(_netuid: u16, _buyer: &AccountId, _amount: u128) -> polkadot_sdk::sp_runtime::DispatchResult {
+        Ok(())
     }
 }
 
@@ -61,6 +84,12 @@ pub trait SubnetStakeInfo<AccountId> {
     /// Stake of the validators whose weights counted in the subnet's last settled epoch
     /// (falls back to the total before any epoch is settled).
     fn active(netuid: u16) -> u128;
+    /// Stake behind a validator hotkey, for failed-work reports. With ICT staking it is the
+    /// same as `stake_of`; with Alpha it is all Alpha staked on the hotkey, while `stake_of`
+    /// is the account's own Alpha, for votes.
+    fn validator_stake(netuid: u16, who: &AccountId) -> u128 {
+        Self::stake_of(netuid, who)
+    }
 }
 
 impl<AccountId> SubnetStakeInfo<AccountId> for () {
@@ -86,7 +115,7 @@ impl OnSubnetRemoved for () {
 
 #[polkadot_sdk::frame_support::pallet]
 pub mod pallet {
-    use crate::{OnSubnetRemoved, SubnetStakeInfo, UnlockSignals, WeightInfo};
+    use crate::{OnSubnetRemoved, SubnetSale, SubnetStakeInfo, UnlockSignals, WeightInfo};
     use ict_economics::registry::{auction_price, floor_price, payment_split, start_price};
     use ict_economics::BLOCKS_PER_DAY;
     use polkadot_sdk::frame_support::{
@@ -227,6 +256,8 @@ pub mod pallet {
         pub approved_referenda: u32,
         pub min_referenda: u32,
         pub swap_attested: bool,
+        /// The Alpha module is installed (fifth criterion, decided 26 Nov 2026).
+        pub alpha_installed: bool,
     }
 
     // ------------------------------------------------------------ subnet control
@@ -389,6 +420,8 @@ pub mod pallet {
         type OnRemoved: OnSubnetRemoved;
         /// Stake per subnet (consensus), for subnet DAO votes and failed-work reports.
         type StakeInfo: SubnetStakeInfo<Self::AccountId>;
+        /// The Alpha module, which receives the pool half of each slot payment.
+        type Sale: SubnetSale<Self::AccountId>;
         /// Burned fee to register a neuron.
         #[pallet::constant]
         type NeuronFee: Get<u128>;
@@ -711,7 +744,8 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        /// A slot was bought. `to_treasury` went to the treasury, `burned` was burned.
+        /// A slot was bought. `to_treasury` went to the treasury (0 once the Alpha module is
+        /// installed: that half went to the subnet's pool), `burned` was burned.
         SubnetRegistered {
             netuid: NetUid,
             owner: T::AccountId,
@@ -905,8 +939,9 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Buy the slot on auction at the current price, publishing the subnet's name,
-        /// description and incentive-code hash. Half the price goes to the treasury and half
-        /// is burned; none of it is refunded.
+        /// description and incentive-code hash. Half the price is burned and half goes to the
+        /// subnet's Alpha pool (to the treasury if the Alpha module is not installed); none of
+        /// it is refunded.
         #[pallet::call_index(0)]
         #[pallet::weight(<T as Config>::WeightInfo::register_subnet())]
         pub fn register_subnet(
@@ -934,13 +969,15 @@ pub mod pallet {
             };
             let netuid = Self::next_free_netuid().ok_or(Error::<T>::TooManySubnets)?;
 
-            let (to_treasury, burned) = payment_split(price);
-            T::Currency::transfer(
-                &who,
-                &T::TreasuryAccount::get(),
-                to_treasury,
-                Preservation::Preserve,
-            )?;
+            let (half, burned) = payment_split(price);
+            let to_treasury = if T::Sale::pools_installed() {
+                // the subnet's Alpha pool holds this half until it opens (spec Section 7)
+                T::Sale::subnet_sold(netuid, &who, half)?;
+                0
+            } else {
+                T::Currency::transfer(&who, &T::TreasuryAccount::get(), half, Preservation::Preserve)?;
+                half
+            };
             T::Currency::burn_from(
                 &who,
                 burned,
@@ -1460,7 +1497,7 @@ pub mod pallet {
             let params = Self::params(netuid);
             ensure!(params.penalties, Error::<T>::PenaltiesOff);
             ensure!(
-                T::StakeInfo::stake_of(netuid, &who) > 0,
+                T::StakeInfo::validator_stake(netuid, &who) > 0,
                 Error::<T>::NotStaker
             );
             let hotkey = Neurons::<T>::get(netuid, uid).ok_or(Error::<T>::NotRegistered)?;
@@ -1486,7 +1523,7 @@ pub mod pallet {
             // Reporter stake counted as it stands now, so moved stake cannot count twice.
             let reported: u128 = reporters
                 .iter()
-                .map(|r| T::StakeInfo::stake_of(netuid, r))
+                .map(|r| T::StakeInfo::validator_stake(netuid, r))
                 .fold(0, |a, b| a.saturating_add(b));
             // Lost payout: at least half of the stake active in the last settled epoch.
             let quorum =
@@ -1685,6 +1722,7 @@ pub mod pallet {
                 approved_referenda: T::Unlock::approved_referenda(UNLOCK_MIN_REFERENDA),
                 min_referenda: UNLOCK_MIN_REFERENDA,
                 swap_attested: SwapAttested::<T>::exists(),
+                alpha_installed: T::Unlock::alpha_installed(),
             }
         }
 
@@ -1695,6 +1733,7 @@ pub mod pallet {
                 && s.sudo_removed
                 && s.approved_referenda >= s.min_referenda
                 && s.swap_attested
+                && s.alpha_installed
         }
 
         /// Unlock if all criteria hold. The SN1 auction starts in the same block.

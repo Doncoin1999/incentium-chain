@@ -87,6 +87,8 @@ pub trait PoolsInterface<AccountId> {
     fn alpha_stake(netuid: NetUid, hotkey: &AccountId) -> u128;
     /// All Alpha staked in `netuid`.
     fn total_alpha_stake(netuid: NetUid) -> u128;
+    /// Alpha `staker` holds in `netuid`, on all hotkeys (votes in a subnet DAO).
+    fn staker_alpha(netuid: NetUid, staker: &AccountId) -> u128;
 }
 
 #[polkadot_sdk::frame_support::pallet]
@@ -258,6 +260,11 @@ pub mod pallet {
     /// All Alpha staked in a subnet.
     #[pallet::storage]
     pub type TotalStake<T> = StorageMap<_, Twox64Concat, NetUid, u128, ValueQuery>;
+
+    /// Alpha each staker holds in a subnet, on all hotkeys (votes in a subnet DAO).
+    #[pallet::storage]
+    pub type StakerStake<T: Config> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Blake2_128Concat, T::AccountId, u128, ValueQuery>;
 
     /// Dividends per Alpha staked on a hotkey, accumulated (ICT base units x ACC_SCALE).
     #[pallet::storage]
@@ -679,6 +686,7 @@ pub mod pallet {
             Self::settle(netuid, hotkey, staker);
             Positions::<T>::mutate((netuid, hotkey, staker), |p| *p += a);
             HotkeyStake::<T>::mutate(netuid, hotkey, |p| *p += a);
+            StakerStake::<T>::mutate(netuid, staker, |p| *p += a);
             TotalStake::<T>::mutate(netuid, |p| *p += a);
             Self::set_debt(netuid, hotkey, staker, Positions::<T>::get((netuid, hotkey, staker)));
         }
@@ -690,6 +698,10 @@ pub mod pallet {
                 *p = if v == 0 { None } else { Some(v) };
             });
             HotkeyStake::<T>::mutate_exists(netuid, hotkey, |p| {
+                let v = p.unwrap_or(0).saturating_sub(a);
+                *p = if v == 0 { None } else { Some(v) };
+            });
+            StakerStake::<T>::mutate_exists(netuid, staker, |p| {
                 let v = p.unwrap_or(0).saturating_sub(a);
                 *p = if v == 0 { None } else { Some(v) };
             });
@@ -750,7 +762,7 @@ pub mod pallet {
     impl<T: Config> PoolsInterface<T::AccountId> for Pallet<T> {
         fn register_pool(netuid: NetUid, from: &T::AccountId, reserved_ict: u128) -> DispatchResult {
             ensure!(!Pools::<T>::contains_key(netuid), Error::<T>::PoolExists);
-            T::Currency::transfer(from, &Self::pool_account(netuid), reserved_ict, Preservation::Expendable)?;
+            T::Currency::transfer(from, &Self::pool_account(netuid), reserved_ict, Preservation::Preserve)?;
             let bonus_ppm = NextBonusPpm::<T>::get();
             let mut st = PoolState { bonus_ppm, opened: Self::now(), ..Default::default() };
             st.set_pool(AlphaPool::new(reserved_ict));
@@ -870,6 +882,10 @@ pub mod pallet {
 
         fn total_alpha_stake(netuid: NetUid) -> u128 {
             TotalStake::<T>::get(netuid)
+        }
+
+        fn staker_alpha(netuid: NetUid, staker: &T::AccountId) -> u128 {
+            StakerStake::<T>::get(netuid, staker)
         }
     }
 }

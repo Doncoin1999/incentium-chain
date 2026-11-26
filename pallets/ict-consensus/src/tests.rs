@@ -504,3 +504,121 @@ fn a_queue_left_over_settles_at_the_next_epoch_start() {
         assert_eq!(q.len(), 1);
     });
 }
+
+// ---------------------------------------------------------------- with the Alpha module
+
+fn alpha_on() {
+    ALPHA_ON.with(|a| *a.borrow_mut() = true);
+}
+
+#[test]
+fn with_alpha_the_pot_is_shared_by_the_ict_in_each_pool() {
+    new_test_ext().execute_with(|| {
+        alpha_on();
+        unlock_at(1);
+        add_subnet(1);
+        add_subnet(2);
+        // old ICT stake no longer counts
+        SubnetTotalStake::<Test>::insert(2, 1_000_000);
+        ALPHA_ICT.with(|m| {
+            m.borrow_mut().insert(1, 3_000);
+            m.borrow_mut().insert(2, 1_000);
+        });
+        System::set_block_number(1 + 400 * 7_200);
+        let a = Consensus::allocation(900_000);
+        let of = |n: u16| a.iter().find(|(k, _)| *k == n).map(|x| x.1).unwrap();
+        assert!(close(of(1), 3 * of(2)), "{a:?}");
+    });
+}
+
+#[test]
+fn with_alpha_validators_weigh_by_alpha_and_are_paid_through_the_pool() {
+    new_test_ext().execute_with(|| {
+        alpha_on();
+        add_subnet(1);
+        for a in 5..=7u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), 1, a));
+        }
+        // no ICT stake at all: the weight is the Alpha staked on hotkey 5
+        ALPHA_STAKE.with(|m| m.borrow_mut().insert((1, 5), 10_000));
+        ALPHA_ICT.with(|m| m.borrow_mut().insert(1, 5_000));
+        unlock_at(0);
+        let b = 200 * 7_200u64;
+        System::set_block_number(b);
+        let epoch = Weights::current_epoch();
+        commit_on(1, 5, vec![1, 2], vec![3, 1]);
+        System::set_block_number(b + 10);
+        reveal_on(1, 5, vec![1, 2], vec![3, 1]);
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), POT, 900_000));
+        let (o, m6, v5) = (Balances::free_balance(OWNER), Balances::free_balance(6), Balances::free_balance(5));
+        Consensus::settle(epoch);
+        let slice = 900_000u128 * 444_444 / 1_000_000;
+        // owner 12 % and miners 50 % as before, in ICT
+        assert_eq!(Balances::free_balance(OWNER) - o, slice * 120_000 / 1_000_000);
+        assert!(Balances::free_balance(6) > m6);
+        // the validator's 38 % goes through the pool, not straight to the hotkey
+        assert_eq!(Balances::free_balance(5), v5);
+        let paid = ALPHA_PAID.with(|p| p.borrow().clone());
+        assert_eq!(paid.len(), 1);
+        assert_eq!((paid[0].0, paid[0].1), (1, 5));
+        assert!(close(paid[0].2, slice * 380_000 / 1_000_000));
+        assert!(close(Balances::free_balance(DIVS), paid[0].2));
+        // one epoch of Alpha issued, with the bonus by the same ICT payments
+        let eps = ALPHA_EPOCHS.with(|e| e.borrow().clone());
+        assert_eq!(eps.len(), 1);
+        let (net, blocks, miners, vals) = &eps[0];
+        assert_eq!((*net, *blocks), (1, <Test as pallet_weights::Config>::EpochLength::get() as u32));
+        assert_eq!(miners.len(), 2);
+        assert_eq!(vals, &vec![(5u64, paid[0].2)]);
+    });
+}
+
+#[test]
+fn with_alpha_an_epoch_without_weights_still_issues_alpha() {
+    new_test_ext().execute_with(|| {
+        alpha_on();
+        add_subnet(1);
+        ALPHA_ICT.with(|m| m.borrow_mut().insert(1, 5_000));
+        unlock_at(0);
+        System::set_block_number(200 * 7_200);
+        let epoch = Weights::current_epoch();
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), POT, 900_000));
+        Consensus::settle(epoch);
+        let eps = ALPHA_EPOCHS.with(|e| e.borrow().clone());
+        assert_eq!(eps.len(), 1);
+        assert!(eps[0].2.is_empty() && eps[0].3.is_empty());
+    });
+}
+
+#[test]
+fn with_alpha_subnet_ict_staking_is_closed_and_stake_means_alpha() {
+    new_test_ext().execute_with(|| {
+        add_subnet(1);
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(5), 1, 5));
+        alpha_on();
+        assert_noop!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 1_000), Error::<Test>::UseAlphaPools);
+        ALPHA_STAKE.with(|m| m.borrow_mut().insert((1, 5), 900));
+        ALPHA_OWN.with(|m| {
+            m.borrow_mut().insert((1, 5), 100);
+            m.borrow_mut().insert((1, 8), 800);
+        });
+        use pallet_subnet_registry::SubnetStakeInfo;
+        // votes count an account's own Alpha; reports count all Alpha on a validator
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::stake_of(1, &8), 800);
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::stake_of(1, &5), 100);
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::validator_stake(1, &5), 900);
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::total(1), 900);
+        // SN0 is unchanged
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::stake_of(0, &5), 0);
+    });
+}
+
+#[test]
+fn with_alpha_closing_a_subnet_tells_the_pool() {
+    new_test_ext().execute_with(|| {
+        alpha_on();
+        add_subnet(1);
+        <Consensus as pallet_subnet_registry::OnSubnetRemoved>::subnet_removed(1);
+        assert_eq!(ALPHA_REMOVED.with(|r| r.borrow().clone()), vec![1]);
+    });
+}

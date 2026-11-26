@@ -84,11 +84,12 @@ fn all_criteria_but(skip: u8) {
             audit_hash: [2; 32],
         });
     }
+    AlphaInstalled::set(skip != 6);
 }
 
 #[test]
-fn unlock_needs_all_four_criteria() {
-    for skip in 1..=5u8 {
+fn unlock_needs_all_five_criteria() {
+    for skip in 1..=6u8 {
         new_test_ext(false).execute_with(|| {
             all_criteria_but(skip);
             assert_noop!(
@@ -876,5 +877,31 @@ fn a_small_reporter_alone_does_not_penalise() {
             [0; 32]
         ));
         assert!(!Registry::is_work_penalized(1, 5, 0)); // 499 of 1,000 < half
+    });
+}
+
+#[test]
+fn with_the_alpha_module_half_the_sale_goes_to_the_pool_and_half_is_burned() {
+    new_test_ext(true).execute_with(|| {
+        PoolsOn::set(true);
+        AuctionStart::<Test>::put(1);
+        let (alice, treasury, issuance) =
+            (Balances::free_balance(ALICE), Balances::free_balance(TREASURY), Balances::total_issuance());
+        assert_ok!(reg(ALICE, u128::MAX));
+        assert_eq!(Balances::free_balance(ALICE), alice - 50_000 * UNIT);
+        assert_eq!(Balances::free_balance(POOLS), 25_000 * UNIT);
+        assert_eq!(Balances::free_balance(TREASURY), treasury);
+        assert_eq!(Balances::total_issuance(), issuance - 25_000 * UNIT);
+        PoolsOn::set(false);
+    });
+}
+
+#[test]
+fn the_unlock_status_shows_the_alpha_criterion() {
+    new_test_ext(false).execute_with(|| {
+        AlphaInstalled::set(false);
+        assert!(!Registry::unlock_status().alpha_installed);
+        AlphaInstalled::set(true);
+        assert!(Registry::unlock_status().alpha_installed);
     });
 }
