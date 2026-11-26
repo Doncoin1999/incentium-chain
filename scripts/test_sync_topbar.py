@@ -18,9 +18,13 @@ def test_top_bar_links_home_and_to_every_site():
     assert 'class="ic-brand" href="https://incentium.org/"' in bar
     assert "incentium-mark.svg" in bar
     for url in ("https://incentium.org/mine/", "https://chat.incentium.org/", "https://explorer.incentium.org/",
-                "https://faucet.incentium.org/", "https://auth.incentium.org/admin", "https://incentium.org/spec/",
-                "https://incentium.org/whitepaper/", "https://incentium.org/events/"):
+                "https://faucet.incentium.org/", "https://incentium.org/spec/", "https://trade.incentium.org/",
+                "https://incentium.org/whitepaper/", "https://incentium.org/events/", "https://incentium.org/subnets/",
+                "https://incentium.org/pools/", "https://incentium.org/validators/", "https://incentium.org/governance/"):
         assert url in bar
+    # six main tabs; Admin lives in the footer, not in the top bar
+    assert bar.count('class="ic-tab"') == 6
+    assert "auth.incentium.org/admin" not in bar and "auth.incentium.org/admin" in S.partial("footer")
     for rel in S.PAGES:
         assert 'class="ic-brand" href="https://incentium.org/"' in open(os.path.join(S.ROOT, rel)).read(), rel
 

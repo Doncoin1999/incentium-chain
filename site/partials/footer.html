@@ -1,34 +1,54 @@
 <style>
 /* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
-   python3 scripts/sync_topbar.py. */
+   python3 scripts/sync_topbar.py. Its columns follow the six tabs of the top bar. */
 .ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 22px 40px; align-items: flex-start; }
 .ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
 .ic-foot .ic-fbrand img { width: 24px; height: 22px; }
-.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav { flex: 1; display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 18px 24px; }
+.ic-foot nav div { display: flex; flex-direction: column; gap: 4px; }
+.ic-foot nav h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a93a6; }
 .ic-foot nav a { color: #c3cad8; text-decoration: none; }
 .ic-foot nav a:hover { color: #e8a33d; }
 .ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+.ic-foot p a { color: #8a93a6; }
+@media (max-width: 900px) { .ic-foot nav { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
+@media (max-width: 480px) { .ic-foot nav { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
 </style>
 <footer class="ic-foot">
   <div class="ic-in">
     <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
     <nav aria-label="Incentium sites">
-      <a href="https://incentium.org/">Home</a>
-      <a href="https://incentium.org/mine/">Mine ICT</a>
-      <a href="https://chat.incentium.org/">Chat</a>
-      <a href="https://explorer.incentium.org/">Explorer</a>
-      <a href="https://incentium.org/subnets/">Subnets</a>
-      <a href="https://incentium.org/pools/">Subnet-pools</a>
-      <a href="https://incentium.org/validators/">Validators</a>
-      <a href="https://incentium.org/governance/">Governance</a>
-      <a href="https://faucet.incentium.org/">Faucet</a>
-      <a href="https://incentium.org/whitepaper/">Whitepaper</a>
-      <a href="https://incentium.org/spec/">Technical specification</a>
-      <a href="https://incentium.org/events/">Events &amp; Presentations</a>
-      <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
-      <a href="https://auth.incentium.org/admin">Admin</a>
+      <div><h4>Use</h4>
+        <a href="https://chat.incentium.org/">Chat</a>
+        <a href="https://trade.incentium.org/">Trade</a>
+        <a href="https://faucet.incentium.org/">Faucet</a>
+      </div>
+      <div><h4>Earn</h4>
+        <a href="https://incentium.org/mine/">Mine ICT</a>
+        <a href="https://incentium.org/subnets/">Subnets</a>
+        <a href="https://incentium.org/pools/">Subnet-pools</a>
+      </div>
+      <div><h4>Network</h4>
+        <a href="https://explorer.incentium.org/">Explorer</a>
+        <a href="https://incentium.org/validators/">Validators</a>
+        <a href="https://incentium.org/#network">Network info</a>
+      </div>
+      <div><h4>Govern</h4>
+        <a href="https://incentium.org/governance/">Referenda</a>
+        <a href="https://incentium.org/subnets/#criteria">SN1 unlock progress</a>
+      </div>
+      <div><h4>Learn</h4>
+        <a href="https://incentium.org/whitepaper/">Whitepaper</a>
+        <a href="https://incentium.org/spec/">Technical specification</a>
+        <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
+      </div>
+      <div><h4>About</h4>
+        <a href="https://incentium.org/events/">Events &amp; Presentations</a>
+        <a href="https://incentium.org/brand/incentium-logo-white-on-black.svg">Brand kit</a>
+        <a href="mailto:mail@incentium.org">Contact</a>
+      </div>
     </nav>
-    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value. · <a href="https://auth.incentium.org/admin">Admin</a></p>
   </div>
 </footer>

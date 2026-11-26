@@ -12,55 +12,180 @@
 <!-- ic:topbar -->
 <style>
 /* Incentium top bar: the same on every incentium.org site. Edit site/partials/topbar.html, then run
-   python3 scripts/sync_topbar.py (pages served by Python read this file when they start). */
-.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 20; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 28px; }
+   python3 scripts/sync_topbar.py (pages served by Python read this file when they start).
+   Six main tabs with menus; planned pages are shown as "soon" so the structure has room for them. */
+.ic-top { display: block; margin: 0; padding: 0; gap: 0; flex: none; position: relative; z-index: 50; background: #161b26; border-bottom: 1px solid #2f3749; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+.ic-top *, .ic-top *::before, .ic-top *::after { box-sizing: border-box; }
+.ic-top .ic-in { max-width: 1280px; margin: 0 auto; padding: 0 24px; height: 56px; display: flex; align-items: center; gap: 20px; }
 .ic-brand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; flex: none; }
 .ic-brand img { width: 30px; height: 28px; display: block; }
 .ic-brand span { font: 600 20px/1 "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; letter-spacing: .01em; }
 .ic-brand:hover span { color: #e8a33d; }
-.ic-nav { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; margin-left: auto; }
-.ic-nav::-webkit-scrollbar { display: none; }
-.ic-nav a { color: #97a1b4; text-decoration: none; padding: 7px 12px; border-radius: 7px; white-space: nowrap; font-size: 14.5px; }
-.ic-nav a:hover { color: #e9ecf2; background: #222a3a; }
-.ic-nav .ic-short { display: none; }
-/* thirteen tabs: short labels and tighter spacing at every width */
-.ic-nav .ic-long { display: none; } .ic-nav .ic-short { display: inline; }
-.ic-nav a { padding: 7px 8px; } .ic-top .ic-in { gap: 16px; }
-@media (max-width: 1300px) { .ic-nav { gap: 0; } .ic-nav a { padding: 6px 6px; font-size: 14px; } }
-@media (max-width: 1140px) { .ic-nav a { padding: 6px 4px; font-size: 13px; } .ic-top .ic-in { gap: 10px; } }
-.ic-nav a.ic-admin { margin-left: 8px; border: 1px solid #2f3749; }
-.ic-nav a:focus-visible, .ic-brand:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
-body[data-site="mine"] .ic-nav a[data-site="mine"], body[data-site="chat"] .ic-nav a[data-site="chat"],
-body[data-site="explorer"] .ic-nav a[data-site="explorer"], body[data-site="faucet"] .ic-nav a[data-site="faucet"],
-body[data-site="home"] .ic-nav a[data-site="home"], body[data-site="admin"] .ic-nav a[data-site="admin"], body[data-site="spec"] .ic-nav a[data-site="spec"],
-body[data-site="whitepaper"] .ic-nav a[data-site="whitepaper"], body[data-site="events"] .ic-nav a[data-site="events"],
-body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"] .ic-nav a[data-site="pools"], body[data-site="validators"] .ic-nav a[data-site="validators"], body[data-site="governance"] .ic-nav a[data-site="governance"] { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
-@media (max-width: 640px) { .ic-top .ic-in { padding: 0 14px; gap: 12px; } .ic-brand span { font-size: 18px; } .ic-nav a { padding: 7px 9px; } }
-@media (max-width: 480px) { .ic-brand span { display: none; } .ic-nav a { padding: 7px 8px; font-size: 14px; } }
+.ic-nav { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.ic-grp { position: relative; }
+.ic-tab { display: flex; align-items: center; gap: 6px; background: none; border: 0; margin: 0; color: #97a1b4; font: inherit; font-size: 15px; padding: 8px 12px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.ic-tab::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); opacity: .7; }
+.ic-tab:hover, .ic-grp.ic-open .ic-tab { color: #e9ecf2; background: #222a3a; }
+.ic-grp.ic-cur .ic-tab { color: #e8a33d; box-shadow: inset 0 -2px 0 #e8a33d; border-radius: 7px 7px 0 0; }
+.ic-menu { display: none; position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); min-width: 270px; padding: 8px; background: #1b2130; border: 1px solid #2f3749; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
+.ic-menu::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; } /* keeps hover across the gap */
+.ic-grp.ic-open .ic-menu { display: block; }
+.ic-grp:nth-last-child(-n+2) .ic-menu { left: auto; right: 0; transform: none; } /* stay inside the window */
+@media (hover: hover) and (min-width: 901px) { .ic-grp:hover .ic-menu, .ic-grp:focus-within .ic-menu { display: block; } }
+.ic-menu a, .ic-menu .ic-soon { display: block; padding: 8px 12px; border-radius: 7px; text-decoration: none; color: #e9ecf2; font-size: 14.5px; }
+.ic-menu a small, .ic-menu .ic-soon small { display: block; color: #8a93a6; font-size: 12.5px; margin-top: 1px; }
+.ic-menu a:hover { background: #262e40; }
+.ic-menu a:hover b { color: #e8a33d; }
+.ic-menu b { font-weight: 600; }
+.ic-menu a.ic-cur b { color: #e8a33d; }
+.ic-menu .ic-soon { color: #6f7889; cursor: default; }
+.ic-menu .ic-soon b::after { content: "soon"; margin-left: 8px; padding: 1px 6px; border: 1px solid #3a4357; border-radius: 9px; font-size: 11px; font-weight: 500; color: #8a93a6; vertical-align: 1px; }
+.ic-net { display: flex; flex: none; border: 1px solid #2f3749; border-radius: 8px; overflow: hidden; margin-left: 8px; }
+.ic-net a { color: #97a1b4; text-decoration: none; font-size: 13px; padding: 5px 10px; }
+.ic-net a:hover { color: #e9ecf2; background: #222a3a; }
+.ic-net a.ic-on { color: #161b26; background: #e8a33d; font-weight: 600; }
+.ic-net[hidden] { display: none; }
+.ic-burger { display: none; margin-left: auto; background: none; border: 1px solid #2f3749; border-radius: 8px; color: #e9ecf2; font: inherit; font-size: 14.5px; padding: 6px 12px; cursor: pointer; }
+.ic-top a:focus-visible, .ic-top button:focus-visible { outline: 2px solid #e8a33d; outline-offset: 2px; }
+@media (max-width: 900px) {
+  .ic-top .ic-in { padding: 0 14px; gap: 12px; }
+  .ic-burger { display: block; }
+  .ic-net { margin-left: 0; }
+  .ic-nav { display: none; position: absolute; left: 0; right: 0; top: 56px; flex-direction: column; align-items: stretch; gap: 0; padding: 8px 14px 14px; background: #161b26; border-bottom: 1px solid #2f3749; max-height: calc(100vh - 56px); overflow-y: auto; }
+  .ic-top.ic-mob .ic-nav { display: flex; }
+  .ic-tab { width: 100%; justify-content: space-between; padding: 12px 6px; font-size: 16px; border-radius: 0; border-bottom: 1px solid #222a3a; }
+  .ic-grp.ic-cur .ic-tab { box-shadow: none; border-radius: 0; }
+  .ic-menu { position: static; transform: none; min-width: 0; border: 0; box-shadow: none; background: none; padding: 4px 0 8px 8px; }
+}
+@media (max-width: 480px) { .ic-brand span { display: none; } }
 </style>
 <header class="ic-top">
   <div class="ic-in">
     <a class="ic-brand" href="https://incentium.org/" aria-label="Incentium home">
       <img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="30" height="28"><span>Incentium</span>
     </a>
-    <nav class="ic-nav" aria-label="Incentium">
-      <a href="https://incentium.org/mine/" data-site="mine">Mine</a>
-      <a href="https://chat.incentium.org/" data-site="chat">Chat</a>
-      <a href="https://explorer.incentium.org/" data-site="explorer">Explorer</a>
-      <a href="https://incentium.org/subnets/" data-site="subnets">Subnets</a>
-      <a href="https://incentium.org/pools/" data-site="pools">Subnet-pools</a>
-      <a href="https://incentium.org/validators/" data-site="validators">Validators</a>
-      <a href="https://incentium.org/governance/" data-site="governance">Governance</a>
-      <a href="https://faucet.incentium.org/" data-site="faucet">Faucet</a>
-      <a href="https://incentium.org/whitepaper/" data-site="whitepaper">Whitepaper</a>
-      <a href="https://incentium.org/spec/" data-site="spec">Tech spec</a>
-      <a href="https://incentium.org/events/" data-site="events"><span class="ic-long">Events &amp; Presentations</span><span class="ic-short">Events</span></a>
-      <a href="https://git.incentium.org/incentium/incentium-chain">Code</a>
-      <a href="https://auth.incentium.org/admin" data-site="admin" class="ic-admin">Admin</a>
+    <button class="ic-burger" type="button" aria-expanded="false" aria-controls="ic-nav">Menu</button>
+    <nav class="ic-nav" id="ic-nav" aria-label="Incentium">
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">Use</button>
+        <div class="ic-menu">
+          <a href="https://chat.incentium.org/" data-site="chat"><b>Chat</b><small>Ask the network's AI models</small></a>
+          <a href="https://trade.incentium.org/" data-site="trade"><b>Trade</b><small>ICT ⇄ USDC, wallet to wallet</small></a>
+          <span class="ic-soon"><b>Wallet</b><small>Accounts, balances and transfers</small></span>
+          <a href="https://faucet.incentium.org/" data-site="faucet"><b>Faucet</b><small>Free testnet ICT</small></a>
+        </div>
+      </div>
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">Earn</button>
+        <div class="ic-menu">
+          <a href="https://incentium.org/mine/" data-site="mine"><b>Mine ICT</b><small>Run a miner on your own computer</small></a>
+          <span class="ic-soon"><b>Run a validator</b><small>Produce blocks and validate SN0</small></span>
+          <a href="https://incentium.org/subnets/" data-site="subnets"><b>Subnets</b><small>Mine or validate in a subnet</small></a>
+          <a href="https://incentium.org/pools/" data-site="pools"><b>Subnet-pools</b><small>Stake ICT in a subnet's Alpha</small></a>
+        </div>
+      </div>
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">Network</button>
+        <div class="ic-menu">
+          <a href="https://explorer.incentium.org/" data-site="explorer"><b>Explorer</b><small>Blocks, accounts and transfers</small></a>
+          <a href="https://incentium.org/validators/" data-site="validators"><b>Validators</b><small>Who produces the blocks</small></a>
+          <span class="ic-soon"><b>Status</b><small>Is the network healthy right now</small></span>
+          <a href="https://incentium.org/#network"><b>Network info</b><small>RPC endpoints, chain ID, bootnodes</small></a>
+        </div>
+      </div>
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">Govern</button>
+        <div class="ic-menu">
+          <a href="https://incentium.org/governance/" data-site="governance"><b>Referenda</b><small>Proposals and votes</small></a>
+          <span class="ic-soon"><b>Treasury &amp; bounties</b><small>What the treasury holds and pays for</small></span>
+          <a href="https://incentium.org/subnets/#criteria"><b>SN1 unlock progress</b><small>The open criteria for the first subnet</small></a>
+          <span class="ic-soon"><b>Parameters</b><small>Settings governance can change</small></span>
+        </div>
+      </div>
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">Learn</button>
+        <div class="ic-menu">
+          <a href="https://incentium.org/whitepaper/" data-site="whitepaper"><b>Whitepaper</b><small>Why Incentium, and how it works</small></a>
+          <a href="https://incentium.org/spec/" data-site="spec"><b>Technical specification</b><small>The protocol in detail</small></a>
+          <span class="ic-soon"><b>Research</b><small>Models, simulations and analyses</small></span>
+          <span class="ic-soon"><b>Guides</b><small>Step by step, for every role</small></span>
+          <a href="https://git.incentium.org/incentium/incentium-chain"><b>Source code</b><small>Open source, on git.incentium.org</small></a>
+        </div>
+      </div>
+      <div class="ic-grp">
+        <button class="ic-tab" type="button" aria-expanded="false">About</button>
+        <div class="ic-menu">
+          <span class="ic-soon"><b>News</b><small>Updates from the network</small></span>
+          <a href="https://incentium.org/events/" data-site="events"><b>Events &amp; Presentations</b><small>Talks, slides and meetings</small></a>
+          <span class="ic-soon"><b>Incentium Labs</b><small>The company that helps the protocol grow</small></span>
+          <a href="https://incentium.org/brand/incentium-logo-white-on-black.svg"><b>Brand kit</b><small>Logo files</small></a>
+          <a href="mailto:mail@incentium.org"><b>Contact</b><small>mail@incentium.org</small></a>
+        </div>
+      </div>
     </nav>
+    <div class="ic-net" hidden aria-label="Network"><a href="#" data-net="">Mainnet</a><a href="#" data-net="testnet">Testnet</a></div>
   </div>
 </header>
+<script>
+(function () {
+  var top = document.currentScript && document.currentScript.previousElementSibling;
+  if (!top || !top.classList.contains("ic-top")) top = document.querySelector(".ic-top");
+  if (!top) return;
+  var groups = top.querySelectorAll(".ic-grp");
+  function closeAll(except) {
+    groups.forEach(function (g) { if (g !== except) { g.classList.remove("ic-open"); g.querySelector(".ic-tab").setAttribute("aria-expanded", "false"); } });
+  }
+  groups.forEach(function (g) {
+    var tab = g.querySelector(".ic-tab");
+    tab.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var open = !g.classList.contains("ic-open");
+      closeAll(g);
+      g.classList.toggle("ic-open", open);
+      tab.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  });
+  document.addEventListener("click", function (e) { if (!top.contains(e.target)) { closeAll(); top.classList.remove("ic-mob"); } });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closeAll(); top.classList.remove("ic-mob"); } });
+  var burger = top.querySelector(".ic-burger");
+  burger.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var on = top.classList.toggle("ic-mob");
+    burger.setAttribute("aria-expanded", on ? "true" : "false");
+    burger.textContent = on ? "Close" : "Menu";
+  });
+  // The current page: mark its menu item and its main tab.
+  function markCurrent() {
+    var site = document.body && document.body.getAttribute("data-site");
+    if (!site) return;
+    var a = top.querySelector('.ic-menu a[data-site="' + site + '"]');
+    if (a) { a.classList.add("ic-cur"); a.setAttribute("aria-current", "page"); a.closest(".ic-grp").classList.add("ic-cur"); }
+  }
+  if (document.body) markCurrent(); else document.addEventListener("DOMContentLoaded", markCurrent);
+  // Mainnet / Testnet: shown on the pages that read ?net=testnet; the choice follows the
+  // links to the other incentium.org pages.
+  var NET_PAGES = ["/subnets/", "/pools/", "/validators/", "/governance/"];
+  var here = location.hostname === "incentium.org" || location.hostname === "www.incentium.org";
+  var testnet = new URLSearchParams(location.search).get("net") === "testnet";
+  if (here && NET_PAGES.indexOf(location.pathname) >= 0) {
+    var net = top.querySelector(".ic-net");
+    net.hidden = false;
+    net.querySelectorAll("a").forEach(function (a) {
+      var want = a.getAttribute("data-net");
+      var u = new URL(location.href);
+      if (want) u.searchParams.set("net", want); else u.searchParams.delete("net");
+      a.href = u.pathname + u.search + u.hash;
+      if ((want === "testnet") === testnet) { a.classList.add("ic-on"); a.setAttribute("aria-current", "true"); }
+    });
+  }
+  if (testnet) {
+    top.querySelectorAll('.ic-menu a[href^="https://incentium.org/"]').forEach(function (a) {
+      var u = new URL(a.href);
+      if (NET_PAGES.indexOf(u.pathname) >= 0) { u.searchParams.set("net", "testnet"); a.href = u.href; }
+    });
+  }
+})();
+</script>
 <!-- /ic:topbar -->
 <header class="top">
   <div class="wrap">
@@ -89,36 +214,56 @@ body[data-site="subnets"] .ic-nav a[data-site="subnets"], body[data-site="pools"
 <!-- ic:footer -->
 <style>
 /* Incentium footer: the same on every incentium.org page. Edit site/partials/footer.html, then run
-   python3 scripts/sync_topbar.py. */
+   python3 scripts/sync_topbar.py. Its columns follow the six tabs of the top bar. */
 .ic-foot { border-top: 1px solid #2f3749; background: #161b26; color: #97a1b4; font: 14px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 18px 40px; align-items: flex-start; }
+.ic-foot .ic-in { max-width: 1280px; margin: 0 auto; padding: 28px 24px 36px; display: flex; flex-wrap: wrap; gap: 22px 40px; align-items: flex-start; }
 .ic-foot .ic-fbrand { display: flex; align-items: center; gap: 10px; color: #e9ecf2; text-decoration: none; font: 600 17px/1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; }
 .ic-foot .ic-fbrand img { width: 24px; height: 22px; }
-.ic-foot nav { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ic-foot nav { flex: 1; display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 18px 24px; }
+.ic-foot nav div { display: flex; flex-direction: column; gap: 4px; }
+.ic-foot nav h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #8a93a6; }
 .ic-foot nav a { color: #c3cad8; text-decoration: none; }
 .ic-foot nav a:hover { color: #e8a33d; }
 .ic-foot p { flex-basis: 100%; margin: 0; max-width: 60em; font-size: 13px; }
+.ic-foot p a { color: #8a93a6; }
+@media (max-width: 900px) { .ic-foot nav { grid-template-columns: repeat(3, minmax(120px, 1fr)); } }
+@media (max-width: 480px) { .ic-foot nav { grid-template-columns: repeat(2, minmax(120px, 1fr)); } }
 </style>
 <footer class="ic-foot">
   <div class="ic-in">
     <a class="ic-fbrand" href="https://incentium.org/"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="24" height="22">Incentium</a>
     <nav aria-label="Incentium sites">
-      <a href="https://incentium.org/">Home</a>
-      <a href="https://incentium.org/mine/">Mine ICT</a>
-      <a href="https://chat.incentium.org/">Chat</a>
-      <a href="https://explorer.incentium.org/">Explorer</a>
-      <a href="https://incentium.org/subnets/">Subnets</a>
-      <a href="https://incentium.org/pools/">Subnet-pools</a>
-      <a href="https://incentium.org/validators/">Validators</a>
-      <a href="https://incentium.org/governance/">Governance</a>
-      <a href="https://faucet.incentium.org/">Faucet</a>
-      <a href="https://incentium.org/whitepaper/">Whitepaper</a>
-      <a href="https://incentium.org/spec/">Technical specification</a>
-      <a href="https://incentium.org/events/">Events &amp; Presentations</a>
-      <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
-      <a href="https://auth.incentium.org/admin">Admin</a>
+      <div><h4>Use</h4>
+        <a href="https://chat.incentium.org/">Chat</a>
+        <a href="https://trade.incentium.org/">Trade</a>
+        <a href="https://faucet.incentium.org/">Faucet</a>
+      </div>
+      <div><h4>Earn</h4>
+        <a href="https://incentium.org/mine/">Mine ICT</a>
+        <a href="https://incentium.org/subnets/">Subnets</a>
+        <a href="https://incentium.org/pools/">Subnet-pools</a>
+      </div>
+      <div><h4>Network</h4>
+        <a href="https://explorer.incentium.org/">Explorer</a>
+        <a href="https://incentium.org/validators/">Validators</a>
+        <a href="https://incentium.org/#network">Network info</a>
+      </div>
+      <div><h4>Govern</h4>
+        <a href="https://incentium.org/governance/">Referenda</a>
+        <a href="https://incentium.org/subnets/#criteria">SN1 unlock progress</a>
+      </div>
+      <div><h4>Learn</h4>
+        <a href="https://incentium.org/whitepaper/">Whitepaper</a>
+        <a href="https://incentium.org/spec/">Technical specification</a>
+        <a href="https://git.incentium.org/incentium/incentium-chain">Source code</a>
+      </div>
+      <div><h4>About</h4>
+        <a href="https://incentium.org/events/">Events &amp; Presentations</a>
+        <a href="https://incentium.org/brand/incentium-logo-white-on-black.svg">Brand kit</a>
+        <a href="mailto:mail@incentium.org">Contact</a>
+      </div>
     </nav>
-    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value.</p>
+    <p>Incentium is open-source software, published and run by no company or foundation. Nothing here is an offer to sell or a solicitation to buy anything. Test ICT has no value. · <a href="https://auth.incentium.org/admin">Admin</a></p>
   </div>
 </footer>
 <!-- /ic:footer -->
