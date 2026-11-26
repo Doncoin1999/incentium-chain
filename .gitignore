@@ -5,4 +5,6 @@
 /out
 devnet-raw.json
 incentium-mainnet*.json
+# public raw chain specs that new nodes start from (checked: no secrets)
+!chain-specs/*.json
 keys.json
