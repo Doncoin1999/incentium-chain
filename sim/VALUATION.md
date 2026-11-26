@@ -71,5 +71,5 @@ market cap, Cointelegraph/The Block on the December 2025 halving (3,600 TAO a da
 One subnet at a time with a fixed share of issuance (in the chain, the share follows the ICT in the
 pool, which adds a feedback loop; whitepaper 7.1 averages it over 90 days). Traders are rational and
 move 30 % of the way to value a day; no speculation, no panics (see sim/RESULTS.md for runs). Revenue in
-A+R is an assumption (Bittensor's subnet revenue in Q1 2026 was estimated, unaudited, at about a third
-of the value of its issuance).
+A+R is an assumption (Bittensor's subnet revenue in Q1 2026 was estimated, unaudited, at about $43M;
+by our rough calculation, about a third of the value of the TAO issued that quarter).
