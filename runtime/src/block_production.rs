@@ -57,7 +57,8 @@ where
     RuntimeCall: From<C>,
 {
     fn create_bare(call: RuntimeCall) -> UncheckedExtrinsic {
-        UncheckedExtrinsic::new_bare(call)
+        // the plain format, converted (the testnet wraps it for EVM transactions)
+        sp_runtime::generic::UncheckedExtrinsic::new_bare(call).into()
     }
 }
 
