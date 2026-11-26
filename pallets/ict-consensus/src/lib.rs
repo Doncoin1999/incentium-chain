@@ -688,8 +688,14 @@ pub mod pallet {
             let mut validators: Vec<T::AccountId> = Vec::new();
             let mut stakes: Vec<u128> = Vec::new();
             let mut matrix: Vec<Vec<u128>> = Vec::new();
+            // A new Alpha subnet has no Alpha yet, so no validator would count and nobody would
+            // ever be paid the bonus that creates the first Alpha. Until some Alpha is staked
+            // in the subnet, every validator that revealed weights counts equally.
+            let alpha_bootstrap = netuid != SN0
+                && T::Alpha::active(netuid)
+                && T::Alpha::total_alpha(netuid) == 0;
             for (v, row) in rows {
-                let st = Self::stake_on(netuid, &v);
+                let st = if alpha_bootstrap { 1 } else { Self::stake_on(netuid, &v) };
                 if st == 0 || pallet_work_verify::Pallet::<T>::is_banned(&v) {
                     continue;
                 }
