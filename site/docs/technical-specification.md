@@ -301,14 +301,14 @@ Settlement is spread over the epoch: the epoch's first block shares the pot and 
 
 - Pool account derived from the netuid (`PalletId` + netuid); no private key; no call moves funds out except a swap. Changing the rules takes a runtime upgrade.
 - **Closed period.** For `OpenAfter` = 72,000 blocks (10 days) after `opened`: no swaps; `W` collects; bonus Alpha is credited but cannot be unstaked; the treasury half of the sale price is held in the pool account as `reserved_ict` and counts as the subnet's stake for the issuance share.
-- **Opening.** At block `opened + OpenAfter`, compute p₀ on chain:
+- **Opening.** At block `opened + OpenAfter`, compute p₀ on chain (`ict_economics::alpha::start_price`): the present value of the ICT an Alpha is expected to pay, from the opening day over 20 years in monthly steps, each month's ICT divided over all Alpha issued to the subnet by the middle of that month (fully diluted):
 
-  p₀ = Σ over years y = 0..19 of  h · E / Nsub · 365 · 2^(−⌊(t₀ + 365y) / 1460⌋) / S_y · (1 + r)^(−y)
+  p₀ = Σ over months m = 0..239 of  h · E · 30 · 2^(−halvings by then) / S(10 + 30m + 15) · (1 + r/12)^(−m)
 
-  with h = 0.38 × (1 − 0.18), E = the ICT per day for subnets other than SN0, Nsub = the number of such subnets including this one, t₀ = days since ICT's first block, S_y = Alpha issued to the subnet by the middle of year y (fully diluted), r = `RequiredReturn` (200,000 ppm; Parameters track). Then ICT reserve x = min(`reserved_ict`, 36,000 Alpha × p₀), Alpha reserve y = x / p₀ moved from `W`; `reserved_ict − x` goes to the treasury.
+  with h = 0.38 × (1 − 0.18), E = the ICT a day the average subnet other than SN0 receives now (all issuance less the fund, less SN0's half, divided by the number of such subnets), S(d) = Alpha issued by day d, r = `RequiredReturn` (200,000 ppm; Parameters track). With 10 subnets this gives about 0.054 ICT per Alpha. Then ICT reserve x = min(`reserved_ict`, 36,000 Alpha × p₀, waiting stock × p₀), Alpha reserve y = x / p₀ moved from `W`; `reserved_ict − x` goes to the treasury. A pool with no issued Alpha yet stays closed.
 - Constant product x · y = k on real reserves only; price = x / y ICT per Alpha. No virtual reserves.
 - **Staking is buying.** `stake(netuid, hotkey, ict_in, min_alpha_out)` swaps ICT for Alpha and credits it as stake on `hotkey`; `unstake(netuid, hotkey, alpha_in, min_ict_out)` sells it back. A swap that would return less than its minimum fails; there are no partial fills.
-- **Stock release.** Each block after opening, release from `W` to the Alpha reserve up to the block's share of daily issuance plus at most the same again from what was held back, unless the price is below 80% of its 30-day average (`HoldBackPpm` = 200,000), in which case nothing is released that block. The 30-day average is kept as a running sum of one price sample per 600 blocks.
+- **Stock release.** Each block after opening, release from `W` to the Alpha reserve up to the block's share of daily issuance plus at most the same again from what was held back, unless the price is below 80% of its 30-day average (`HoldBackPpm` = 200,000), in which case nothing is released that block. The 30-day average is the mean of one price sample a day over the last 30 days.
 - Fee 0.5% on every swap, in the input asset; half burned, half left in the pool.
 - **Removed subnet:** issuance stops; `W` is burned; the owner's unvested Alpha is burned; `unstake` keeps working.
 
