@@ -12,7 +12,7 @@ const ABI = [
   "function cancelBuy(bytes32 id)",
   "function lock(bytes32 incOrderId,uint8 fill,bytes32 hash,address payee,uint128 qty,uint128 price,uint64 expiry) returns (bytes32)",
   "function locks(bytes32) view returns (uint8 state,uint64 expiry,address taker,address payee,uint128 qty,uint128 amount,bytes32 hash,bytes32 incOrderId,uint8 fill)",
-  "function reservations(bytes32,uint8) view returns (uint8 state,uint64 expiry,address payee,uint128 qty,uint128 amount,address depositor,uint8 depositState,uint64 disputeUntil,uint128 deposit)",
+  "function reservations(bytes32,uint8) view returns (uint8 state,uint64 expiry,address payee,uint128 qty,uint128 amount,address depositor,uint8 depositState,uint128 deposit)",
   "function orderId(address maker,uint256 nonce) pure returns (bytes32)",
   "function lockId(address taker,bytes32 incOrderId,uint8 fill) pure returns (bytes32)",
   "function maxOrderQty() view returns (uint256)",
@@ -151,7 +151,7 @@ async function bookPage() {
       <td><button class="btn" data-act="fill" data-chain="${o.chain}" data-id="${o.id}">${side === "sell" ? "Buy" : "Sell"}</button></td></tr>`).join("")
     : `<tr><td colspan="6" class="muted">No orders.</td></tr>`;
   app.innerHTML = `
-  <div class="headrow"><h1>ICT ⇄ USDC</h1><p class="muted" style="margin:0;font-size:14px">USDC on Base · prices in USDC per ICT · fee 0.1%</p></div>
+  <div class="headrow"><h1>ICT ⇄ USDC</h1><p class="muted" style="margin:0;font-size:14px">USDC on Base · prices in USDC per ICT · no fee</p></div>
   <div class="grid2">
     <section class="panel"><div class="bar"><h2>Sell orders (ICT on Incentium)</h2><a class="btn" href="#/new">Place order</a></div>
       <div class="scroll"><table><thead><tr><th class="num">Price</th><th class="num">ICT</th><th class="num">USDC</th><th>Ends in</th><th>Fills</th><th></th></tr></thead><tbody>${rows(b.sells, "sell")}</tbody></table></div></section>
@@ -265,7 +265,7 @@ async function fillDialog(chain, id) {
     <p class="muted" style="font-size:14px">Price ${price(o.price)} USDC per ICT · up to ${ict(o.remaining)} ICT.
     ${selling ? "You lock ICT on Incentium; the buyer's USDC is reserved for you on Base. You receive it when the buyer confirms (within 12 h), otherwise your ICT comes back."
               : "You lock USDC on Base; the seller's ICT is reserved for you on Incentium. You receive it when the seller confirms (within 12 h), otherwise your USDC comes back."}</p>
-    <p class="muted" style="font-size:14px">The keeper pays a small reservation deposit for you (2 % of the fill, at least ${selling ? "0.5 USDC" : "2 ICT"}). It is returned when the trade completes, or when you paid and the other side did not confirm. If you reserve and never lock, it goes to the order's maker.</p>
+    <p class="muted" style="font-size:14px">The keeper pays a small reservation deposit for you (2 % of the fill, at least ${selling ? "0.5 USDC" : "2 ICT"}). It is returned when the trade completes. If the reservation runs out without a completed trade, it is burned: nobody receives it.</p>
     <form class="fields" data-form="fill" data-chain="${chain}" data-id="${id}">
       <label>Quantity (ICT)<input name="qty" inputmode="decimal" required></label>
       <label>${selling ? "Base address to receive USDC" : "Incentium address to receive ICT"}<input name="recipient" class="mono" required value="${esc(selling ? state.base?.address || "" : state.inc?.address || "")}"></label>
@@ -438,7 +438,7 @@ function howPage() {
     <li><b>The maker confirms</b> with one click. That reveals the fill's secret and pays the maker.</li>
     <li><b>The same secret releases the taker's side.</b> The keeper does it at once; anyone can.</li>
   </ol>
-  <p class="muted" style="margin:0">No bridge and no custodian. Funds only move to addresses fixed when the order, reservation or lock was made. Orders are limited to 100 ICT until day 90, 1,000 ICT until day 120 and 5,000 ICT after. Fee 0.1% of the USDC side.</p></section>`;
+  <p class="muted" style="margin:0">No bridge and no custodian. Funds only move to addresses fixed when the order, reservation or lock was made. Orders are limited to 100 ICT until day 90, 1,000 ICT until day 120 and 5,000 ICT after. No trading fee; you pay only the network fees on each chain.</p></section>`;
 }
 
 // ------------------------------------------------------------------ router and events

@@ -40,9 +40,6 @@ contract IncentiumSwapTest is Test {
     address buyer = address(0xB0B);
     address seller = address(0x5E11);
     address keeper = address(0x4EE9);
-    address fees = address(0xFEE);
-    address guardian = address(0x6A2D);
-    address arbiter = address(0xA2B1);
     bytes32 constant ICT_RECIPIENT = bytes32(uint256(0x1234));
     uint256 constant GENESIS = 1_795_000_000;
     uint128 constant ICT = 1e9;
@@ -51,7 +48,7 @@ contract IncentiumSwapTest is Test {
     function setUp() public {
         vm.warp(GENESIS + 2 days);
         usdc = new MockUSDC();
-        swap = new IncentiumSwap(usdc, GENESIS, fees, guardian, arbiter);
+        swap = new IncentiumSwap(usdc, GENESIS);
         usdc.mint(buyer, 1_000_000e6);
         vm.prank(buyer);
         usdc.approve(address(swap), type(uint256).max);
@@ -145,17 +142,14 @@ contract IncentiumSwapTest is Test {
         // the reservation still completes after the cancel
         vm.prank(keeper);
         swap.claimReservation(id, 0, secret(0));
-        assertEq(usdc.balanceOf(seller), 10e6 - 10_000); // 0.1 % fee
-        assertEq(swap.accruedFees(), 10_000); // fees accrue (review fix M8)
-        swap.withdrawFees();
-        assertEq(usdc.balanceOf(fees), 10_000);
+        assertEq(usdc.balanceOf(seller), 10e6); // no fee
         assertEq(usdc.balanceOf(keeper), 1_000e6); // deposit returned
         assertEq(usdc.balanceOf(address(swap)), 0);
     }
 
     // ---------------------------------------------------------------- reservations
 
-    function test_reserve_and_claim_pays_seller_minus_fee() public {
+    function test_reserve_and_claim_pays_seller_in_full() public {
         bytes32 id = place(100 * ICT);
         vm.prank(keeper);
         swap.reserve(id, 3, 60 * ICT, seller); // 15 USDC
@@ -164,9 +158,7 @@ contract IncentiumSwapTest is Test {
         swap.claimReservation(id, 3, secret(4));
         vm.prank(keeper);
         swap.claimReservation(id, 3, secret(3));
-        assertEq(usdc.balanceOf(seller), 15e6 - 15_000);
-        swap.withdrawFees();
-        assertEq(usdc.balanceOf(fees), 15_000);
+        assertEq(usdc.balanceOf(seller), 15e6);
         vm.expectRevert(IncentiumSwap.NotActive.selector);
         swap.claimReservation(id, 3, secret(3));
     }
@@ -220,7 +212,8 @@ contract IncentiumSwapTest is Test {
         uint256 before = usdc.balanceOf(buyer);
         swap.expireReservation(id, 0); // 10 USDC back to the maker
         assertEq(usdc.balanceOf(buyer) - before, 10e6);
-        assertEq(usdc.balanceOf(address(swap)), 5e5); // only the disputable deposit is left
+        assertEq(usdc.balanceOf(address(swap)), 5e5); // only the burned 0.5 USDC deposit is left
+        assertEq(swap.burnedDeposits(), 5e5);
     }
 
     function test_no_reserve_after_expiry_or_over_remaining() public {
@@ -247,7 +240,7 @@ contract IncentiumSwapTest is Test {
         assertEq(usdc.balanceOf(address(swap)), 20e6);
         vm.prank(keeper);
         swap.claimLock(id, secret(5));
-        assertEq(usdc.balanceOf(seller), 20e6 - 20_000);
+        assertEq(usdc.balanceOf(seller), 20e6);
         vm.expectRevert(IncentiumSwap.NotActive.selector);
         swap.refundLock(id);
     }
@@ -277,29 +270,22 @@ contract IncentiumSwapTest is Test {
         vm.stopPrank();
     }
 
-    // ---------------------------------------------------------------- pause
+    // ---------------------------------------------------------------- no privileged address
 
-    function test_pause_stops_new_business_only() public {
-        bytes32 id = place(100 * ICT);
-        swap.reserve(id, 0, 40 * ICT, seller);
-        bytes32 l = lockFor(12 hours);
-        vm.expectRevert(IncentiumSwap.NotGuardian.selector);
-        swap.setPaused(true);
-        vm.prank(guardian);
-        swap.setPaused(true);
-        vm.expectRevert(IncentiumSwap.IsPaused.selector);
-        swap.reserve(id, 1, 20 * ICT, seller);
-        bytes32[16] memory h = hashesFor();
-        vm.prank(buyer);
-        vm.expectRevert(IncentiumSwap.IsPaused.selector);
-        swap.placeBuy(2, 50 * ICT, PRICE, ICT_RECIPIENT, uint64(block.timestamp + 1 hours), h);
-        // everything that settles or returns funds still works
-        swap.claimReservation(id, 0, secret(0));
-        swap.claimLock(l, secret(5));
-        vm.prank(buyer);
-        swap.cancelBuy(id);
-        swap.withdrawFees();
-        assertEq(usdc.balanceOf(address(swap)), 0);
+    function test_no_fee_no_pause_no_privileged_calls() public {
+        // The v1 selectors for fees, pause and the deposit arbiter are gone.
+        bytes4[6] memory gone = [
+            bytes4(keccak256("withdrawFees()")),
+            bytes4(keccak256("setPaused(bool)")),
+            bytes4(keccak256("returnDeposit(bytes32,uint8)")),
+            bytes4(keccak256("payDepositToMaker(bytes32,uint8)")),
+            bytes4(keccak256("feeRecipient()")),
+            bytes4(keccak256("pauseGuardian()"))
+        ];
+        for (uint256 i = 0; i < gone.length; i++) {
+            (bool ok,) = address(swap).call(abi.encodeWithSelector(gone[i]));
+            assertFalse(ok);
+        }
     }
 
     // ---------------------------------------------------------------- fuzz: money is conserved
@@ -323,16 +309,11 @@ contract IncentiumSwapTest is Test {
         vm.warp(block.timestamp + 48 hours);
         (,, bool open,,,,,,,) = swap.buyOrders(id);
         if (open) swap.refundExpired(id);
-        // unclaimed reservations' deposits go to the maker after the dispute window
-        for (uint8 i = 0; i < nFills; i++) {
-            (,,,,,, IncentiumSwap.DepositState ds,,) = swap.reservations(id, i);
-            if (ds == IncentiumSwap.DepositState.Disputable) swap.payDepositToMaker(id, i);
-        }
-        swap.withdrawFees();
+        // deposits of unclaimed reservations were burned at expiry
         assertEq(
-            usdc.balanceOf(seller) + usdc.balanceOf(fees) + usdc.balanceOf(buyer) + usdc.balanceOf(address(this)),
+            usdc.balanceOf(seller) + swap.burnedDeposits() + usdc.balanceOf(buyer) + usdc.balanceOf(address(this)),
             1_000_000e6 + 1_000e6
         );
-        assertEq(usdc.balanceOf(address(swap)), 0);
+        assertEq(usdc.balanceOf(address(swap)), swap.burnedDeposits());
     }
 }

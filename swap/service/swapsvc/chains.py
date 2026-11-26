@@ -109,10 +109,8 @@ class Incentium:
                 store.deposit_held(con, "inc", hx(a["order"]), a["fill"], a["depositor"], a["deposit"])
             elif name == "DepositReturned":
                 store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "returned")
-            elif name == "DepositPaidToMaker":
-                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "paid_to_maker")
-            if name == "ReservationExpired":
-                store.deposit_disputable(con, "inc", hx(a["order"]), a["fill"], ts)
+            elif name == "DepositBurned":
+                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "burned")
             count += 1
         return count
 
@@ -230,10 +228,8 @@ class Base:
             store.deposit_held(con, "base", hx(a["orderId"]), a["fill"], a["depositor"].lower(), a["deposit"])
         elif name == "DepositReturned":
             store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "returned")
-        elif name == "DepositPaidToMaker":
-            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "paid_to_maker")
-        if name == "ReservationExpired":
-            store.deposit_disputable(con, "base", hx(a["orderId"]), a["fill"], ts)
+        elif name == "DepositBurned":
+            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "burned")
 
     def sync(self, con, start: int, step: int = 2000) -> int:
         nxt = store.get_meta(con, "base_next", start)
@@ -267,7 +263,7 @@ class Base:
     def reservation(self, oid: str, fill: int):
         r = self.c.functions.reservations(bytes.fromhex(oid[2:]), fill).call()
         return dict(zip(["state", "expiry", "payee", "qty", "amount", "depositor", "depositState",
-                         "disputeUntil", "deposit"], r))
+                         "deposit"], r))
 
     def order(self, oid: str):
         r = self.c.functions.buyOrders(bytes.fromhex(oid[2:])).call()

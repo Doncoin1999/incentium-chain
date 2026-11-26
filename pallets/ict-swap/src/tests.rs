@@ -1,6 +1,6 @@
 #![allow(deprecated)] // ValidateUnsigned, see lib.rs
 use crate::{
-    mock::*, DepositArbiter, DepositState, Downtime, Error, HoldReason, LastBlockTime, Locks,
+    mock::*, DepositState, Downtime, Error, HoldReason, LastBlockTime, Locks,
     Reservations, SellOrders, State, Terms, MAX_FILLS,
 };
 use polkadot_sdk::frame_support::pallet_prelude::ValidateUnsigned;
@@ -513,7 +513,10 @@ fn ict_is_conserved_over_many_fills() {
         advance(2 * DAY);
         assert_ok!(Swap::refund_expired(RuntimeOrigin::none(), order));
         assert_eq!(held(SELLER), 0);
-        assert_eq!(Balances::total_issuance(), total_before);
+        assert_eq!(held(KEEPER), 0);
+        // the two expired reservations' deposits (2 ICT each, paid by the keeper) were burned
+        assert_eq!(Balances::total_issuance(), total_before - 4 * ICT);
+        assert_eq!(Balances::total_balance(&KEEPER), 10 * ICT - 4 * ICT);
         assert_eq!(Balances::total_balance(&BUYER), 10_060 * ICT);
         assert_eq!(Balances::total_balance(&SELLER), 9_940 * ICT);
     });
@@ -645,58 +648,15 @@ fn h2_one_open_reservation_per_recipient() {
 }
 
 #[test]
-fn h2_arbiter_returns_deposit_when_the_maker_did_not_confirm() {
+fn h2_unclaimed_deposit_is_burned_and_nobody_gains() {
     new_test_ext().execute_with(|| {
-        assert_ok!(Swap::set_deposit_arbiter(
-            RuntimeOrigin::root(),
-            Some(KEEPER)
-        ));
-        let order = place(100 * ICT);
-        assert_ok!(Swap::reserve(
-            RuntimeOrigin::signed(BUYER),
-            order,
-            0,
-            40 * ICT,
-            BUYER
-        ));
-        advance(19 * 3600);
-        assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
-        assert_eq!(held(BUYER), 2 * ICT); // still held during the window
-        assert_noop!(
-            Swap::return_deposit(RuntimeOrigin::signed(SELLER), order, 0),
-            Error::<Test>::NotArbiter
-        );
-        assert_noop!(
-            Swap::pay_deposit_to_maker(RuntimeOrigin::none(), order, 0),
-            Error::<Test>::TooEarly
-        );
-        assert_ok!(Swap::return_deposit(
-            RuntimeOrigin::signed(KEEPER),
-            order,
-            0
-        ));
-        assert_eq!(held(BUYER), 0);
-        assert_eq!(Balances::total_balance(&BUYER), 10_000 * ICT);
-        assert_noop!(
-            Swap::pay_deposit_to_maker(RuntimeOrigin::none(), order, 0),
-            Error::<Test>::BadDepositState
-        );
-    });
-}
-
-#[test]
-fn h2_unclaimed_deposit_goes_to_the_maker_after_the_window() {
-    new_test_ext().execute_with(|| {
-        assert_ok!(Swap::set_deposit_arbiter(
-            RuntimeOrigin::root(),
-            Some(KEEPER)
-        ));
         let order = place(100 * ICT);
         let griefer = 7u64;
         let _ = <Balances as polkadot_sdk::frame_support::traits::fungible::Mutate<u64>>::mint_into(
             &griefer,
             10 * ICT,
         );
+        let issuance = Balances::total_issuance();
         assert_ok!(Swap::reserve(
             RuntimeOrigin::signed(griefer),
             order,
@@ -706,35 +666,57 @@ fn h2_unclaimed_deposit_goes_to_the_maker_after_the_window() {
         ));
         assert_eq!(held(griefer), 2 * ICT);
         advance(19 * 3600);
-        assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
-        advance(24 * 3600);
-        assert_noop!(
-            Swap::return_deposit(RuntimeOrigin::signed(KEEPER), order, 0),
-            Error::<Test>::BadDepositState
-        );
-        // anyone, unsigned, after the window
-        let call = crate::Call::<Test>::pay_deposit_to_maker { order, fill: 0 };
+        // anyone, unsigned, may expire it
+        let call = crate::Call::<Test>::expire_reservation { order, fill: 0 };
         #[allow(deprecated)]
         let valid = Swap::validate_unsigned(
             polkadot_sdk::sp_runtime::transaction_validity::TransactionSource::External,
             &call,
         );
         assert!(valid.is_ok());
-        assert_ok!(Swap::pay_deposit_to_maker(RuntimeOrigin::none(), order, 0));
-        assert_eq!(Balances::total_balance(&griefer), 8 * ICT);
-        assert_eq!(Balances::total_balance(&SELLER), 10_002 * ICT);
+        assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
         assert_eq!(held(griefer), 0);
+        assert_eq!(Balances::total_balance(&griefer), 8 * ICT);
+        assert_eq!(Balances::total_balance(&SELLER), 10_000 * ICT); // maker gains nothing
+        assert_eq!(Balances::total_issuance(), issuance - 2 * ICT); // burned
+        assert_eq!(
+            Terms::<Test>::get(order, 0).unwrap().deposit_state,
+            DepositState::Burned
+        );
+        System::assert_has_event(RuntimeEvent::Swap(crate::Event::DepositBurned {
+            order,
+            fill: 0,
+            amount: 2 * ICT,
+        }));
+        // the quantity went back to the order: it can be reserved again
+        assert_ok!(Swap::reserve(
+            RuntimeOrigin::signed(KEEPER),
+            order,
+            1,
+            100 * ICT,
+            BUYER
+        ));
     });
 }
 
 #[test]
-fn h2_only_root_sets_the_arbiter() {
+fn h2_burn_also_when_the_order_has_ended() {
     new_test_ext().execute_with(|| {
-        assert!(Swap::set_deposit_arbiter(RuntimeOrigin::signed(KEEPER), Some(KEEPER)).is_err());
-        assert_ok!(Swap::set_deposit_arbiter(
-            RuntimeOrigin::root(),
-            Some(KEEPER)
+        let order = place(100 * ICT);
+        advance(20 * 3600);
+        assert_ok!(Swap::reserve(
+            RuntimeOrigin::signed(BUYER),
+            order,
+            0,
+            40 * ICT,
+            BUYER
         ));
-        assert_eq!(DepositArbiter::<Test>::get(), Some(KEEPER));
+        advance(19 * 3600);
+        assert_ok!(Swap::refund_expired(RuntimeOrigin::none(), order));
+        assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
+        assert_eq!(held(BUYER), 0);
+        assert_eq!(Balances::total_balance(&BUYER), 10_000 * ICT - 2 * ICT);
+        assert_eq!(Balances::total_balance(&SELLER), 10_000 * ICT); // all 100 ICT back to the maker
+        assert_eq!(held(SELLER), 0);
     });
 }

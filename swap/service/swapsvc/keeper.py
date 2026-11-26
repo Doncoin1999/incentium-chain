@@ -62,7 +62,6 @@ class Keeper:
             self.base.sync(self.con, self.cfg.get("base_start", 0))
             self.relay_secrets()
             self.expire_things()
-            self.settle_deposits()
 
     def run(self):
         while True:
@@ -130,33 +129,6 @@ class Keeper:
                         self._try(lambda: client.send("refund_expired", {"order": o["id"]}), "refund order")
                     else:
                         self._try(lambda: client.send("refundExpired", bytes.fromhex(o["id"][2:])), "refund order")
-
-    def settle_deposits(self):
-        """Deposits of unclaimed reservations (review fix H2). As the deposit arbiter, return a deposit
-        when the taker did lock on the other chain (only the maker's confirmation was missing); after
-        the dispute window, pay the others to the maker. Every decision can be checked by anyone from
-        the two chains' public data."""
-        t_inc, t_base = self.inc.now(), self.base.now()
-        for d in store.disputable_deposits(self.con):
-            chain, oid, fill = d["chain"], d["order_id"], d["fill"]
-            now = t_inc if chain == "inc" else t_base
-            h = json.loads(d["hashes"])[fill]
-            paid = store.taker_paid(self.con, chain, oid, fill, h, d["maker_recipient"], d["qty"], d["usdc"])
-            if paid and now < d["dispute_until"] - 600:
-                if self._once_per(f"{chain}-ret-{oid}-{fill}"):
-                    if chain == "inc":
-                        self._try(lambda: self.inc.send("return_deposit", {"order": oid, "fill": fill}, signed=True),
-                                  "return deposit")
-                    else:
-                        self._try(lambda: self.base.send("returnDeposit", bytes.fromhex(oid[2:]), fill), "return deposit")
-            elif not paid and now >= d["dispute_until"]:
-                if self._once_per(f"{chain}-pay-{oid}-{fill}"):
-                    if chain == "inc":
-                        self._try(lambda: self.inc.send("pay_deposit_to_maker", {"order": oid, "fill": fill}),
-                                  "deposit to maker")
-                    else:
-                        self._try(lambda: self.base.send("payDepositToMaker", bytes.fromhex(oid[2:]), fill),
-                                  "deposit to maker")
 
     def _try(self, fn, what):
         try:

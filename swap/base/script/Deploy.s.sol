@@ -7,19 +7,14 @@ import {IncentiumSwap, IERC20} from "../src/IncentiumSwap.sol";
 /// Deploy IncentiumSwap.
 ///   USDC            USDC on Base: 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 (Base Sepolia: 0x036CbD53842c5426634e7929541eC2318f3dCF7e)
 ///   GENESIS_TIME    unix time of Incentium mainnet block 1 (explorer: /api/block/1 -> ts)
-///   FEE_RECIPIENT   governance multisig on Base that receives the 0.1 % fee
-///   PAUSE_GUARDIAN  multisig that may pause new orders, reservations and locks
-///   DEPOSIT_ARBITER keeper address that may return deposits of unclaimed reservations (24 h window)
+/// The contract has no fee, no pause and no privileged address; the deployer gets no rights.
 /// forge script script/Deploy.s.sol --rpc-url $BASE_RPC --broadcast --private-key $DEPLOYER_KEY
 contract Deploy is Script {
     function run() external returns (IncentiumSwap swap) {
         address usdc = vm.envAddress("USDC");
         uint256 genesis = vm.envUint("GENESIS_TIME");
-        address feeRecipient = vm.envAddress("FEE_RECIPIENT");
-        address guardian = vm.envAddress("PAUSE_GUARDIAN");
-        address arbiter = vm.envAddress("DEPOSIT_ARBITER");
         vm.startBroadcast();
-        swap = new IncentiumSwap(IERC20(usdc), genesis, feeRecipient, guardian, arbiter);
+        swap = new IncentiumSwap(IERC20(usdc), genesis);
         vm.stopBroadcast();
         console.log("IncentiumSwap deployed at", address(swap));
     }

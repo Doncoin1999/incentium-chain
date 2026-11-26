@@ -19,15 +19,14 @@ contract BlacklistUSDC is MockUSDC {
     }
 }
 
-/// Regression tests for the AI-assisted security review of 24 Nov 2026 (findings H2 and M8).
+/// Regression tests for the security review of 24 Nov 2026 (finding H2), as changed for version 2:
+/// an unclaimed reservation's deposit is burned (kept in the contract for good), with no arbiter.
 contract ReviewFixes is Test {
     IncentiumSwap swap;
     BlacklistUSDC usdc;
     address buyer = address(0xB0B);
     address attacker = address(0xBAD);
     address seller = address(0x5E11);
-    address fees = address(0xFEE);
-    address arbiter = address(0xA2B1);
     uint256 constant GENESIS = 1_795_000_000;
     uint128 constant ICT = 1e9;
     uint128 constant PRICE = 250_000; // 0.25 USDC per ICT
@@ -35,7 +34,7 @@ contract ReviewFixes is Test {
     function setUp() public {
         vm.warp(GENESIS + 2 days);
         usdc = new BlacklistUSDC();
-        swap = new IncentiumSwap(usdc, GENESIS, fees, address(0x6A2D), arbiter);
+        swap = new IncentiumSwap(usdc, GENESIS);
         for (uint256 i = 0; i < 3; i++) {
             address a = [buyer, attacker, seller][i];
             usdc.mint(a, 1_000e6);
@@ -57,20 +56,23 @@ contract ReviewFixes is Test {
         id = swap.placeBuy(1, 100 * ICT, PRICE, bytes32(uint256(1)), uint64(block.timestamp + 24 hours), h);
     }
 
-    /// H2: blocking an order now costs a deposit, which goes to the maker after the window.
-    function test_h2_blocking_costs_the_attacker_and_pays_the_maker() public {
+    /// H2: blocking an order costs the attacker the deposit; the maker gets all its USDC back
+    /// and gains nothing from the failed trade.
+    function test_h2_blocking_costs_the_attacker_and_nobody_gains() public {
         bytes32 id = place(); // 25 USDC
         vm.prank(attacker);
         swap.reserve(id, 0, 100 * ICT, attacker); // whole order, never locks ICT
         assertEq(usdc.balanceOf(attacker), 1_000e6 - 5e5); // 2 % of 25 USDC < 0.5 USDC minimum
         vm.warp(block.timestamp + 19 hours);
         swap.expireReservation(id, 0);
-        vm.expectRevert(IncentiumSwap.TooEarly.selector);
-        swap.payDepositToMaker(id, 0);
-        vm.warp(block.timestamp + 24 hours);
-        uint256 before = usdc.balanceOf(buyer);
-        swap.payDepositToMaker(id, 0);
-        assertEq(usdc.balanceOf(buyer) - before, 5e5);
+        vm.warp(block.timestamp + 6 hours);
+        swap.refundExpired(id);
+        assertEq(usdc.balanceOf(buyer), 1_000e6); // all 25 USDC back, nothing more
+        assertEq(usdc.balanceOf(attacker), 1_000e6 - 5e5); // deposit gone
+        assertEq(swap.burnedDeposits(), 5e5);
+        assertEq(usdc.balanceOf(address(swap)), 5e5);
+        (,,,,,, IncentiumSwap.DepositState ds,) = swap.reservations(id, 0);
+        assertEq(uint8(ds), uint8(IncentiumSwap.DepositState.Burned));
     }
 
     /// H2: one open reservation per payee per order.
@@ -83,46 +85,29 @@ contract ReviewFixes is Test {
         vm.stopPrank();
     }
 
-    /// H2: if the seller locked ICT and only the buy maker failed to confirm, the arbiter returns
-    /// the deposit; nobody else can, and not after the window.
-    function test_h2_arbiter_returns_deposit_when_the_maker_did_not_confirm() public {
+    /// The deposit comes back in full when the reservation is claimed; 2 % above the minimum.
+    function test_h2_deposit_returned_on_claim() public {
         bytes32 id = place();
         vm.prank(seller);
-        swap.reserve(id, 0, 40 * ICT, seller);
-        vm.warp(block.timestamp + 19 hours);
-        swap.expireReservation(id, 0);
-        vm.prank(attacker);
-        vm.expectRevert(IncentiumSwap.NotArbiter.selector);
-        swap.returnDeposit(id, 0);
-        vm.prank(arbiter);
-        swap.returnDeposit(id, 0);
-        assertEq(usdc.balanceOf(seller), 1_000e6);
-        vm.expectRevert(IncentiumSwap.BadDepositState.selector);
-        swap.payDepositToMaker(id, 0);
-    }
-
-    function test_h2_arbiter_cannot_return_after_the_window() public {
-        bytes32 id = place();
-        vm.prank(seller);
-        swap.reserve(id, 0, 40 * ICT, seller);
-        vm.warp(block.timestamp + 19 hours);
-        swap.expireReservation(id, 0);
-        vm.warp(block.timestamp + 24 hours);
-        vm.prank(arbiter);
-        vm.expectRevert(IncentiumSwap.BadDepositState.selector);
-        swap.returnDeposit(id, 0);
-    }
-
-    /// M8: a blacklisted fee recipient no longer blocks claims; only the fee withdrawal waits.
-    function test_m8_blacklisted_fee_recipient_does_not_block_claims() public {
-        bytes32 id = place();
-        vm.prank(seller);
-        swap.reserve(id, 0, 100 * ICT, seller);
-        usdc.blockAddress(fees);
+        swap.reserve(id, 0, 100 * ICT, seller); // 25 USDC fill: 2 % = 0.5 USDC
+        vm.prank(attacker); // anyone may relay the secret
         swap.claimReservation(id, 0, secret(0));
-        assertEq(usdc.balanceOf(seller), 1_000e6 + 25e6 - 25_000); // paid, deposit back
-        assertEq(swap.accruedFees(), 25_000);
-        vm.expectRevert(bytes("blacklisted"));
-        swap.withdrawFees();
+        assertEq(usdc.balanceOf(seller), 1_000e6 + 25e6); // paid in full, deposit back
+        assertEq(swap.burnedDeposits(), 0);
+        assertEq(swap.depositFor(100e6), 2e6);
+    }
+
+    /// Expiry needs no transfer of the deposit, so a blacklisted address cannot block it and the
+    /// maker always gets its USDC back.
+    function test_expiry_works_whoever_is_blacklisted() public {
+        bytes32 id = place();
+        vm.prank(seller);
+        swap.reserve(id, 0, 40 * ICT, seller);
+        usdc.blockAddress(seller);
+        usdc.blockAddress(address(0xdEaD));
+        vm.warp(block.timestamp + 25 hours);
+        swap.refundExpired(id); // 15 USDC
+        swap.expireReservation(id, 0); // 10 USDC
+        assertEq(usdc.balanceOf(buyer), 1_000e6);
     }
 }
