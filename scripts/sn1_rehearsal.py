@@ -2,10 +2,12 @@
 a validator that sets weights every epoch, then watch the pool open after 10 days.
 
   python scripts/sn1_rehearsal.py status
+  python scripts/sn1_rehearsal.py upgrade --wasm F # sudo: install a runtime now (testnet only)
   python scripts/sn1_rehearsal.py unlock          # sudo: open registration now (testnet only)
   python scripts/sn1_rehearsal.py buy             # the operator buys the slot on auction
   python scripts/sn1_rehearsal.py neurons         # a validator and two miners on SN1
   python scripts/sn1_rehearsal.py validate        # runs until stopped: weights every epoch
+  python scripts/sn1_rehearsal.py open-now        # sudo: skip the 10 closed days (testnet only)
 
 Options: --url (default ws://127.0.0.1:9960), --secrets (default ~/incentium-testnet/secrets).
 Keys for SN1 are written to <secrets>/sn1/ (mode 600). Every step can be run again: it only
@@ -135,6 +137,47 @@ def cmd_neurons(c, a):
             c.submit(kp, "Registry", "register_neuron", {"netuid": NETUID, "hotkey": kp.ss58_address})
 
 
+def cmd_upgrade(c, a):
+    """sudo authorize_upgrade(hash), then apply_authorized_upgrade(code): the same final step
+    a passed referendum uses, without the referendum."""
+    from hashlib import blake2b
+
+    if c.q("Sudo", "Key") != c.operator.ss58_address:
+        sys.exit("the operator key is not the testnet's sudo key")
+    code = open(os.path.expanduser(a.wasm), "rb").read()
+    h = "0x" + blake2b(code, digest_size=32).hexdigest()
+    before = c.s.runtime_version
+    print(f"code {len(code):,} bytes, hash {h}; runtime now {before}")
+    c.submit(c.operator, "System", "authorize_upgrade", {"code_hash": h}, sudo=True)
+    c.submit(c.operator, "System", "apply_authorized_upgrade", {"code": "0x" + code.hex()})
+    for _ in range(30):
+        time.sleep(12)
+        c.s.init_runtime()
+        if c.s.runtime_version != before:
+            return print(f"runtime is now {c.s.runtime_version}")
+    print("the upgrade was applied; the new version shows from the next block")
+
+
+def cmd_open_now(c, a):
+    """Move the pool's start 10 days back by sudo, so it opens in the next block."""
+    if c.q("Sudo", "Key") != c.operator.ss58_address:
+        sys.exit("the operator key is not the testnet's sudo key")
+    p = c.q("SubnetPools", "Pools", [NETUID])
+    if not p:
+        sys.exit("SN1 has no pool yet: run buy first")
+    if p["trading"]:
+        return print("the pool is already open")
+    now = c.head()
+    p["opened"] = max(0, now - 10 * 7200 - 1)
+    sf = c.s.get_metadata_storage_function("SubnetPools", "Pools")
+    key = c.s.create_storage_key("SubnetPools", "Pools", [NETUID]).to_hex()
+    val = c.s.encode_scale(sf.get_value_type_string(), p).to_hex()
+    c.submit(c.operator, "System", "set_storage", {"items": [(key, val)]}, sudo=True)
+    time.sleep(15)
+    p = c.q("SubnetPools", "Pools", [NETUID])
+    print("pool open" if p["trading"] else "not open yet: check status in a minute (it needs issued stock)")
+
+
 def cmd_validate(c, a):
     """Every epoch: reveal last epoch's commit, then commit weights for the miners."""
     from hashlib import blake2b
@@ -177,14 +220,15 @@ def cmd_validate(c, a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["status", "unlock", "buy", "neurons", "validate"])
+    ap.add_argument("cmd", choices=["status", "upgrade", "unlock", "buy", "neurons", "validate", "open-now"])
+    ap.add_argument("--wasm", help="runtime file for upgrade")
     ap.add_argument("--url", default="ws://127.0.0.1:9960")
     ap.add_argument("--secrets", default="~/incentium-testnet/secrets")
     ap.add_argument("--max-price", type=int, default=50_000, help="most ICT to pay for the slot")
     a = ap.parse_args()
     c = Chain(a)
-    {"status": cmd_status, "unlock": cmd_unlock, "buy": cmd_buy, "neurons": cmd_neurons,
-     "validate": cmd_validate}[a.cmd](c, a)
+    {"status": cmd_status, "upgrade": cmd_upgrade, "unlock": cmd_unlock, "buy": cmd_buy,
+     "neurons": cmd_neurons, "validate": cmd_validate, "open-now": cmd_open_now}[a.cmd](c, a)
 
 
 if __name__ == "__main__":
