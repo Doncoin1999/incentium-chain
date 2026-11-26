@@ -109,8 +109,8 @@ class Incentium:
                 store.deposit_held(con, "inc", hx(a["order"]), a["fill"], a["depositor"], a["deposit"])
             elif name == "DepositReturned":
                 store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "returned")
-            elif name == "DepositBurned":
-                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "burned")
+            elif name == "DepositHalfBurned":
+                store.deposit_settled(con, "inc", hx(a["order"]), a["fill"], "half_burned")
             count += 1
         return count
 
@@ -228,8 +228,8 @@ class Base:
             store.deposit_held(con, "base", hx(a["orderId"]), a["fill"], a["depositor"].lower(), a["deposit"])
         elif name == "DepositReturned":
             store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "returned")
-        elif name == "DepositBurned":
-            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "burned")
+        elif name == "DepositHalfBurned":
+            store.deposit_settled(con, "base", hx(a["orderId"]), a["fill"], "half_burned")
 
     def sync(self, con, start: int, step: int = 2000) -> int:
         nxt = store.get_meta(con, "base_next", start)

@@ -212,8 +212,8 @@ contract IncentiumSwapTest is Test {
         uint256 before = usdc.balanceOf(buyer);
         swap.expireReservation(id, 0); // 10 USDC back to the maker
         assertEq(usdc.balanceOf(buyer) - before, 10e6);
-        assertEq(usdc.balanceOf(address(swap)), 5e5); // only the burned 0.5 USDC deposit is left
-        assertEq(swap.burnedDeposits(), 5e5);
+        assertEq(usdc.balanceOf(address(swap)), 25e4); // only the burned half of the 0.5 USDC deposit is left
+        assertEq(swap.burnedDeposits(), 25e4);
     }
 
     function test_no_reserve_after_expiry_or_over_remaining() public {

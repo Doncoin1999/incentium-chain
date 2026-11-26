@@ -95,9 +95,10 @@ class FakeIncentium:
         elif fn == "expire_reservation":
             r = self.res[(p["order"], p["fill"])]
             assert r["state"] == "Active" and self.t >= r["expiry"]
-            r["state"], r["deposit_state"] = "Expired", "Burned"
+            r["state"], r["deposit_state"] = "Expired", "HalfBurned"
             self.emit("ReservationExpired", order=p["order"], fill=p["fill"])
-            self.emit("DepositBurned", order=p["order"], fill=p["fill"], amount=r["deposit"])
+            back = r["deposit"] // 2
+            self.emit("DepositHalfBurned", order=p["order"], fill=p["fill"], returned=back, burned=r["deposit"] - back)
         elif fn == "refund_expired":
             pass
         else:
@@ -152,8 +153,8 @@ class FakeIncentium:
                 store.deposit_held(con, "inc", a["order"], a["fill"], a["depositor"], a["deposit"])
             elif name == "DepositReturned":
                 store.deposit_settled(con, "inc", a["order"], a["fill"], "returned")
-            elif name == "DepositBurned":
-                store.deposit_settled(con, "inc", a["order"], a["fill"], "burned")
+            elif name == "DepositHalfBurned":
+                store.deposit_settled(con, "inc", a["order"], a["fill"], "half_burned")
         con.commit()
         return len(evs)
 
@@ -330,7 +331,7 @@ def _buy_order(env, nonce, first_secret):
     return "0x" + swap.events.BuyPlaced().process_receipt(r)[0]["args"]["orderId"].hex().removeprefix("0x"), hashes
 
 
-def test_unclaimed_base_deposit_is_burned_at_expiry(env):
+def test_unclaimed_base_deposit_is_half_burned_at_expiry(env):
     w3, swap, usdc, k, seller, buyer = env["w3"], env["swap"], env["usdc"], env["k"], env["seller"], env["buyer"]
     oid, _ = _buy_order(env, 9, 60)
     k.once()
@@ -342,14 +343,14 @@ def test_unclaimed_base_deposit_is_burned_at_expiry(env):
     k.inc.t += 19 * 3600 + 1
     for _ in range(2):
         k.once()
-    # the keeper expired the reservation: the deposit is burned, the maker gains nothing
-    assert swap.functions.burnedDeposits().call() == 500_000
-    assert usdc.functions.balanceOf(env["keeper"].address).call() == keeper_before - 500_000
+    # the keeper expired the reservation: half the deposit back, half burned, the maker gains nothing
+    assert swap.functions.burnedDeposits().call() == 250_000
+    assert usdc.functions.balanceOf(env["keeper"].address).call() == keeper_before - 250_000
     assert usdc.functions.balanceOf(buyer.address).call() == buyer_before
-    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'base'").fetchone()[0] == "burned"
+    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'base'").fetchone()[0] == "half_burned"
 
 
-def test_unclaimed_incentium_deposit_is_burned_at_expiry(env):
+def test_unclaimed_incentium_deposit_is_half_burned_at_expiry(env):
     k, seller = env["k"], env["seller"]
     oid = "0x" + "66" * 32
     hashes = [sha(bytes.fromhex(secret(i)[2:])) for i in range(16)]
@@ -359,5 +360,5 @@ def test_unclaimed_incentium_deposit_is_burned_at_expiry(env):
     k.inc.t += 19 * 3600 + 1
     for _ in range(2):
         k.once()
-    assert k.inc.res[(oid, 0)]["deposit_state"] == "Burned"
-    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'inc'").fetchone()[0] == "burned"
+    assert k.inc.res[(oid, 0)]["deposit_state"] == "HalfBurned"
+    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'inc'").fetchone()[0] == "half_burned"

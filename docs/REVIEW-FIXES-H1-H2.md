@@ -1,6 +1,6 @@
 # Review fixes H1, H2 (and M8) – swap
 
-> **Superseded in part (26 Nov 2026):** version 2 (`SWAP-V2.md`) removes the deposit arbiter, the fee and the pause guardian. Unclaimed deposits are burned. H1 is unchanged.
+> **Superseded in part (26 Nov 2026):** version 2 (`SWAP-V2.md`) removes the deposit arbiter, the fee and the pause guardian. At expiry an unclaimed deposit is half returned, half burned. H1 is unchanged.
 
 Fixes for the AI-assisted security review of 24 November 2026. Runtime `spec_version` 9 and a new
 `IncentiumSwap` contract on Base.

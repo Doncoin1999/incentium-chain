@@ -265,7 +265,7 @@ async function fillDialog(chain, id) {
     <p class="muted" style="font-size:14px">Price ${price(o.price)} USDC per ICT · up to ${ict(o.remaining)} ICT.
     ${selling ? "You lock ICT on Incentium; the buyer's USDC is reserved for you on Base. You receive it when the buyer confirms (within 12 h), otherwise your ICT comes back."
               : "You lock USDC on Base; the seller's ICT is reserved for you on Incentium. You receive it when the seller confirms (within 12 h), otherwise your USDC comes back."}</p>
-    <p class="muted" style="font-size:14px">The keeper pays a small reservation deposit for you (2 % of the fill, at least ${selling ? "0.5 USDC" : "2 ICT"}). It is returned when the trade completes. If the reservation runs out without a completed trade, it is burned: nobody receives it.</p>
+    <p class="muted" style="font-size:14px">The keeper pays a small reservation deposit for you (2 % of the fill, at least ${selling ? "0.5 USDC" : "2 ICT"}). It is returned when the trade completes. If the reservation runs out without a completed trade, half comes back and half is burned: nobody else receives it.</p>
     <form class="fields" data-form="fill" data-chain="${chain}" data-id="${id}">
       <label>Quantity (ICT)<input name="qty" inputmode="decimal" required></label>
       <label>${selling ? "Base address to receive USDC" : "Incentium address to receive ICT"}<input name="recipient" class="mono" required value="${esc(selling ? state.base?.address || "" : state.inc?.address || "")}"></label>

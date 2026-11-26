@@ -514,9 +514,9 @@ fn ict_is_conserved_over_many_fills() {
         assert_ok!(Swap::refund_expired(RuntimeOrigin::none(), order));
         assert_eq!(held(SELLER), 0);
         assert_eq!(held(KEEPER), 0);
-        // the two expired reservations' deposits (2 ICT each, paid by the keeper) were burned
-        assert_eq!(Balances::total_issuance(), total_before - 4 * ICT);
-        assert_eq!(Balances::total_balance(&KEEPER), 10 * ICT - 4 * ICT);
+        // the two expired reservations' deposits (2 ICT each, paid by the keeper): half burned
+        assert_eq!(Balances::total_issuance(), total_before - 2 * ICT);
+        assert_eq!(Balances::total_balance(&KEEPER), 10 * ICT - 2 * ICT);
         assert_eq!(Balances::total_balance(&BUYER), 10_060 * ICT);
         assert_eq!(Balances::total_balance(&SELLER), 9_940 * ICT);
     });
@@ -648,7 +648,7 @@ fn h2_one_open_reservation_per_recipient() {
 }
 
 #[test]
-fn h2_unclaimed_deposit_is_burned_and_nobody_gains() {
+fn h2_unclaimed_deposit_is_half_burned_and_nobody_gains() {
     new_test_ext().execute_with(|| {
         let order = place(100 * ICT);
         let griefer = 7u64;
@@ -676,17 +676,18 @@ fn h2_unclaimed_deposit_is_burned_and_nobody_gains() {
         assert!(valid.is_ok());
         assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
         assert_eq!(held(griefer), 0);
-        assert_eq!(Balances::total_balance(&griefer), 8 * ICT);
+        assert_eq!(Balances::total_balance(&griefer), 9 * ICT); // 1 ICT back, 1 ICT burned
         assert_eq!(Balances::total_balance(&SELLER), 10_000 * ICT); // maker gains nothing
-        assert_eq!(Balances::total_issuance(), issuance - 2 * ICT); // burned
+        assert_eq!(Balances::total_issuance(), issuance - ICT);
         assert_eq!(
             Terms::<Test>::get(order, 0).unwrap().deposit_state,
-            DepositState::Burned
+            DepositState::HalfBurned
         );
-        System::assert_has_event(RuntimeEvent::Swap(crate::Event::DepositBurned {
+        System::assert_has_event(RuntimeEvent::Swap(crate::Event::DepositHalfBurned {
             order,
             fill: 0,
-            amount: 2 * ICT,
+            returned: ICT,
+            burned: ICT,
         }));
         // the quantity went back to the order: it can be reserved again
         assert_ok!(Swap::reserve(
@@ -700,7 +701,7 @@ fn h2_unclaimed_deposit_is_burned_and_nobody_gains() {
 }
 
 #[test]
-fn h2_burn_also_when_the_order_has_ended() {
+fn h2_half_burned_also_when_the_order_has_ended() {
     new_test_ext().execute_with(|| {
         let order = place(100 * ICT);
         advance(20 * 3600);
@@ -715,7 +716,7 @@ fn h2_burn_also_when_the_order_has_ended() {
         assert_ok!(Swap::refund_expired(RuntimeOrigin::none(), order));
         assert_ok!(Swap::expire_reservation(RuntimeOrigin::none(), order, 0));
         assert_eq!(held(BUYER), 0);
-        assert_eq!(Balances::total_balance(&BUYER), 10_000 * ICT - 2 * ICT);
+        assert_eq!(Balances::total_balance(&BUYER), 10_000 * ICT - ICT);
         assert_eq!(Balances::total_balance(&SELLER), 10_000 * ICT); // all 100 ICT back to the maker
         assert_eq!(held(SELLER), 0);
     });

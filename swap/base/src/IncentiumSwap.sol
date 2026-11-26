@@ -17,10 +17,13 @@ pragma solidity 0.8.28;
 /// Version 2 (26 Nov 2026), replacing the first mainnet deployment:
 /// - No fee (was 0.1 % to a fixed address) and no pause guardian.
 /// - Reservation deposit (review fix H2): whoever reserves a fill pays 2 % of it in USDC, at least
-///   0.5 USDC. It is returned when the reservation is claimed. If the reservation expires unclaimed
-///   it is burned: it stays in this contract for good, counted in `burnedDeposits`, and no call can
-///   move it. Nobody gains from a trade that did not complete, so no arbiter is needed. (Kept here
-///   rather than sent to a dead address, so a USDC blacklist of that address cannot block expiry.)
+///   0.5 USDC. It is returned when the reservation is claimed. If the reservation expires unclaimed,
+///   half goes back to whoever paid it and half is burned: the burned half stays in this contract
+///   for good, counted in `burnedDeposits`, and no call can move it. Nobody gains from a trade that
+///   did not complete, so no arbiter is needed; an honest taker whose maker never confirmed loses
+///   1 %, and so does a taker who blocks an order. (Kept here rather than sent to a dead address,
+///   so a USDC blacklist of that address cannot block expiry.) A deposit refund that USDC refuses,
+///   e.g. to a blacklisted address, is recorded in `owed` instead of blocking the claim or expiry.
 ///   One open reservation per payee per order.
 contract IncentiumSwap {
     // ------------------------------------------------------------------ constants
@@ -61,8 +64,8 @@ contract IncentiumSwap {
     enum DepositState {
         None,
         Held,
-        Returned,
-        Burned
+        Returned, // in full: the reservation was claimed
+        HalfBurned // the reservation expired: half returned, half burned
     }
 
     struct Reservation {
@@ -92,7 +95,8 @@ contract IncentiumSwap {
 
     IERC20 public immutable usdc;
     uint256 public immutable genesisTime; // Incentium mainnet genesis (block 1), for the size caps
-    uint256 public burnedDeposits; // USDC of unclaimed reservations' deposits, locked here for good
+    uint256 public burnedDeposits; // burned halves of unclaimed reservations' deposits, locked here for good
+    mapping(address => uint256) public owed; // deposit refunds USDC refused to deliver; claimOwed retries
 
     mapping(bytes32 => BuyOrder) public buyOrders;
     mapping(bytes32 => bytes32[MAX_FILLS]) internal _hashes;
@@ -133,7 +137,9 @@ contract IncentiumSwap {
     event LockRefunded(bytes32 indexed lockId);
     event DepositHeld(bytes32 indexed orderId, uint8 indexed fill, address depositor, uint128 deposit);
     event DepositReturned(bytes32 indexed orderId, uint8 indexed fill, uint128 amount);
-    event DepositBurned(bytes32 indexed orderId, uint8 indexed fill, uint128 amount);
+    event DepositHalfBurned(bytes32 indexed orderId, uint8 indexed fill, uint128 returned, uint128 burned);
+    event RefundOwed(address indexed to, uint256 amount);
+    event OwedPaid(address indexed to, uint256 amount);
 
     // ------------------------------------------------------------------ errors
 
@@ -324,12 +330,12 @@ contract IncentiumSwap {
         if (r.depositState == DepositState.Held) {
             r.depositState = DepositState.Returned;
             emit DepositReturned(id, fill, r.deposit);
-            _push(r.depositor, r.deposit);
+            _refund(r.depositor, r.deposit);
         }
     }
 
     /// After the deadline: quantity back to the order, or USDC back to the maker if the order is closed or
-    /// expired. Anyone may call. The reservation deposit is burned.
+    /// expired. Anyone may call. Half the reservation deposit goes back to its payer, half is burned.
     function expireReservation(bytes32 id, uint8 fill) external nonReentrant {
         Reservation storage r = reservations[id][fill];
         if (r.state != State.Active) revert NotActive();
@@ -346,9 +352,12 @@ contract IncentiumSwap {
             _push(o.maker, r.amount);
         }
         if (r.depositState == DepositState.Held) {
-            r.depositState = DepositState.Burned;
-            burnedDeposits += r.deposit;
-            emit DepositBurned(id, fill, r.deposit);
+            r.depositState = DepositState.HalfBurned;
+            uint128 back = r.deposit / 2;
+            uint128 burned = r.deposit - back;
+            burnedDeposits += burned;
+            emit DepositHalfBurned(id, fill, back, burned);
+            _refund(r.depositor, back);
         }
     }
 
@@ -411,7 +420,27 @@ contract IncentiumSwap {
         _push(l.taker, l.amount);
     }
 
+    // ------------------------------------------------------------------ owed refunds
+
+    /// Pay `to` the deposit refunds USDC refused earlier (e.g. while `to` was blacklisted). Anyone may call.
+    function claimOwed(address to) external nonReentrant {
+        uint256 a = owed[to];
+        owed[to] = 0;
+        emit OwedPaid(to, a);
+        if (a > 0) _push(to, a);
+    }
+
     // ------------------------------------------------------------------ internals
+
+    /// A deposit refund never blocks a claim or an expiry: if USDC refuses it, it is owed instead.
+    function _refund(address to, uint256 amount) private {
+        if (amount == 0) return;
+        (bool ok, bytes memory ret) = address(usdc).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        if (!ok || (ret.length > 0 && !abi.decode(ret, (bool)))) {
+            owed[to] += amount;
+            emit RefundOwed(to, amount);
+        }
+    }
 
     function _pull(address from, uint256 amount) private {
         if (!usdc.transferFrom(from, address(this), amount)) revert TransferFailed();

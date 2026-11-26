@@ -23,9 +23,10 @@
 //!
 //! **Reservation deposits (review finding H2).** Whoever reserves a fill holds a deposit
 //! (`ReservationDepositPpm` of the quantity, at least `MinReservationDeposit`). It is returned when
-//! the reservation is claimed and burned when it expires unclaimed. Nobody gains from a trade that
-//! did not complete, so no one has to judge which side failed: there is no arbiter and no
-//! privileged account in this pallet. The `IncentiumSwap` contract on Base (version 2) applies the
+//! the reservation is claimed. When it expires unclaimed, half goes back to whoever paid it and
+//! half is burned. Nobody gains from a trade that did not complete, so no one has to judge which
+//! side failed: there is no arbiter and no privileged account in this pallet. A taker who blocks an
+//! order loses 1 %, and so does an honest taker whose maker never confirmed. The `IncentiumSwap` contract on Base (version 2) applies the
 //! same rule to its USDC deposits. One open reservation per recipient per order.
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -192,8 +193,8 @@ pub mod pallet {
         Held,
         /// Returned to its payer: the reservation was claimed.
         Returned,
-        /// Burned: the reservation expired unclaimed.
-        Burned,
+        /// The reservation expired unclaimed: half returned to its payer, half burned.
+        HalfBurned,
     }
 
     /// Terms of a reservation added by review fixes H1 and H2. Reservations made before the upgrade
@@ -295,11 +296,12 @@ pub mod pallet {
             fill: u8,
             amount: u128,
         },
-        /// The deposit of a reservation that expired unclaimed was burned.
-        DepositBurned {
+        /// A reservation expired unclaimed: half its deposit went back to the payer, half was burned.
+        DepositHalfBurned {
             order: H256,
             fill: u8,
-            amount: u128,
+            returned: u128,
+            burned: u128,
         },
     }
 
@@ -546,7 +548,8 @@ pub mod pallet {
         }
 
         /// After its deadline: the quantity goes back to the order, or is released to the maker
-        /// if the order is closed or expired. The reservation's deposit is burned.
+        /// if the order is closed or expired. Half the reservation's deposit goes back to its
+        /// payer, half is burned.
         #[pallet::call_index(5)]
         #[pallet::weight(T::WeightInfo::expire())]
         pub fn expire_reservation(origin: OriginFor<T>, order: H256, fill: u8) -> DispatchResult {
@@ -565,20 +568,28 @@ pub mod pallet {
             SellOrders::<T>::insert(order, o);
             if let Some(mut t) = Terms::<T>::get(order, fill) {
                 if t.deposit_state == DepositState::Held {
+                    let returned = t.deposit / 2;
+                    let burned = t.deposit - returned;
+                    T::Currency::release(
+                        &HoldReason::Swap.into(),
+                        &t.depositor,
+                        returned,
+                        Precision::Exact,
+                    )?;
                     T::Currency::burn_held(
                         &HoldReason::Swap.into(),
                         &t.depositor,
-                        t.deposit,
+                        burned,
                         Precision::Exact,
                         Fortitude::Force,
                     )?;
-                    t.deposit_state = DepositState::Burned;
-                    let amount = t.deposit;
+                    t.deposit_state = DepositState::HalfBurned;
                     Terms::<T>::insert(order, fill, t);
-                    Self::deposit_event(Event::DepositBurned {
+                    Self::deposit_event(Event::DepositHalfBurned {
                         order,
                         fill,
-                        amount,
+                        returned,
+                        burned,
                     });
                 }
             }

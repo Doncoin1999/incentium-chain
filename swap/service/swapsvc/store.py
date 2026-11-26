@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS locks_by_order ON locks (order_id, fill);
 CREATE TABLE IF NOT EXISTS deposits (       -- reservation deposits (review fix H2)
   chain TEXT NOT NULL, order_id TEXT NOT NULL, fill INTEGER NOT NULL,
   depositor TEXT NOT NULL, amount INTEGER NOT NULL,
-  state TEXT NOT NULL,               -- held, returned, burned
+  state TEXT NOT NULL,               -- held, returned, half_burned
   dispute_until INTEGER,             -- unused since swap v2 (no arbiter)
   PRIMARY KEY (chain, order_id, fill));
 CREATE INDEX IF NOT EXISTS orders_by_maker ON orders (maker);

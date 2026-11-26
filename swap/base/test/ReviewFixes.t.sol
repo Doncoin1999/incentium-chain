@@ -13,6 +13,10 @@ contract BlacklistUSDC is MockUSDC {
         blocked[a] = true;
     }
 
+    function unblockAddress(address a) external {
+        blocked[a] = false;
+    }
+
     function transfer(address to, uint256 a) public override returns (bool) {
         require(!blocked[to], "blacklisted");
         return super.transfer(to, a);
@@ -20,7 +24,8 @@ contract BlacklistUSDC is MockUSDC {
 }
 
 /// Regression tests for the security review of 24 Nov 2026 (finding H2), as changed for version 2:
-/// an unclaimed reservation's deposit is burned (kept in the contract for good), with no arbiter.
+/// an unclaimed reservation's deposit is half returned and half burned (kept in the contract for
+/// good), with no arbiter.
 contract ReviewFixes is Test {
     IncentiumSwap swap;
     BlacklistUSDC usdc;
@@ -56,9 +61,9 @@ contract ReviewFixes is Test {
         id = swap.placeBuy(1, 100 * ICT, PRICE, bytes32(uint256(1)), uint64(block.timestamp + 24 hours), h);
     }
 
-    /// H2: blocking an order costs the attacker the deposit; the maker gets all its USDC back
+    /// H2: blocking an order costs the attacker half the deposit; the maker gets all its USDC back
     /// and gains nothing from the failed trade.
-    function test_h2_blocking_costs_the_attacker_and_nobody_gains() public {
+    function test_h2_blocking_costs_half_the_deposit_and_nobody_gains() public {
         bytes32 id = place(); // 25 USDC
         vm.prank(attacker);
         swap.reserve(id, 0, 100 * ICT, attacker); // whole order, never locks ICT
@@ -68,11 +73,11 @@ contract ReviewFixes is Test {
         vm.warp(block.timestamp + 6 hours);
         swap.refundExpired(id);
         assertEq(usdc.balanceOf(buyer), 1_000e6); // all 25 USDC back, nothing more
-        assertEq(usdc.balanceOf(attacker), 1_000e6 - 5e5); // deposit gone
-        assertEq(swap.burnedDeposits(), 5e5);
-        assertEq(usdc.balanceOf(address(swap)), 5e5);
+        assertEq(usdc.balanceOf(attacker), 1_000e6 - 25e4); // half the deposit back, half burned
+        assertEq(swap.burnedDeposits(), 25e4);
+        assertEq(usdc.balanceOf(address(swap)), 25e4);
         (,,,,,, IncentiumSwap.DepositState ds,) = swap.reservations(id, 0);
-        assertEq(uint8(ds), uint8(IncentiumSwap.DepositState.Burned));
+        assertEq(uint8(ds), uint8(IncentiumSwap.DepositState.HalfBurned));
     }
 
     /// H2: one open reservation per payee per order.
@@ -97,17 +102,34 @@ contract ReviewFixes is Test {
         assertEq(swap.depositFor(100e6), 2e6);
     }
 
-    /// Expiry needs no transfer of the deposit, so a blacklisted address cannot block it and the
-    /// maker always gets its USDC back.
-    function test_expiry_works_whoever_is_blacklisted() public {
+    /// A blacklisted depositor cannot block the expiry: the maker gets its USDC back and the
+    /// returned half is owed until it can be delivered.
+    function test_expiry_works_when_the_depositor_is_blacklisted() public {
         bytes32 id = place();
         vm.prank(seller);
-        swap.reserve(id, 0, 40 * ICT, seller);
+        swap.reserve(id, 0, 40 * ICT, seller); // 10 USDC fill: 0.5 USDC deposit
         usdc.blockAddress(seller);
-        usdc.blockAddress(address(0xdEaD));
         vm.warp(block.timestamp + 25 hours);
         swap.refundExpired(id); // 15 USDC
         swap.expireReservation(id, 0); // 10 USDC
         assertEq(usdc.balanceOf(buyer), 1_000e6);
+        assertEq(swap.owed(seller), 25e4);
+        vm.expectRevert(bytes("blacklisted"));
+        swap.claimOwed(seller);
+        usdc.unblockAddress(seller);
+        swap.claimOwed(seller);
+        assertEq(usdc.balanceOf(seller), 1_000e6 - 25e4);
+        assertEq(swap.owed(seller), 0);
+    }
+
+    /// A blacklisted depositor cannot block a claim either: the seller is paid, the deposit is owed.
+    function test_claim_works_when_the_depositor_is_blacklisted() public {
+        bytes32 id = place();
+        vm.prank(attacker); // a keeper-like depositor reserving for the seller
+        swap.reserve(id, 0, 40 * ICT, seller);
+        usdc.blockAddress(attacker);
+        swap.claimReservation(id, 0, secret(0));
+        assertEq(usdc.balanceOf(seller), 1_000e6 + 10e6);
+        assertEq(swap.owed(attacker), 5e5);
     }
 }
