@@ -15,8 +15,8 @@
 //!   - SN0 has no owner and splits 50 : 38 between miners and validators
 //!     (`Sn0MinerSharePpm`). Before the unlock SN0 keeps `MinerSharePpm`.
 //! - Closing a subnet releases its stake into the normal unbonding queue.
-//! - Once the Alpha module is installed (`AlphaHooks::active`, decided 26 Nov 2026), SN1 and
-//!   later use it instead of ICT staking: a subnet's share follows the ICT in its pool, a
+//! - Subnets sold once the Alpha module is installed have an Alpha pool (`AlphaHooks::active`,
+//!   decided 26 Nov 2026) and use it instead of ICT staking (subnets sold before keep ICT stake): a subnet's share follows the ICT in its pool, a
 //!   validator's weight follows the Alpha staked on it, validators are paid through the pool
 //!   (their take, the rest as ICT dividends to their stakers), and each settled epoch issues
 //!   the subnet's Alpha and pays the bonus. SN0 is unchanged.
@@ -38,8 +38,9 @@ mod tests;
 
 /// The Alpha module, as consensus sees it (implemented by the runtime over subnet pools).
 pub trait AlphaHooks<AccountId> {
-    /// True once SN1 and later use Alpha pools instead of ICT staking.
-    fn active() -> bool;
+    /// True if `netuid` has an Alpha pool (subnets sold once the Alpha module is installed).
+    /// Subnets registered before keep ICT staking.
+    fn active(netuid: u16) -> bool;
     /// ICT that counts as the subnet's stake: its pool's ICT.
     fn stake_ict(netuid: u16) -> u128;
     /// Alpha staked on `hotkey` (validator weight).
@@ -57,7 +58,7 @@ pub trait AlphaHooks<AccountId> {
 }
 
 impl<AccountId> AlphaHooks<AccountId> for () {
-    fn active() -> bool {
+    fn active(_: u16) -> bool {
         false
     }
     fn stake_ict(_: u16) -> u128 {
@@ -411,7 +412,7 @@ pub mod pallet {
         #[pallet::call_index(4)]
         #[pallet::weight(<T as Config>::WeightInfo::stake())]
         pub fn stake_subnet(origin: OriginFor<T>, netuid: NetUid, amount: u128) -> DispatchResult {
-            ensure!(!T::Alpha::active(), Error::<T>::UseAlphaPools);
+            ensure!(!T::Alpha::active(netuid), Error::<T>::UseAlphaPools);
             let who = ensure_signed(origin)?;
             ensure!(netuid != SN0, Error::<T>::UseSn0Calls);
             ensure!(
@@ -544,7 +545,7 @@ pub mod pallet {
         fn stake_on(netuid: NetUid, who: &T::AccountId) -> u128 {
             if netuid == SN0 {
                 Stake::<T>::get(who)
-            } else if T::Alpha::active() {
+            } else if T::Alpha::active(netuid) {
                 T::Alpha::alpha_stake(netuid, who)
             } else {
                 SubnetStake::<T>::get(netuid, who)
@@ -577,7 +578,7 @@ pub mod pallet {
                 Subnets::<T>::iter_keys()
                     .filter(|n| *n != SN0)
                     .map(|n| {
-                        let st = if T::Alpha::active() {
+                        let st = if T::Alpha::active(n) {
                             T::Alpha::stake_ict(n)
                         } else {
                             SubnetTotalStake::<T>::get(n)
@@ -724,7 +725,7 @@ pub mod pallet {
                 T::MaxValidatorPpm::get() as u128,
             );
             let pot_acct = T::SubnetPot::get();
-            let alpha = netuid != SN0 && T::Alpha::active();
+            let alpha = netuid != SN0 && T::Alpha::active(netuid);
             let epoch_blocks = <T as pallet_weights::Config>::EpochLength::get() as u32;
             if slice == 0 || out.incentive.iter().all(|x| *x == 0) {
                 if alpha {
@@ -834,7 +835,7 @@ pub mod pallet {
 
     impl<T: Config> pallet_subnet_registry::SubnetStakeInfo<T::AccountId> for Pallet<T> {
         fn stake_of(netuid: u16, who: &T::AccountId) -> u128 {
-            if netuid != SN0 && T::Alpha::active() {
+            if netuid != SN0 && T::Alpha::active(netuid) {
                 T::Alpha::staker_alpha(netuid, who)
             } else {
                 Self::stake_on(netuid, who)
@@ -846,7 +847,7 @@ pub mod pallet {
         fn total(netuid: u16) -> u128 {
             if netuid == SN0 {
                 TotalStake::<T>::get()
-            } else if T::Alpha::active() {
+            } else if T::Alpha::active(netuid) {
                 T::Alpha::total_alpha(netuid)
             } else {
                 SubnetTotalStake::<T>::get(netuid)

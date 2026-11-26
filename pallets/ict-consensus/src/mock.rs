@@ -191,7 +191,7 @@ thread_local! {
 /// Records what consensus asks of the Alpha module; validator pay goes to DIVS.
 pub struct MockAlpha;
 impl crate::AlphaHooks<u64> for MockAlpha {
-    fn active() -> bool {
+    fn active(_netuid: u16) -> bool {
         ALPHA_ON.with(|a| *a.borrow())
     }
     fn stake_ict(netuid: u16) -> u128 {

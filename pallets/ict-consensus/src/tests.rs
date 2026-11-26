@@ -622,3 +622,15 @@ fn with_alpha_closing_a_subnet_tells_the_pool() {
         assert_eq!(ALPHA_REMOVED.with(|r| r.borrow().clone()), vec![1]);
     });
 }
+
+#[test]
+fn subnets_without_a_pool_keep_ict_staking() {
+    new_test_ext().execute_with(|| {
+        // ALPHA_ON off stands for "this subnet has no pool": the old rules apply
+        add_subnet(1);
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(5), 1, 5));
+        assert_ok!(Consensus::stake_subnet(RuntimeOrigin::signed(5), 1, 1_000));
+        use pallet_subnet_registry::SubnetStakeInfo;
+        assert_eq!(<Consensus as SubnetStakeInfo<u64>>::stake_of(1, &5), 1_000);
+    });
+}
