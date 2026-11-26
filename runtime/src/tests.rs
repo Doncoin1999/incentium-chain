@@ -114,7 +114,12 @@ fn phase1_loop_end_to_end() {
         assert_eq!(issued, (2 * EPOCH_LENGTH as u128 - 1) * UNIT);
         assert_eq!(
             Balances::free_balance(configs::FundAccount::get()),
-            issued / 10 + EXISTENTIAL_DEPOSIT // the treasury opens the fund account with the ED
+            issued * 8 / 100 + EXISTENTIAL_DEPOSIT // the treasury opens the fund account with the ED
+        );
+        // runtime 12: 2 % of issuance goes to the block producers' reward pot
+        assert_eq!(
+            Balances::free_balance(block_production::ValidatorPot::get()),
+            issued * 2 / 100
         );
 
         // the whole pot at settlement time is paid out: 2/3 miners (1:3), 1/3 validators (1:1)
@@ -261,7 +266,7 @@ fn issuance_share_goes_to_the_treasury() {
         let before = Balances::free_balance(Treasury::account_id());
         run_to(10);
         let fund_share = Balances::free_balance(Treasury::account_id()) - before;
-        assert_eq!(fund_share, 9 * UNIT / 10, "10 % of 9 blocks");
+        assert_eq!(fund_share, 72 * UNIT / 100, "8 % of 9 blocks (2 % goes to the block producers)");
     });
 }
 

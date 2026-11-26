@@ -5903,6 +5903,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "generate-bags"
+version = "51.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "979de5d55e929c194ed6680f99d71bd1d603215a8b859b7583750c00d36a6017"
+dependencies = [
+ "chrono",
+ "frame-election-provider-support",
+ "frame-support 49.1.0",
+ "frame-system 49.0.0",
+ "num-format",
+ "pallet-staking",
+ "pallet-staking-async",
+ "sp-staking 46.0.0",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6880,6 +6896,7 @@ name = "incentium-runtime"
 version = "0.1.0"
 dependencies = [
  "ict-economics",
+ "pallet-block-producers",
  "pallet-ict-consensus",
  "pallet-ict-emission",
  "pallet-ict-swap",
@@ -9632,6 +9649,15 @@ dependencies = [
  "sp-io 49.0.0",
  "sp-runtime 49.0.0",
  "sp-state-machine 0.54.0",
+]
+
+[[package]]
+name = "pallet-block-producers"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "scale-info",
 ]
 
 [[package]]
@@ -12857,6 +12883,7 @@ dependencies = [
  "frame-metadata",
  "frame-support 49.1.0",
  "frame-system-rpc-runtime-api",
+ "frame-try-runtime",
  "futures",
  "futures-timer",
  "jsonrpsee",
@@ -13213,6 +13240,7 @@ dependencies = [
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
  "frame-try-runtime",
+ "generate-bags",
  "pallet-accumulate-and-forward",
  "pallet-alliance",
  "pallet-asset-conversion",

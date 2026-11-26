@@ -53,8 +53,10 @@ def apply_keys(patch: dict, keys: dict) -> None:
     auths = keys["authorities"]
     if not 1 <= len(auths) <= 32:
         sys.exit("need 1-32 authorities")
-    patch["aura"]["authorities"] = [a["aura"] for a in auths]
-    patch["grandpa"]["authorities"] = [[a["grandpa"], 1] for a in auths]
+    # runtime 12: Aura and GRANDPA keys come through session; the validator id of a genesis
+    # authority is the account with the same bytes as its Aura key (same SS58 string).
+    patch["session"]["keys"] = [[a["aura"], a["aura"], {"aura": a["aura"], "grandpa": a["grandpa"]}] for a in auths]
+    patch["blockProducers"]["genesisValidators"] = [a["aura"] for a in auths]
     alloc = patch["balances"]["balances"][0][1]
     patch["balances"]["balances"] = [[op, alloc]]
     patch["sudo"]["key"] = op

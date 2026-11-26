@@ -28,10 +28,12 @@ impl pallet_balances::Config for Test {
 
 pub const FUND: u64 = 1_000;
 pub const POT: u64 = 2_000;
+pub const VPOT: u64 = 3_000;
 
 parameter_types! {
     pub const FundAccount: u64 = FUND;
     pub const SubnetPot: u64 = POT;
+    pub const ValidatorPot: u64 = VPOT;
 }
 
 impl pallet_ict_emission::Config for Test {
@@ -40,6 +42,7 @@ impl pallet_ict_emission::Config for Test {
     type Currency = Balances;
     type FundAccount = FundAccount;
     type SubnetPot = SubnetPot;
+    type ValidatorPot = ValidatorPot;
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

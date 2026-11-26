@@ -7,8 +7,9 @@
 //! SN0 is created by the registry genesis; Phase 2 starts disabled.
 
 use crate::{
-    AccountId, BalancesConfig, EmissionConfig, LaunchConfig, RegistryConfig, RuntimeGenesisConfig,
-    SudoConfig, DAYS, UNIT,
+    block_production::{ELECTED_SLOTS, MIN_NOMINATOR_BOND, MIN_VALIDATOR_BOND},
+    AccountId, BalancesConfig, BlockProducersConfig, EmissionConfig, LaunchConfig, RegistryConfig,
+    RuntimeGenesisConfig, SessionConfig, SessionKeys, StakingConfig, SudoConfig, DAYS, UNIT,
 };
 use alloc::{vec, vec::Vec};
 use frame_support::build_struct_json_patch;
@@ -35,14 +36,18 @@ fn devnet_genesis(
                 .map(|k| (k, DEVNET_ENDOWMENT))
                 .collect::<Vec<_>>(),
         },
-        aura: pallet_aura::GenesisConfig {
-            authorities: authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>()
+        // Aura and GRANDPA get their authorities from the session keys (runtime 12).
+        session: SessionConfig {
+            keys: session_keys(&authorities)
         },
-        grandpa: pallet_grandpa::GenesisConfig {
-            authorities: authorities
-                .iter()
-                .map(|x| (x.1.clone(), 1))
-                .collect::<Vec<_>>(),
+        block_producers: BlockProducersConfig {
+            genesis_validators: authorities.iter().map(|x| validator_id(&x.0)).collect::<Vec<_>>()
+        },
+        staking: StakingConfig {
+            validator_count: ELECTED_SLOTS,
+            minimum_validator_count: 1,
+            min_validator_bond: MIN_VALIDATOR_BOND,
+            min_nominator_bond: MIN_NOMINATOR_BOND,
         },
         sudo: SudoConfig { key: Some(root) },
         registry: RegistryConfig {
@@ -69,14 +74,18 @@ fn bootstrap_genesis(authorities: Vec<(AuraId, GrandpaId)>, operator: AccountId)
         balances: BalancesConfig {
             balances: vec![(operator.clone(), BOOTSTRAP_ALLOCATION)]
         },
-        aura: pallet_aura::GenesisConfig {
-            authorities: authorities.iter().map(|x| x.0.clone()).collect::<Vec<_>>()
+        // Aura and GRANDPA get their authorities from the session keys (runtime 12).
+        session: SessionConfig {
+            keys: session_keys(&authorities)
         },
-        grandpa: pallet_grandpa::GenesisConfig {
-            authorities: authorities
-                .iter()
-                .map(|x| (x.1.clone(), 1))
-                .collect::<Vec<_>>(),
+        block_producers: BlockProducersConfig {
+            genesis_validators: authorities.iter().map(|x| validator_id(&x.0)).collect::<Vec<_>>()
+        },
+        staking: StakingConfig {
+            validator_count: ELECTED_SLOTS,
+            minimum_validator_count: 1,
+            min_validator_bond: MIN_VALIDATOR_BOND,
+            min_nominator_bond: MIN_NOMINATOR_BOND,
         },
         sudo: SudoConfig {
             key: Some(operator.clone())
@@ -121,6 +130,23 @@ pub fn bootstrap_template_genesis() -> Value {
         ],
         Sr25519Keyring::Alice.to_account_id(),
     )
+}
+
+/// A genesis authority's validator id: the account whose bytes are its Aura key.
+pub fn validator_id(aura: &AuraId) -> AccountId {
+    let bytes: &[u8] = aura.as_ref();
+    let raw: [u8; 32] = bytes.try_into().expect("sr25519 keys are 32 bytes");
+    AccountId::new(raw)
+}
+
+fn session_keys(authorities: &[(AuraId, GrandpaId)]) -> Vec<(AccountId, AccountId, SessionKeys)> {
+    authorities
+        .iter()
+        .map(|(a, g)| {
+            let who = validator_id(a);
+            (who.clone(), who, SessionKeys { aura: a.clone(), grandpa: g.clone() })
+        })
+        .collect()
 }
 
 fn keys(k: Sr25519Keyring, e: Ed25519Keyring) -> (AuraId, GrandpaId) {
