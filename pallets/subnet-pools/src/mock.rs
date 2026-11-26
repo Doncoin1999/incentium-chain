@@ -1,5 +1,5 @@
 use crate as pallet_subnet_pools;
-use crate::{NetUid, SubnetInfo};
+use crate::{IssuanceInfo, NetUid, SubnetInfo};
 use polkadot_sdk::frame_support::{derive_impl, parameter_types, PalletId};
 use polkadot_sdk::sp_runtime::BuildStorage;
 use polkadot_sdk::{frame_system, pallet_balances, sp_io};
@@ -34,6 +34,8 @@ pub const VALI: u64 = 10;
 pub const MINER: u64 = 20;
 pub const ALICE: u64 = 1;
 pub const BOB: u64 = 2;
+pub const TREASURY: u64 = 999;
+pub const SELLER: u64 = 50;
 
 thread_local! {
     pub static HAS_OWNER: RefCell<bool> = const { RefCell::new(true) };
@@ -55,7 +57,22 @@ impl SubnetInfo<u64> for MockSubnets {
     }
 }
 
+thread_local! {
+    pub static SUBNET_ICT: RefCell<u128> = const { RefCell::new(288 * UNIT) };
+}
+
+pub struct MockIssuance;
+impl IssuanceInfo for MockIssuance {
+    fn subnet_ict_per_day() -> u128 {
+        SUBNET_ICT.with(|s| *s.borrow())
+    }
+    fn days_to_ict_halving() -> u64 {
+        1_280
+    }
+}
+
 parameter_types! {
+    pub const Treasury: u64 = TREASURY;
     pub const PoolsPalletId: PalletId = PalletId(*b"alphapol");
     pub const FeePpm: u32 = 5_000;
     pub const FeeBurnPpm: u32 = 500_000;
@@ -67,6 +84,8 @@ impl pallet_subnet_pools::Config for Test {
     type Currency = Balances;
     type PalletId = PoolsPalletId;
     type Subnets = MockSubnets;
+    type Issuance = MockIssuance;
+    type Treasury = Treasury;
     type FeePpm = FeePpm;
     type FeeBurnPpm = FeeBurnPpm;
     type MinTrade = MinTrade;
@@ -75,7 +94,7 @@ impl pallet_subnet_pools::Config for Test {
 pub fn new_test_ext() -> sp_io::TestExternalities {
     let mut t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
     pallet_balances::GenesisConfig::<Test> {
-        balances: vec![(ALICE, 100_000 * UNIT), (BOB, 100_000 * UNIT), (OWNER, 10 * UNIT)],
+        balances: vec![(ALICE, 100_000 * UNIT), (BOB, 100_000 * UNIT), (OWNER, 10 * UNIT), (SELLER, 100_000 * UNIT), (VALI, UNIT), (TREASURY, UNIT)],
         ..Default::default()
     }
     .assimilate_storage(&mut t)

@@ -1,19 +1,42 @@
 use crate::mock::*;
-use crate::pallet::{Error, HotkeyStake, NextBonusPpm, OwnerVesting, Pools as PoolStore, Positions, TotalStake};
+use crate::pallet::{
+    Error, HotkeyStake, NextBonusPpm, OwnerVesting, Pools as PoolStore, Positions, PriceDays, Takes, TotalStake,
+};
 use crate::PoolsInterface;
-use ict_economics::BLOCKS_PER_DAY;
-use polkadot_sdk::frame_support::{assert_noop, assert_ok, traits::fungible::Inspect};
-use polkadot_sdk::sp_runtime::DispatchError;
+use ict_economics::{alpha, BLOCKS_PER_DAY};
+use polkadot_sdk::frame_support::{
+    assert_noop, assert_ok,
+    traits::{fungible::Inspect, Hooks},
+};
 
-fn open(netuid: u16, sale: u128) {
-    <Pools as PoolsInterface<u64>>::open_pool(netuid, sale);
+type P = crate::Pallet<Test>;
+
+fn register(netuid: u16, reserved: u128) {
+    assert_ok!(<P as PoolsInterface<u64>>::register_pool(netuid, &SELLER, reserved));
 }
 
-/// One day of epochs (20 x 360 blocks) with one miner and one validator paid.
+/// `n` epochs of 360 blocks with one miner and one validator paid, advancing the clock and
+/// running the per-block hook.
 fn epochs(netuid: u16, n: u32) {
     for _ in 0..n {
-        <Pools as PoolsInterface<u64>>::on_epoch(netuid, 360, &[(MINER, 50)], &[(VALI, 38)]);
+        <P as PoolsInterface<u64>>::on_epoch(netuid, 360, &[(MINER, 50)], &[(VALI, 38)]);
+        advance(360);
     }
+}
+
+fn advance(blocks: u64) {
+    for _ in 0..blocks {
+        let b = System::block_number() + 1;
+        System::set_block_number(b);
+        P::on_initialize(b);
+    }
+}
+
+/// Register, run the 10 closed days, and return once the pool is open.
+fn open_pool(netuid: u16, reserved: u128) {
+    register(netuid, reserved);
+    epochs(netuid, 200);
+    assert!(PoolStore::<Test>::get(netuid).unwrap().trading);
 }
 
 fn pos(netuid: u16, hotkey: u64, who: u64) -> u128 {
@@ -24,275 +47,335 @@ fn ict_of(who: u64) -> u128 {
     Balances::balance(&who)
 }
 
+fn price(netuid: u16) -> u128 {
+    PoolStore::<Test>::get(netuid).unwrap().pool().price()
+}
+
 #[test]
-fn a_pool_opens_at_sale_price_over_a_million_and_only_once() {
+fn a_pool_registers_closed_holding_the_auction_ict() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
+        register(1, 500 * UNIT);
         let st = PoolStore::<Test>::get(1).unwrap();
-        assert_eq!(st.pool().price(), UNIT / 1_000);
-        assert_eq!(st.bonus_ppm, 500_000);
-        assert_eq!(st.issued, 0);
-        open(1, 50_000 * UNIT);
-        assert_eq!(PoolStore::<Test>::get(1).unwrap().pool().price(), UNIT / 1_000);
+        assert!(!st.trading);
+        assert_eq!(st.reserved_ict, 500 * UNIT);
+        assert_eq!(ict_of(P::pool_account(1)), 500 * UNIT);
+        assert_eq!(<P as PoolsInterface<u64>>::stake_ict(1), 500 * UNIT);
+        assert_noop!(<P as PoolsInterface<u64>>::register_pool(1, &SELLER, UNIT), Error::<Test>::PoolExists);
     });
 }
 
 #[test]
-fn nothing_can_be_bought_before_any_alpha_exists() {
+fn nothing_can_be_bought_or_sold_in_the_first_ten_days() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        assert_noop!(
-            crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0),
-            Error::<Test>::Insufficient
-        );
+        register(1, 500 * UNIT);
+        epochs(1, 100);
+        assert!(pos(1, MINER, MINER) > 0);
+        assert_noop!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0), Error::<Test>::NotTrading);
+        assert_noop!(P::unstake(RuntimeOrigin::signed(MINER), 1, MINER, UNIT, 0), Error::<Test>::NotTrading);
+        assert!(P::quote_stake(1, UNIT).is_none());
+        // stock collects outside the pool
+        let st = PoolStore::<Test>::get(1).unwrap();
+        assert_eq!(st.y, 0);
+        assert!(st.waiting > 0);
     });
 }
 
 #[test]
-fn an_epoch_issues_icts_schedule_and_splits_bonus_and_stock() {
+fn the_pool_opens_after_ten_days_at_the_valuation_price() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
+        register(1, 500 * UNIT);
+        epochs(1, 199);
+        assert!(!PoolStore::<Test>::get(1).unwrap().trading);
         epochs(1, 1);
         let st = PoolStore::<Test>::get(1).unwrap();
-        // 360 blocks at 1 Alpha: 180 bonus, 180 to the pool
-        assert_eq!(st.issued, 360 * UNIT);
-        assert_eq!(st.ry, 180 * UNIT);
-        // bonus 50/38/12: miner 90, validator 68.4, owner 21.6 (vesting)
-        assert_eq!(pos(1, MINER, MINER), 90 * UNIT);
-        assert_eq!(pos(1, VALI, VALI), 68_400_000_000);
-        assert_eq!(OwnerVesting::<Test>::get(1)[0].total, 21_600_000_000);
-        assert_eq!(st.bonus_minted, 180 * UNIT);
-        assert_eq!(TotalStake::<Test>::get(1), 158_400_000_000);
+        assert!(st.trading);
+        let p0 = alpha::start_price(288 * UNIT, 1_280, alpha::DEFAULT_REQUIRED_RETURN_PPM);
+        // opened with all 500 ICT and 500 / p0 Alpha; the price has moved only by released stock since
+        assert!(st.x == 500 * UNIT);
+        assert!(st.pool().price() <= p0 && st.pool().price() * 100 >= p0 * 95);
+        assert_eq!(<P as PoolsInterface<u64>>::stake_ict(1), 500 * UNIT);
+        assert_eq!(PriceDays::<Test>::get(1).len(), 1);
     });
 }
 
 #[test]
-fn an_epoch_that_pays_nobody_sends_its_bonus_to_the_pool() {
+fn auction_ict_the_pool_cannot_match_goes_to_the_treasury() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        <Pools as PoolsInterface<u64>>::on_epoch(1, 360, &[], &[]);
+        let before = ict_of(TREASURY);
+        open_pool(1, 5_000 * UNIT);
         let st = PoolStore::<Test>::get(1).unwrap();
-        assert_eq!(st.ry, 360 * UNIT);
-        assert_eq!(st.bonus_minted, 0);
-        assert!(OwnerVesting::<Test>::get(1).is_empty());
+        let p0 = alpha::start_price(288 * UNIT, 1_280, alpha::DEFAULT_REQUIRED_RETURN_PPM);
+        let cap = ict_economics::mul_div(alpha::OPEN_DEPTH, p0, UNIT);
+        assert_eq!(st.x, cap);
+        assert_eq!(ict_of(TREASURY) - before, 5_000 * UNIT - cap);
+        assert_eq!(ict_of(P::pool_account(1)), cap);
     });
 }
 
 #[test]
-fn staking_buys_alpha_and_moves_the_icts_into_the_pool() {
+fn staking_buys_alpha_with_a_price_limit() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20);
-        let issuance = Balances::total_issuance();
-        let before = ict_of(ALICE);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0));
-        let a = pos(1, VALI, ALICE);
-        assert!(a > 0);
-        let st = PoolStore::<Test>::get(1).unwrap();
-        assert_eq!(before - ict_of(ALICE), UNIT);
-        // 0.5 % fee, half burned
-        assert_eq!(Balances::total_issuance(), issuance - UNIT / 400);
-        assert_eq!(ict_of(crate::Pallet::<Test>::pool_account(1)), st.rx);
-        assert_eq!(HotkeyStake::<Test>::get(1, VALI), a + pos(1, VALI, VALI));
-        assert_eq!(<Pools as PoolsInterface<u64>>::stake_ict(1), st.rx);
-    });
-}
-
-#[test]
-fn stake_needs_a_neuron_and_a_pool() {
-    new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 1);
+        open_pool(1, 500 * UNIT);
+        let q = P::quote_stake(1, 100 * UNIT).unwrap();
         assert_noop!(
-            crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, 77, UNIT, 0),
-            Error::<Test>::NotNeuron
+            P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, q + 1),
+            Error::<Test>::SlippageExceeded
         );
-        assert_noop!(
-            crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 2, VALI, UNIT, 0),
-            Error::<Test>::NoPool
-        );
-        assert_noop!(
-            crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 1, 0),
-            Error::<Test>::TooSmall
-        );
-    });
-}
-
-#[test]
-fn a_large_stake_fills_partly_and_charges_only_for_that() {
-    new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 1); // 180 Alpha in the pool
-        let before = ict_of(ALICE);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 10_000 * UNIT, 0));
-        let got = pos(1, VALI, ALICE);
-        assert!(got <= 180 * UNIT * 99 / 100);
-        assert!(before - ict_of(ALICE) < 10_000 * UNIT);
+        let p_before = price(1);
+        let pool_before = ict_of(P::pool_account(1));
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, q));
+        assert_eq!(pos(1, VALI, ALICE), q);
+        assert!(price(1) > p_before);
+        // the burned quarter of a percent is gone; the rest is in the pool
+        assert_eq!(ict_of(P::pool_account(1)) - pool_before, 100 * UNIT - 100 * UNIT / 400);
+        assert_noop!(P::stake(RuntimeOrigin::signed(ALICE), 1, 77, UNIT, 0), Error::<Test>::NotNeuron);
+        assert_noop!(P::stake(RuntimeOrigin::signed(ALICE), 3, VALI, UNIT, 0), Error::<Test>::NotNeuron);
     });
 }
 
 #[test]
 fn unstaking_sells_alpha_back_for_ict() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 2 * UNIT, 0));
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, 0));
         let a = pos(1, VALI, ALICE);
         let before = ict_of(ALICE);
-        let quote = crate::Pallet::<Test>::quote_unstake(1, a).unwrap();
-        assert_noop!(
-            crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, a, quote + 1),
-            Error::<Test>::SlippageExceeded
-        );
-        assert_ok!(crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, a, quote));
-        assert_eq!(ict_of(ALICE) - before, quote);
-        assert!(quote < 2 * UNIT, "fees on the way in and out");
+        let q = P::quote_unstake(1, a).unwrap();
+        assert_ok!(P::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, a, q));
+        assert_eq!(ict_of(ALICE) - before, q);
+        assert!(q < 100 * UNIT && q > 98 * UNIT);
         assert_eq!(pos(1, VALI, ALICE), 0);
-        assert_noop!(
-            crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0),
-            Error::<Test>::NotEnoughStake
-        );
+        assert_noop!(P::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0), Error::<Test>::NotEnoughStake);
     });
 }
 
 #[test]
-fn a_miner_cannot_sell_bonus_until_someone_has_bought() {
+fn miners_can_sell_their_bonus_once_the_pool_is_open() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20);
-        let a = pos(1, MINER, MINER);
-        assert_noop!(
-            crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(MINER), 1, MINER, a, 0),
-            Error::<Test>::Insufficient
-        );
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 5 * UNIT, 0));
-        assert_ok!(crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(MINER), 1, MINER, a / 10, 0));
-        assert!(ict_of(MINER) > 0);
+        open_pool(1, 500 * UNIT);
+        let a = pos(1, MINER, MINER) / 10;
+        let before = ict_of(MINER);
+        assert_ok!(P::unstake(RuntimeOrigin::signed(MINER), 1, MINER, a, 0));
+        assert!(ict_of(MINER) > before);
+    });
+}
+
+#[test]
+fn stock_is_released_block_by_block_and_held_back_after_a_fall() {
+    new_test_ext().execute_with(|| {
+        open_pool(1, 500 * UNIT);
+        let w = PoolStore::<Test>::get(1).unwrap().waiting;
+        advance(10);
+        let st = PoolStore::<Test>::get(1).unwrap();
+        // at most two blocks' stock (2 x 0.5 Alpha) a block
+        assert!(w - st.waiting <= 10 * UNIT && w > st.waiting);
+        // a crash: everyone sells; the price falls more than 20 % below its average
+        epochs(1, 1);
+        let sells = [MINER, VALI];
+        for who in sells {
+            let a = pos(1, who, who);
+            let _ = P::unstake(RuntimeOrigin::signed(who), 1, who, a, 0);
+        }
+        let avg = {
+            let d = PriceDays::<Test>::get(1);
+            d.iter().sum::<u128>() / d.len() as u128
+        };
+        assert!(price(1) < avg * 8 / 10, "price {} avg {}", price(1), avg);
+        let st = PoolStore::<Test>::get(1).unwrap();
+        advance(10);
+        let st2 = PoolStore::<Test>::get(1).unwrap();
+        assert_eq!(st2.y, st.y, "stock held back");
+        assert_eq!(st2.waiting, st.waiting);
+    });
+}
+
+#[test]
+fn the_price_is_sampled_once_a_day_for_thirty_days() {
+    new_test_ext().execute_with(|| {
+        open_pool(1, 500 * UNIT);
+        epochs(1, 20 * 40);
+        assert_eq!(PriceDays::<Test>::get(1).len() as u32, alpha::AVG_DAYS);
+    });
+}
+
+#[test]
+fn validators_keep_their_take_and_stakers_get_the_rest_in_ict() {
+    new_test_ext().execute_with(|| {
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, 0));
+        assert_ok!(P::stake(RuntimeOrigin::signed(BOB), 1, VALI, 100 * UNIT, 0));
+        let (va, al, bo) = (pos(1, VALI, VALI), pos(1, VALI, ALICE), pos(1, VALI, BOB));
+        let total = HotkeyStake::<Test>::get(1, VALI);
+        assert_eq!(total, va + al + bo);
+        let vali_before = ict_of(VALI);
+        assert_ok!(<P as PoolsInterface<u64>>::pay_validator_ict(1, &SELLER, &VALI, 1_000 * UNIT));
+        // default take 18 %
+        assert_eq!(ict_of(VALI) - vali_before, 180 * UNIT);
+        let alice_due = P::pending_dividends(1, &VALI, &ALICE);
+        let expect = ict_economics::mul_div(820 * UNIT, al, total);
+        assert!(alice_due <= expect && alice_due + 2 >= expect);
+        let before = ict_of(ALICE);
+        assert_ok!(P::claim_dividends(RuntimeOrigin::signed(ALICE), 1, VALI));
+        assert_eq!(ict_of(ALICE) - before, alice_due);
+        assert_noop!(P::claim_dividends(RuntimeOrigin::signed(ALICE), 1, VALI), Error::<Test>::NothingToClaim);
+        // the validator's own bonus Alpha earns dividends too
+        assert!(P::pending_dividends(1, &VALI, &VALI) > 0);
+    });
+}
+
+#[test]
+fn dividends_follow_the_stake_held_when_they_were_paid() {
+    new_test_ext().execute_with(|| {
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, 0));
+        assert_ok!(<P as PoolsInterface<u64>>::pay_validator_ict(1, &SELLER, &VALI, 1_000 * UNIT));
+        // Bob comes in after the payment: nothing of it is his
+        assert_ok!(P::stake(RuntimeOrigin::signed(BOB), 1, VALI, 100 * UNIT, 0));
+        assert_eq!(P::pending_dividends(1, &VALI, &BOB), 0);
+        // Alice's due is paid out automatically when she changes her stake
+        let due = P::pending_dividends(1, &VALI, &ALICE);
+        let before = ict_of(ALICE);
+        assert!(due > UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0));
+        assert_eq!(ict_of(ALICE) + UNIT, before + due);
+        assert_eq!(P::pending_dividends(1, &VALI, &ALICE), 0);
+    });
+}
+
+#[test]
+fn a_validator_without_stakers_keeps_everything() {
+    new_test_ext().execute_with(|| {
+        register(1, 500 * UNIT);
+        let before = ict_of(VALI);
+        assert_ok!(<P as PoolsInterface<u64>>::pay_validator_ict(1, &SELLER, &VALI, 10 * UNIT));
+        assert_eq!(ict_of(VALI) - before, 10 * UNIT);
+    });
+}
+
+#[test]
+fn takes_are_0_to_18_percent_and_rise_at_most_once_a_month() {
+    new_test_ext().execute_with(|| {
+        assert_noop!(P::set_take(RuntimeOrigin::signed(VALI), 180_001), Error::<Test>::TakeTooHigh);
+        assert_ok!(P::set_take(RuntimeOrigin::signed(VALI), 50_000));
+        assert_ok!(P::set_take(RuntimeOrigin::signed(VALI), 100_000));
+        assert_noop!(P::set_take(RuntimeOrigin::signed(VALI), 120_000), Error::<Test>::TakeRaisedTooSoon);
+        assert_ok!(P::set_take(RuntimeOrigin::signed(VALI), 0));
+        System::set_block_number(System::block_number() + 30 * BLOCKS_PER_DAY);
+        assert_ok!(P::set_take(RuntimeOrigin::signed(VALI), 180_000));
+        assert_eq!(Takes::<Test>::get(VALI).ppm, 180_000);
     });
 }
 
 #[test]
 fn stake_can_move_between_hotkeys_and_to_other_accounts() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0));
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, 0));
         let a = pos(1, VALI, ALICE);
-        assert_ok!(crate::Pallet::<Test>::move_stake(RuntimeOrigin::signed(ALICE), 1, VALI, MINER, a / 2));
-        assert_eq!(pos(1, MINER, ALICE), a / 2);
-        assert_ok!(crate::Pallet::<Test>::transfer_stake(RuntimeOrigin::signed(ALICE), 1, MINER, BOB, a / 2));
-        assert_eq!(pos(1, MINER, BOB), a / 2);
-        assert_eq!(pos(1, MINER, ALICE), 0);
-        assert_noop!(
-            crate::Pallet::<Test>::move_stake(RuntimeOrigin::signed(ALICE), 1, VALI, VALI, 1),
-            Error::<Test>::SameHotkey
-        );
+        assert_ok!(P::move_stake(RuntimeOrigin::signed(ALICE), 1, VALI, MINER, a / 2));
+        assert_ok!(P::transfer_stake(RuntimeOrigin::signed(ALICE), 1, MINER, BOB, a / 4));
+        assert_eq!(pos(1, VALI, ALICE) + pos(1, MINER, ALICE) + pos(1, MINER, BOB), a);
+        assert_noop!(P::move_stake(RuntimeOrigin::signed(ALICE), 1, VALI, VALI, 1), Error::<Test>::SameHotkey);
     });
 }
 
 #[test]
 fn the_owners_alpha_vests_over_180_days_and_goes_to_the_current_owner() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20); // owner tranche: 20 x 21.6 = 432 Alpha
-        assert_noop!(
-            crate::Pallet::<Test>::claim_owner_alpha(RuntimeOrigin::signed(BOB), 1, OWNER),
-            Error::<Test>::NothingToClaim
-        );
-        System::set_block_number(1 + 90 * BLOCKS_PER_DAY);
-        assert_ok!(crate::Pallet::<Test>::claim_owner_alpha(RuntimeOrigin::signed(BOB), 1, OWNER));
-        assert_eq!(pos(1, OWNER, OWNER), 216 * UNIT);
-        System::set_block_number(1 + 200 * BLOCKS_PER_DAY);
-        assert_ok!(crate::Pallet::<Test>::claim_owner_alpha(RuntimeOrigin::signed(BOB), 1, OWNER));
-        assert_eq!(pos(1, OWNER, OWNER), 432 * UNIT);
+        register(1, 500 * UNIT);
+        epochs(1, 20);
+        assert!(!OwnerVesting::<Test>::get(1).is_empty());
+        assert_ok!(P::claim_owner_alpha(RuntimeOrigin::signed(ALICE), 1, OWNER));
+        let part = pos(1, OWNER, OWNER);
+        assert!(part > 0);
+        System::set_block_number(System::block_number() + 200 * BLOCKS_PER_DAY);
+        assert_ok!(P::claim_owner_alpha(RuntimeOrigin::signed(ALICE), 1, OWNER));
+        assert!(pos(1, OWNER, OWNER) > part);
         assert!(OwnerVesting::<Test>::get(1).is_empty());
     });
 }
 
 #[test]
-fn without_an_owner_the_owners_part_goes_to_the_pool() {
+fn without_an_owner_the_owners_part_goes_to_the_stock() {
     new_test_ext().execute_with(|| {
         HAS_OWNER.with(|h| *h.borrow_mut() = false);
-        open(1, 1_000 * UNIT);
+        register(1, 500 * UNIT);
         epochs(1, 1);
-        assert_eq!(PoolStore::<Test>::get(1).unwrap().ry, 180 * UNIT + 21_600_000_000);
+        let st = PoolStore::<Test>::get(1).unwrap();
+        // 360 Alpha: miner 90 + validator 68.4 as bonus, the rest (owner 21.6 + stock 180) waits
+        assert_eq!(st.waiting, 360 * UNIT - 90 * UNIT - 684 * UNIT / 10);
         HAS_OWNER.with(|h| *h.borrow_mut() = true);
     });
 }
 
 #[test]
-fn a_closed_pool_issues_nothing_but_lets_holders_out() {
+fn a_removed_pool_burns_its_stock_and_owner_alpha_but_lets_holders_out() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        epochs(1, 20);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 2 * UNIT, 0));
-        <Pools as PoolsInterface<u64>>::close_pool(1);
-        let issued = PoolStore::<Test>::get(1).unwrap().issued;
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 100 * UNIT, 0));
+        <P as PoolsInterface<u64>>::close_pool(1);
+        let st = PoolStore::<Test>::get(1).unwrap();
+        assert!(st.removed && st.waiting == 0);
+        assert!(OwnerVesting::<Test>::get(1).is_empty());
+        let issued = st.issued;
         epochs(1, 5);
         assert_eq!(PoolStore::<Test>::get(1).unwrap().issued, issued);
         let a = pos(1, VALI, ALICE);
-        assert_ok!(crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, a, 0));
+        assert_ok!(P::unstake(RuntimeOrigin::signed(ALICE), 1, VALI, a, 0));
     });
 }
 
 #[test]
-fn the_bonus_share_can_change_only_for_new_subnets_within_bounds() {
+fn a_pool_removed_before_it_opened_returns_the_held_ict_to_the_treasury() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        assert_noop!(
-            crate::Pallet::<Test>::set_next_bonus_ppm(RuntimeOrigin::signed(ALICE), 600_000),
-            DispatchError::BadOrigin
-        );
-        assert_noop!(
-            crate::Pallet::<Test>::set_next_bonus_ppm(RuntimeOrigin::root(), 800_000),
-            Error::<Test>::BonusOutOfRange
-        );
-        assert_ok!(crate::Pallet::<Test>::set_next_bonus_ppm(RuntimeOrigin::root(), 600_000));
-        assert_eq!(NextBonusPpm::<Test>::get(), 600_000);
-        open(2, 1_000 * UNIT);
-        assert_eq!(PoolStore::<Test>::get(1).unwrap().bonus_ppm, 500_000);
-        assert_eq!(PoolStore::<Test>::get(2).unwrap().bonus_ppm, 600_000);
+        let before = ict_of(TREASURY);
+        register(1, 500 * UNIT);
+        epochs(1, 10);
+        <P as PoolsInterface<u64>>::close_pool(1);
+        assert_eq!(ict_of(TREASURY) - before, 500 * UNIT);
+        epochs(1, 200);
+        assert!(!PoolStore::<Test>::get(1).unwrap().trading);
     });
 }
 
 #[test]
-fn summaries_list_pools_in_netuid_order_with_todays_figures() {
+fn the_bonus_share_and_required_return_change_only_within_bounds() {
     new_test_ext().execute_with(|| {
-        open(2, 1_000 * UNIT);
-        open(1, 50_000 * UNIT);
-        epochs(1, 20);
-        assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, UNIT, 0));
-        let s = crate::Pallet::<Test>::summaries();
+        assert_noop!(P::set_next_bonus_ppm(RuntimeOrigin::root(), 800_000), Error::<Test>::BonusOutOfRange);
+        assert_ok!(P::set_next_bonus_ppm(RuntimeOrigin::root(), 300_000));
+        assert_eq!(NextBonusPpm::<Test>::get(), 300_000);
+        assert_noop!(P::set_required_return(RuntimeOrigin::root(), 10_000), Error::<Test>::ReturnOutOfRange);
+        assert_ok!(P::set_required_return(RuntimeOrigin::root(), 300_000));
+        assert!(P::set_required_return(RuntimeOrigin::signed(ALICE), 300_000).is_err());
+    });
+}
+
+#[test]
+fn summaries_list_pools_in_netuid_order() {
+    new_test_ext().execute_with(|| {
+        register(2, 500 * UNIT);
+        open_pool(1, 500 * UNIT);
+        let s = P::summaries();
         assert_eq!(s.iter().map(|p| p.netuid).collect::<Vec<_>>(), vec![1, 2]);
-        assert_eq!(s[0].name, b"SN1".to_vec());
-        assert_eq!(s[0].alpha_issued, 7_200 * UNIT);
-        assert_eq!(s[0].bonus_today + s[0].stock_today, 7_200 * UNIT);
-        assert!(s[0].bought_today > 0);
-        assert_eq!(s[0].fee_ppm, 5_000);
-        assert!(crate::Pallet::<Test>::quote_stake(1, UNIT).is_some());
-        assert_eq!(crate::Pallet::<Test>::quote_stake(3, UNIT), None);
+        assert!(s[0].open && s[0].price > 0 && s[0].ict_reserve == 500 * UNIT);
+        // SN2 had no epochs, so no Alpha exists for it: it stays closed
+        assert!(!s[1].open && s[1].price == 0);
     });
 }
 
-/// Every Alpha ever issued is in a position, in the pool, still vesting, or burned as a fee.
 #[test]
 fn alpha_is_conserved() {
     new_test_ext().execute_with(|| {
-        open(1, 1_000 * UNIT);
-        let mut burned = 0u128;
-        for day in 0..10u64 {
-            System::set_block_number(1 + day * BLOCKS_PER_DAY);
-            epochs(1, 20);
-            assert_ok!(crate::Pallet::<Test>::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 3 * UNIT, 0));
-            let a = pos(1, MINER, MINER) / 3;
-            if let Ok(()) = crate::Pallet::<Test>::unstake(RuntimeOrigin::signed(MINER), 1, MINER, a, 0) {
-                burned += a * 5 / 1_000 / 2;
-            }
-        }
+        open_pool(1, 500 * UNIT);
+        assert_ok!(P::stake(RuntimeOrigin::signed(ALICE), 1, VALI, 300 * UNIT, 0));
+        let a = pos(1, MINER, MINER) / 3;
+        assert_ok!(P::unstake(RuntimeOrigin::signed(MINER), 1, MINER, a, 0));
+        let burned_fee = a / 200 / 2; // half the 0.5 % fee on the sale is burned Alpha
+        epochs(1, 30);
         let st = PoolStore::<Test>::get(1).unwrap();
         let vesting: u128 = OwnerVesting::<Test>::get(1).iter().map(|t| t.total - t.claimed).sum();
-        let staked = TotalStake::<Test>::get(1);
-        let diff = st.issued.abs_diff(staked + st.ry + vesting + burned);
-        assert!(diff < 100, "rounding only, got {diff}");
+        // issued = in pool + waiting + staked + vesting + the Alpha fee burned on the sale
+        let accounted = st.y + st.waiting + TotalStake::<Test>::get(1) + vesting + burned_fee;
+        assert!(accounted.abs_diff(st.issued) <= 2, "off by {}", accounted.abs_diff(st.issued));
     });
 }
