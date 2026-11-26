@@ -266,6 +266,9 @@ mod runtime {
 
     #[runtime::pallet_index(31)]
     pub type Emergency = governance::pallet_emergency;
+    /// Parameters track: protocol parameters from a fixed list (runtime 12).
+    #[runtime::pallet_index(34)]
+    pub type Parameters = governance::pallet_parameters;
 
     // Open block production (block_production.rs). BlockProducers first, so its genesis is
     // built before Session asks it for the first set.
