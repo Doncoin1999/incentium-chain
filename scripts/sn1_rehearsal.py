@@ -149,7 +149,10 @@ def cmd_neurons(c, a):
         if c.free(kp.ss58_address) < 5 * UNIT:
             c.fund(kp.ss58_address, 20 * UNIT)
         if c.q("Registry", "NeuronUid", [NETUID, kp.ss58_address]) is None:
-            c.submit(kp, "Registry", "register_neuron", {"netuid": NETUID, "hotkey": kp.ss58_address})
+            # in the launch (bootstrap) period only the operator registers neurons, fee waived
+            bootstrap = (c.q("Registry", "BootstrapUntil") or 0) > c.head()
+            c.submit(c.operator if bootstrap else kp, "Registry", "register_neuron",
+                     {"netuid": NETUID, "hotkey": kp.ss58_address})
 
 
 def cmd_upgrade(c, a):
