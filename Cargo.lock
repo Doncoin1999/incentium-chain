@@ -6900,6 +6900,7 @@ dependencies = [
  "pallet-ict-consensus",
  "pallet-ict-emission",
  "pallet-ict-swap",
+ "pallet-subnet-pools",
  "pallet-subnet-registry",
  "pallet-weights",
  "pallet-work-verify",
@@ -11303,6 +11304,16 @@ dependencies = [
  "sp-io 49.0.0",
  "sp-runtime 49.0.0",
  "sp-statement-store",
+]
+
+[[package]]
+name = "pallet-subnet-pools"
+version = "0.1.0"
+dependencies = [
+ "ict-economics",
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "scale-info",
 ]
 
 [[package]]

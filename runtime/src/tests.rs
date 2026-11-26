@@ -692,6 +692,10 @@ fn the_parameters_track_changes_listed_parameters_only() {
         assert_eq!(pallet_ict_emission::ValidatorShare::<Runtime>::get(), 10_000);
         assert_ok!(set(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 30 })));
         assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 30);
+        assert_ok!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 250_000 })));
+        assert_eq!(pallet_subnet_pools::RequiredReturnPpm::<Runtime>::get(), 250_000);
+        // its own bounds still hold
+        assert!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 10_000 })).is_err());
         // the pallet's own bounds still hold
         assert!(set(RuntimeCall::Emission(pallet_ict_emission::Call::set_fund_share { ppm: 900_000 })).is_err());
         // not listed: refused
@@ -754,5 +758,66 @@ fn a_parameters_referendum_passes_and_takes_effect() {
         assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 33, "the referendum took effect");
         // prepare 1 day + confirm 1 day + enactment 1 day, plus scheduling
         assert!(System::block_number() <= 3 * DAYS + DAYS / 2, "took {} blocks", System::block_number());
+    });
+}
+
+#[test]
+fn subnet_pools_are_in_the_runtime_and_empty_until_a_subnet_is_sold() {
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        assert!(crate::SubnetPools::summaries().is_empty());
+        assert_eq!(crate::SubnetPools::quote_stake(1, UNIT), None);
+        // SN0 has no Alpha: nothing can be staked there through the pools
+        assert!(crate::SubnetPools::stake(signed(K::Alice), 0, acc(K::Alice), UNIT, 0).is_err());
+        assert_eq!(
+            <crate::SubnetPools as polkadot_sdk::frame_support::traits::PalletInfoAccess>::index(),
+            32
+        );
+    });
+}
+
+/// A slot sold through the registry gets a closed pool holding the pool half of the price;
+/// Alpha issued through consensus' hook opens it after 10 days at the valuation price, and
+/// what the pool cannot match goes to the development fund.
+#[test]
+fn a_sold_subnet_gets_an_alpha_pool_that_opens_after_ten_days() {
+    use pallet_ict_consensus::AlphaHooks;
+    use pallet_subnet_registry::{AuctionStart, Phase2Enabled};
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        Phase2Enabled::<Runtime>::put(true);
+        AuctionStart::<Runtime>::put(1);
+        let price = Registry::current_price().unwrap();
+        let _ = Balances::force_set_balance(RuntimeOrigin::root(), acc(K::Bob).into(), price * 2);
+        let issuance = Balances::total_issuance();
+        assert_ok!(Registry::register_subnet(signed(K::Bob), u128::MAX, b"SN1".to_vec(), vec![], [1; 32]));
+        let st = pallet_subnet_pools::Pools::<Runtime>::get(1).expect("pool registered");
+        assert!(!st.trading);
+        assert_eq!(st.reserved_ict, price / 2);
+        assert_eq!(Balances::total_issuance(), issuance - price / 2, "the other half is burned");
+        assert_eq!(configs::AlphaPools::stake_ict(1), price / 2);
+
+        // ten days of epochs through consensus' hook, nobody paid: all Alpha to the stock
+        let fund_before = Balances::free_balance(configs::FundAccount::get());
+        for _ in 0..200 {
+            configs::AlphaPools::on_epoch(1, 360, &[], &[]);
+            let b = System::block_number() + 360;
+            System::set_block_number(b);
+        }
+        crate::SubnetPools::on_initialize(System::block_number());
+        let st = pallet_subnet_pools::Pools::<Runtime>::get(1).unwrap();
+        assert!(st.trading, "opened after ten days");
+        let p0 = ict_economics::alpha::start_price(
+            <configs::PoolIssuance as pallet_subnet_pools::IssuanceInfo>::subnet_ict_per_day(),
+            <configs::PoolIssuance as pallet_subnet_pools::IssuanceInfo>::days_to_ict_halving(),
+            200_000,
+        );
+        let cap = ict_economics::mul_div(36_000 * UNIT, p0, UNIT);
+        assert_eq!(st.x, cap.min(price / 2));
+        assert_eq!(
+            Balances::free_balance(configs::FundAccount::get()) - fund_before,
+            price / 2 - st.x,
+            "the unmatched ICT went to the fund"
+        );
+        assert!(crate::SubnetPools::quote_stake(1, UNIT).is_some());
     });
 }

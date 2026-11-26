@@ -134,7 +134,9 @@ impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::trait
     }
 }
 
-/// The calls the Parameters track may make, each within the bounds its own pallet enforces.
+/// The calls the Parameters track may make, each within the bounds its own pallet enforces:
+/// emission shares, subnet spacing, count and tiers, the block producers' count and staking
+/// minimums, and Alpha's required return (start prices) and bonus share for new subnets.
 /// Everything else (runtime upgrades, the subnet emergency brake, the swap attestation, ending
 /// the genesis keys' reserve) stays on the Root track.
 pub struct ParameterCalls;
@@ -142,6 +144,7 @@ impl frame_support::traits::Contains<RuntimeCall> for ParameterCalls {
     fn contains(c: &RuntimeCall) -> bool {
         use pallet_ict_emission::Call as Em;
         use pallet_staking::Call as St;
+        use pallet_subnet_pools::Call as Pools;
         use pallet_subnet_registry::Call as Reg;
         matches!(
             c,
@@ -154,6 +157,9 @@ impl frame_support::traits::Contains<RuntimeCall> for ParameterCalls {
                         | St::increase_validator_count { .. }
                         | St::scale_validator_count { .. }
                         | St::set_staking_configs { .. }
+                )
+                | RuntimeCall::SubnetPools(
+                    Pools::set_required_return { .. } | Pools::set_next_bonus_ppm { .. }
                 )
         )
     }
@@ -496,6 +502,10 @@ impl pallet_subnet_registry::UnlockSignals for GovernanceSignals {
             }
         }
         n
+    }
+    fn alpha_installed() -> bool {
+        // the subnet pools pallet is part of this runtime
+        true
     }
 }
 

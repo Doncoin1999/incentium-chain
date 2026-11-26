@@ -209,6 +209,20 @@ impl_runtime_apis! {
         }
     }
 
+    impl pallet_subnet_pools::runtime_api::SubnetPoolsApi<Block> for Runtime {
+        fn pools() -> alloc::vec::Vec<pallet_subnet_pools::runtime_api::PoolSummary> {
+            crate::SubnetPools::summaries()
+        }
+
+        fn quote_stake(netuid: u16, ict_in: u128) -> Option<u128> {
+            crate::SubnetPools::quote_stake(netuid, ict_in)
+        }
+
+        fn quote_unstake(netuid: u16, alpha_in: u128) -> Option<u128> {
+            crate::SubnetPools::quote_unstake(netuid, alpha_in)
+        }
+    }
+
     impl pallet_subnet_registry::runtime_api::SubnetRegistryApi<Block, AccountId> for Runtime {
         fn unlock_status() -> pallet_subnet_registry::UnlockStatus {
             crate::Registry::unlock_status()

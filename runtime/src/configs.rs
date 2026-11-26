@@ -219,6 +219,7 @@ impl pallet_subnet_registry::Config for Runtime {
     type Unlock = crate::governance::GovernanceSignals;
     type StakeInfo = Consensus;
     type OnRemoved = Consensus;
+    type Sale = AlphaPools;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -268,6 +269,7 @@ impl pallet_ict_consensus::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = crate::weights::pallet_ict_consensus::WeightInfo<Runtime>;
     type StakeCurrency = Balances;
+    type Alpha = AlphaPools;
     type StakePalletId = StakePalletId;
     type SubnetPot = SubnetPot;
     type MinerSharePpm = MinerSharePpm;
@@ -322,4 +324,115 @@ impl pallet_ict_swap::Config for Runtime {
     type MinReservationDeposit = SwapMinReservationDeposit;
     type DepositDisputeWindow = SwapDepositDisputeWindow;
     type MaxBlockGap = SwapMaxBlockGap;
+}
+
+// ------------------------------------------------------------------ subnet pools
+
+/// What the registry tells the pools about subnets.
+pub struct RegistrySubnets;
+impl pallet_subnet_pools::SubnetInfo<AccountId> for RegistrySubnets {
+    fn exists(netuid: u16) -> bool {
+        netuid != pallet_subnet_registry::SN0 && pallet_subnet_registry::Subnets::<Runtime>::contains_key(netuid)
+    }
+    fn owner(netuid: u16) -> Option<AccountId> {
+        if !Self::exists(netuid) {
+            return None;
+        }
+        match pallet_subnet_registry::Control::<Runtime>::get(netuid) {
+            pallet_subnet_registry::ControlKind::Dao => Some(crate::Registry::dao_account(netuid)),
+            _ => pallet_subnet_registry::Subnets::<Runtime>::get(netuid).and_then(|s| s.owner),
+        }
+    }
+    fn is_neuron(netuid: u16, hotkey: &AccountId) -> bool {
+        Self::exists(netuid) && pallet_subnet_registry::NeuronUid::<Runtime>::contains_key(netuid, hotkey)
+    }
+    fn name(netuid: u16) -> alloc::vec::Vec<u8> {
+        pallet_subnet_registry::Metadata::<Runtime>::get(netuid)
+            .map(|m| m.name.into_inner())
+            .unwrap_or_default()
+    }
+}
+
+parameter_types! {
+    pub const SubnetPoolsPalletId: PalletId = PalletId(*b"ict/alph");
+    /// 0.5 % per trade, half burned (decided 26 Nov 2026).
+    pub const PoolFeePpm: u32 = 5_000;
+    pub const PoolFeeBurnPpm: u32 = 500_000;
+    /// Smallest stake or unstake: 0.01 ICT or Alpha.
+    pub const PoolMinTrade: u128 = UNIT / 100;
+}
+
+/// What the start-price formula needs: the ICT a day the average subnet other than SN0
+/// receives (all issuance less the fund, less SN0's floor of half of all issuance, shared
+/// by the subnets) and the days until ICT's next halving.
+pub struct PoolIssuance;
+impl pallet_subnet_pools::IssuanceInfo for PoolIssuance {
+    fn subnet_ict_per_day() -> u128 {
+        let halvings = pallet_ict_emission::Halvings::<Runtime>::get();
+        let per_day = ict_economics::emission::block_reward(halvings) * ict_economics::BLOCKS_PER_DAY as u128;
+        let fund = pallet_ict_emission::FundShare::<Runtime>::get() as u128;
+        let others_ppm = 1_000_000u128.saturating_sub(fund).saturating_sub(500_000);
+        let n = (pallet_subnet_registry::SubnetCount::<Runtime>::get() as u128).max(1);
+        per_day * others_ppm / 1_000_000 / n
+    }
+    fn days_to_ict_halving() -> u64 {
+        let halvings = pallet_ict_emission::Halvings::<Runtime>::get();
+        let left = ict_economics::emission::next_threshold(halvings)
+            .saturating_sub(pallet_ict_emission::TotalIssued::<Runtime>::get());
+        let per_day = (ict_economics::emission::block_reward(halvings) * ict_economics::BLOCKS_PER_DAY as u128).max(1);
+        (left / per_day) as u64
+    }
+}
+
+/// The Alpha pools, as the registry and consensus see them (decided 26 Nov 2026).
+pub struct AlphaPools;
+type Pools = crate::SubnetPools;
+use pallet_subnet_pools::PoolsInterface as _;
+
+impl pallet_subnet_registry::SubnetSale<AccountId> for AlphaPools {
+    fn pools_installed() -> bool {
+        true
+    }
+    fn subnet_sold(netuid: u16, buyer: &AccountId, amount: u128) -> sp_runtime::DispatchResult {
+        Pools::register_pool(netuid, buyer, amount)
+    }
+}
+
+impl pallet_ict_consensus::AlphaHooks<AccountId> for AlphaPools {
+    fn active(netuid: u16) -> bool {
+        pallet_subnet_pools::Pools::<Runtime>::contains_key(netuid)
+    }
+    fn stake_ict(netuid: u16) -> u128 {
+        Pools::stake_ict(netuid)
+    }
+    fn alpha_stake(netuid: u16, hotkey: &AccountId) -> u128 {
+        Pools::alpha_stake(netuid, hotkey)
+    }
+    fn total_alpha(netuid: u16) -> u128 {
+        Pools::total_alpha_stake(netuid)
+    }
+    fn staker_alpha(netuid: u16, who: &AccountId) -> u128 {
+        Pools::staker_alpha(netuid, who)
+    }
+    fn on_epoch(netuid: u16, blocks: u32, miners: &[(AccountId, u128)], validators: &[(AccountId, u128)]) {
+        Pools::on_epoch(netuid, blocks, miners, validators)
+    }
+    fn pay_validator(netuid: u16, source: &AccountId, hotkey: &AccountId, amount: u128) -> bool {
+        Pools::pay_validator_ict(netuid, source, hotkey, amount).is_ok()
+    }
+    fn subnet_removed(netuid: u16) {
+        Pools::close_pool(netuid)
+    }
+}
+
+impl pallet_subnet_pools::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Currency = Balances;
+    type PalletId = SubnetPoolsPalletId;
+    type Subnets = RegistrySubnets;
+    type Issuance = PoolIssuance;
+    type Treasury = FundAccount;
+    type FeePpm = PoolFeePpm;
+    type FeeBurnPpm = PoolFeeBurnPpm;
+    type MinTrade = PoolMinTrade;
 }

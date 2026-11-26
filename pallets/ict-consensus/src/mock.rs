@@ -78,6 +78,7 @@ impl pallet_subnet_registry::Config for Test {
     type Unlock = ();
     type StakeInfo = Consensus;
     type OnRemoved = Consensus;
+    type Sale = ();
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
 }
@@ -113,6 +114,7 @@ impl pallet_ict_consensus::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
     type StakeCurrency = Balances;
+    type Alpha = MockAlpha;
     type StakePalletId = StakePalletId;
     type SubnetPot = SubnetPot;
     type MinerSharePpm = MinerSharePpm;
@@ -170,4 +172,52 @@ pub fn new_launch_ext() -> sp_io::TestExternalities {
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext
+}
+
+// ---------------------------------------------------------------- Alpha pools stand-in
+
+pub const DIVS: u64 = 4_242;
+
+thread_local! {
+    pub static ALPHA_ON: std::cell::RefCell<bool> = const { std::cell::RefCell::new(false) };
+    pub static ALPHA_ICT: std::cell::RefCell<std::collections::BTreeMap<u16, u128>> = Default::default();
+    pub static ALPHA_STAKE: std::cell::RefCell<std::collections::BTreeMap<(u16, u64), u128>> = Default::default();
+    pub static ALPHA_OWN: std::cell::RefCell<std::collections::BTreeMap<(u16, u64), u128>> = Default::default();
+    pub static ALPHA_EPOCHS: std::cell::RefCell<Vec<(u16, u32, Vec<(u64, u128)>, Vec<(u64, u128)>)>> = Default::default();
+    pub static ALPHA_PAID: std::cell::RefCell<Vec<(u16, u64, u128)>> = Default::default();
+    pub static ALPHA_REMOVED: std::cell::RefCell<Vec<u16>> = Default::default();
+}
+
+/// Records what consensus asks of the Alpha module; validator pay goes to DIVS.
+pub struct MockAlpha;
+impl crate::AlphaHooks<u64> for MockAlpha {
+    fn active(_netuid: u16) -> bool {
+        ALPHA_ON.with(|a| *a.borrow())
+    }
+    fn stake_ict(netuid: u16) -> u128 {
+        ALPHA_ICT.with(|m| m.borrow().get(&netuid).copied().unwrap_or(0))
+    }
+    fn alpha_stake(netuid: u16, hotkey: &u64) -> u128 {
+        ALPHA_STAKE.with(|m| m.borrow().get(&(netuid, *hotkey)).copied().unwrap_or(0))
+    }
+    fn total_alpha(netuid: u16) -> u128 {
+        ALPHA_STAKE.with(|m| m.borrow().iter().filter(|((n, _), _)| *n == netuid).map(|(_, v)| *v).sum())
+    }
+    fn staker_alpha(netuid: u16, who: &u64) -> u128 {
+        ALPHA_OWN.with(|m| m.borrow().get(&(netuid, *who)).copied().unwrap_or(0))
+    }
+    fn on_epoch(netuid: u16, blocks: u32, miners: &[(u64, u128)], validators: &[(u64, u128)]) {
+        ALPHA_EPOCHS.with(|e| e.borrow_mut().push((netuid, blocks, miners.to_vec(), validators.to_vec())));
+    }
+    fn pay_validator(netuid: u16, source: &u64, hotkey: &u64, amount: u128) -> bool {
+        use polkadot_sdk::frame_support::traits::{fungible::Mutate, tokens::Preservation};
+        let ok = <Balances as Mutate<u64>>::transfer(source, &DIVS, amount, Preservation::Expendable).is_ok();
+        if ok {
+            ALPHA_PAID.with(|p| p.borrow_mut().push((netuid, *hotkey, amount)));
+        }
+        ok
+    }
+    fn subnet_removed(netuid: u16) {
+        ALPHA_REMOVED.with(|r| r.borrow_mut().push(netuid));
+    }
 }

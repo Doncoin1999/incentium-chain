@@ -9,6 +9,7 @@
 extern crate alloc;
 
 pub mod allocation;
+pub mod alpha;
 pub mod amm;
 pub mod buyback;
 pub mod emission;
