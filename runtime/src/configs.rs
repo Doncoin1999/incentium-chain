@@ -391,8 +391,8 @@ impl pallet_subnet_registry::SubnetSale<AccountId> for AlphaPools {
 }
 
 impl pallet_ict_consensus::AlphaHooks<AccountId> for AlphaPools {
-    fn active() -> bool {
-        true
+    fn active(netuid: u16) -> bool {
+        pallet_subnet_pools::Pools::<Runtime>::contains_key(netuid)
     }
     fn stake_ict(netuid: u16) -> u128 {
         Pools::stake_ict(netuid)
