@@ -279,67 +279,73 @@ The development fund takes its share of each block first (10 %); the rest goes t
 
 Settlement is spread over the epoch: the epoch's first block shares the pot and settles SN0, and each following block settles one further subnet (an epoch has 360 blocks, so 256 subnets fit). Validators of SN1 and later stake on their own subnet (`stake_subnet`, `unstake_subnet`; same minimum and unbonding as SN0). From the Alpha upgrade, staking on these subnets means buying Alpha in their pool, and the ICT in the pool is their stake (Section 7). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (`work-verify`) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.
 
-## 7. Modules `alpha-assets`, `amm` and `buyback`
+## 7. Modules `alpha-assets`, `amm` and `dividends`
 
-*Rules decided 25 Nov 2026; not in runtime 10.* Each subnet other than SN0 has one Alpha asset with ICT's tokenomics and one pool in which staking and trading are the same thing. Issuance never buys Alpha: the subnet's ICT is paid out 50/38/12 as in Section 6, and the earlier protected minimum of 50% issuance-funded buyback is dropped. In Phase 3, user revenue buys Alpha (`buyback`).
+*Rules decided 25 and 26 Nov 2026; not in runtime 10. Simulated in `sim/alpha_valuation.py` and `sim/alpha_decided.py` (results in `sim/VALUATION.md`, `sim/DECIDED.md`).* Each subnet other than SN0 has one Alpha asset with ICT's tokenomics and one pool in which staking and trading are the same thing. Alpha pays its holders ICT; neither issuance nor revenue buys Alpha back.
 
 **Alpha asset (`alpha-assets`)**
 
 - Issuance exactly like ICT, per subnet: 0 at the block the subnet is registered (`opened`), then 7,200 Alpha per day (300 per epoch of 360 blocks), halving on ICT's curve counted from `opened`, maximum 21,000,000 (*protected per subnet once created*).
 - Daily split `BonusPpm`, fixed per subnet at registration (500,000 for subnets registered under the current rule; a Root referendum may set it between 250,000 and 750,000 for subnets registered later).
-- **Bonus.** At each settlement of the subnet, the epoch's bonus is minted and split exactly like its ICT: 50% to miners by incentive, 38% to validators by dividends, 12% to the owner (to the DAO account for a DAO subnet). Miners' and validators' Alpha is credited as stake on their own hotkey; the owner's part vests linearly over 180 days (`vest`). An epoch that pays no ICT sends its bonus to the stock.
-- **Stock.** The rest of each epoch's issuance is minted into the pool's stock `S`, outside the price curve. It is sold only by injection on purchase (below), at most `DailyStockSale` = one day's issuance per rolling 7,200 blocks.
+- **Bonus.** At each settlement, the epoch's bonus is minted and split like its ICT: 50% to miners by incentive, 38% to validators by dividends, 12% to the owner (DAO account for a DAO subnet). Miners' and validators' Alpha is credited as stake on their own hotkey; the owner's part vests linearly over 180 days. An epoch that pays no ICT sends its bonus to the stock.
+- **Stock.** The rest of each epoch's issuance is minted to the pool's waiting stock `W`, outside the reserves, and released to the pool's Alpha reserve as below.
 - Alpha is held as stake on a (coldkey, hotkey, netuid) position and can be moved between hotkeys of the same subnet and transferred to another coldkey.
+
+**Dividends (`dividends`)**
+
+- Each validator hotkey sets `take` in 0–180,000 ppm (default 180,000). Lowering takes effect at once; raising is rate-limited to once per 30 days.
+- At each settlement the validators' 38% of the subnet's ICT is paid per validator by its consensus dividends; of each validator's amount, `take` goes to the validator and the rest to all Alpha staked on that hotkey, pro rata, in ICT. Alpha in the pool or in `W` receives nothing.
+- Phase 3: settled user revenue for the subnet is split 50/38/12 the same way and its validators' part paid by the same rule (Section 8).
 
 **Pool (`amm`)**
 
 - Pool account derived from the netuid (`PalletId` + netuid); no private key; no call moves funds out except a swap. Changing the rules takes a runtime upgrade.
-- Constant product x · y = k on the curve reserves; price = x / y ICT per Alpha.
-- **Start curve.** At registration the pool gets a virtual ICT reserve x₀ = the slot's sale price and a virtual Alpha reserve y₀ = 1,000,000 Alpha, so p₀ = sale price / 1,000,000. Virtual reserves shape the curve only: excluded from L, and a sale never pays out more ICT than the pool's real reserve.
-- **Staking is buying.** `stake(netuid, hotkey, ict_in, min_alpha_out)` swaps ICT for Alpha and credits the Alpha as stake on `hotkey`; `unstake(netuid, hotkey, alpha_in, min_ict_out)` sells it back. Both fail if the slippage limit is breached.
-- **Injection on purchase.** Before a purchase of `ict_in` at price p, the pool moves a = min(S, sale room left in the rolling day, `ict_in` / p) Alpha from the stock onto the curve's Alpha side, then executes the swap.
-- Fee 0.5% on every swap (*proposed*), taken in the input asset; half burned, half left in the pool.
-- **Removed subnet:** issuance stops; `unstake` keeps working against the real reserves.
+- **Closed period.** For `OpenAfter` = 72,000 blocks (10 days) after `opened`: no swaps; `W` collects; bonus Alpha is credited but cannot be unstaked; the treasury half of the sale price is held in the pool account as `reserved_ict` and counts as the subnet's stake for the issuance share.
+- **Opening.** At block `opened + OpenAfter`, compute p₀ on chain:
+
+  p₀ = Σ over years y = 0..19 of  h · E / Nsub · 365 · 2^(−⌊(t₀ + 365y) / 1460⌋) / S_y · (1 + r)^(−y)
+
+  with h = 0.38 × (1 − 0.18), E = the ICT per day for subnets other than SN0, Nsub = the number of such subnets including this one, t₀ = days since ICT's first block, S_y = Alpha issued to the subnet by the middle of year y (fully diluted), r = `RequiredReturn` (200,000 ppm; Parameters track). Then ICT reserve x = min(`reserved_ict`, 36,000 Alpha × p₀), Alpha reserve y = x / p₀ moved from `W`; `reserved_ict − x` goes to the treasury.
+- Constant product x · y = k on real reserves only; price = x / y ICT per Alpha. No virtual reserves.
+- **Staking is buying.** `stake(netuid, hotkey, ict_in, min_alpha_out)` swaps ICT for Alpha and credits it as stake on `hotkey`; `unstake(netuid, hotkey, alpha_in, min_ict_out)` sells it back. A swap that would return less than its minimum fails; there are no partial fills.
+- **Stock release.** Each block after opening, release from `W` to the Alpha reserve up to the block's share of daily issuance plus at most the same again from what was held back, unless the price is below 80% of its 30-day average (`HoldBackPpm` = 200,000), in which case nothing is released that block. The 30-day average is kept as a running sum of one price sample per 600 blocks.
+- Fee 0.5% on every swap, in the input asset; half burned, half left in the pool.
+- **Removed subnet:** issuance stops; `W` is burned; the owner's unvested Alpha is burned; `unstake` keeps working.
 
 **What changes in runtime 10.** When the module is installed (by referendum, before registration unlocks), ICT staking on subnets other than SN0 is replaced; there is no such stake before the unlock, so nothing is migrated:
 
 | Runtime 10 uses | From the Alpha upgrade |
 | --- | --- |
-| `SubnetStake` for the issuance share between subnets | real ICT reserve of the subnet's pool (Section 6 formula unchanged) |
+| `SubnetStake` for the issuance share between subnets | real ICT reserve of the subnet's pool (`reserved_ict` while closed) |
 | ICT staked with a validator, for weights, active stake, penalty and slashing thresholds | Alpha staked with the validator's hotkey on that subnet |
 | Stake at close, for subnet DAO votes | Alpha staked at close |
 | `stake_subnet` / `unstake_subnet` | `amm.stake` / `amm.unstake` |
+| Validators' 38% paid to the validator | paid through `dividends` to the validator (take) and its stakers |
 
 SN0 has no Alpha and keeps ICT staking.
 
-**Runtime API for clients (`SubnetPoolsApi`, fixed 25 Nov 2026).** incentium.org/pools reads only this API, so the page needs no change when the modules go live. All amounts are base units (9 decimals); prices are ICT base units per whole Alpha.
+**Runtime API for clients (`SubnetPoolsApi`).** incentium.org/pools reads only this API. All amounts are base units (9 decimals); prices are ICT base units per whole Alpha.
 
 | Call | Returns |
 | --- | --- |
-| `pools()` | `Vec<PoolSummary>` in netuid order: `netuid: u16`, `name: Vec<u8>`, `open: bool` (false once the subnet is removed), `price: u128`, `ict_reserve: u128` (real ICT only), `alpha_reserve: u128` (real Alpha on the curve), `alpha_issued: u128`, `alpha_staked: u128`, `bonus_today: u128`, `bonus_minted: u128`, `stock: u128` (unsold Alpha in stock), `sold_today: u128` (from stock, rolling day), `fee_ppm: u32` |
-| `quote_stake(netuid: u16, ict_in: u128)` | `Option<u128>`: Alpha out after fee and injection, or none if no pool |
-| `quote_unstake(netuid: u16, alpha_in: u128)` | `Option<u128>`: ICT out after fee, or none if no pool or not enough real ICT |
+| `pools()` | `Vec<PoolSummary>` in netuid order: `netuid: u16`, `name: Vec<u8>`, `open: bool` (false while closed or once removed), `price: u128`, `ict_reserve: u128`, `alpha_reserve: u128`, `alpha_issued: u128`, `alpha_staked: u128`, `bonus_today: u128`, `bonus_minted: u128`, `stock: u128` (waiting stock `W`), `released_today: u128`, `fee_ppm: u32` |
+| `quote_stake(netuid: u16, ict_in: u128)` | `Option<u128>`: Alpha out after fee, or none if the pool is not open |
+| `quote_unstake(netuid: u16, alpha_in: u128)` | `Option<u128>`: ICT out after fee, or none if the pool is not open |
 
-The page fills `min_alpha_out` / `min_ict_out` from the quote and a slippage limit the user chooses.
+The page fills `min_alpha_out` / `min_ict_out` from the quote and a slippage limit the user chooses (default 1%). The field names `stock` and `released_today` keep the positions of the earlier `stock` and `sold_today`, so the page's decoder is unchanged.
 
-**Invariants:** k never decreases during a swap; Alpha issued per subnet follows the schedule exactly and never exceeds 21,000,000; at most one day's issuance leaves the stock per rolling day; the pool's real ICT reserve never goes negative; no call moves funds out of the pool except a swap.
-
-**Revenue buyback (`buyback`, Phase 3)**
-
-1. Settled user revenue for the subnet (Section 8, `payments`) forms the block's budget B; issuance never adds to it.
-2. Swap B ICT for Alpha through the pool, with injection as for any purchase. Because it runs every block, each purchase is small.
-3. Burn 50% of the Alpha bought; add 50% pro rata to staked Alpha positions.
+**Invariants:** k never decreases during a swap; Alpha issued per subnet follows the schedule exactly and never exceeds 21,000,000; nothing enters the pool's reserves that has not been issued; the pool's ICT reserve never goes negative; no call moves funds out of the pool except a swap; dividends paid per settlement equal the validators' share less takes.
 
 
 ## 8. Modules `utility-metrics`, `payments` and `phase-control`
 
-`utility-metrics` decides each subnet's share of issuance in Phase 3 from on-chain data only (in Phase 2 the share follows ICT staked on each subnet, Section 6); `payments` turns user payments into revenue buybacks; `phase-control` switches phases on.
+`utility-metrics` decides each subnet's share of issuance in Phase 3 from on-chain data only (in Phase 2 the share follows ICT staked on each subnet, Section 6); `payments` pays user revenue out 50/38/12 like issuance; `phase-control` switches phases on.
 
 **Metrics, updated once per epoch as 30-day exponential moving averages (90-day for L once the marketplace opens, Section 10)**
 
 | Symbol | Definition | Used in |
 | --- | --- | --- |
-| L | √(pool ICT reserve × Alpha price × Alpha supply), using the epoch's average price; real ICT in the pool and Alpha in circulation count, not the start curve's virtual reserves | Phase 3 |
+| L | √(pool ICT reserve × Alpha price × Alpha supply), using the epoch's average price; real ICT in the pool and Alpha in circulation count; the auction ICT the pool opened with does not | Phase 3 |
 | R | User revenue routed to the subnet through `payments`, in ICT | Phase 3 |
 | F | Burned fees, counted only on each account's net daily flow per subnet | Phase 3 |
 
@@ -357,7 +363,7 @@ Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and
 
 - Gateway operators register and post a bond. Users pay in ICT (stablecoin payments are swapped to ICT by the gateway before settlement).
 - For each batch of requests, the serving validator co-signs a usage receipt; the gateway settles receipts per epoch with `settle(netuid, receipts_root, amount)`.
-- 100% of settled revenue goes to that subnet's revenue buyback in the next block (Section 7). Issuance is never used for buybacks.
+- Settled revenue is paid out in the next settlement 50/38/12 like issuance, the validators' part through `dividends` (Section 7). Neither revenue nor issuance buys Alpha.
 - Receipts are published to the data-availability layer; a fraudulent receipt slashes the gateway bond.
 
 **SN0 payments (Phase 1, *proposed*).** SN0 has no Alpha token, so payments for SN0 work settle into an epoch pot: 70% goes to miners pro rata to their W for the epoch, exactly like issuance; 10% to validators pro rata to their consensus weight; 20% buys ICT and burns it. Who served a paid job does not change what anyone is paid. Paying for fake jobs therefore spreads the payment over all miners, burns 20% and returns to the payer only its own capacity share. Users may pay in ICT, at a discount, or in USDC, which the gateway converts through the ICT⇄USDC atomic swap or another venue before settlement.
@@ -367,7 +373,7 @@ Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and
 | Switch | Turns on | Requires |
 | --- | --- | --- |
 | `Phase2` | `register_subnet`, Alpha, AMM | `register_subnet`: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha and AMM: installed by a runtime upgrade passed by referendum after an audit, no earlier than the unlock |
-| `Phase3` | Phase 3 allocation formula, revenue buybacks | Gate 2 criteria (whitepaper Section 11) and a passed referendum |
+| `Phase3` | Phase 3 allocation formula, revenue paid out | Gate 2 criteria (whitepaper Section 11) and a passed referendum |
 
 Switches can only move forward. Each switch takes effect at the start of the epoch after a 14-day enactment delay.
 
@@ -676,7 +682,7 @@ On 25 November 2026 the testnet runs runtime 10 (subnet registration and issuanc
 | Consensus | Yuma-lite computed on chain for SN0 | Proof-based Yuma when subnets outgrow on-chain computation (Section 6) | `ict-consensus` | Runtime upgrade |
 | ICT⇄USDC swap | Pallet `ict-swap` (index 15) on testnet since 20 Nov 2026; `IncentiumSwap` at 0x24836E90fEA706DA855D0f3cD7772D7282fD962D on Base Sepolia; keeper and trading page on testnet; 19 pallet, 16 contract and 4 keeper end-to-end tests pass | Full testnet run including failure paths; benchmarked weights; replace `ValidateUnsigned` before April 2027; external audit; mainnet upgrade and Base mainnet contract | `pallets/ict-swap`, `swap/` | Audit, runtime upgrade, contract deployment |
 | Explorer | Live at explorer.incentium.org; swap events classified in code but not yet deployed | Deploy swap events; from Phase 2 show allocation inputs per subnet and epoch | `explorer/` | Software release |
-| Alpha and Phase 3 economics | Rules in `ict-economics`, tested against the simulation; Alpha rules decided 25 Nov 2026 | Simulate the Alpha rules; build `alpha-assets` and `amm` (issuance like ICT, bonus and stock, staking is buying, no issuance buyback), then `buyback`, `utility-metrics`, `payments`; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole | New pallets | Build, simulation, audit, referendum |
+| Alpha and Phase 3 economics | Alpha rules decided 25–26 Nov 2026 and simulated (`sim/DECIDED.md`); first module on `feat/alpha-pools` | Rebuild `amm` to the 26 Nov rules (real reserves, opening after 10 days, hold-back, price limits), build `dividends`, connect to the registry and consensus, then `utility-metrics`, `payments`; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole | New pallets | Build, simulation, audit, referendum |
 | Gateway and access | Not built | Gateway with streaming, failover, batch and payment receipts; `access` module (Section 13) | New service, new pallet | Build, legal review |
 | Miner onboarding | Pull-based miner; node for Mac and Windows; `install-miner.sh` picks the tier on Linux; the model takes at most a quarter of memory | Test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12) | `neuron/`, `scripts/` | Software release |
 | EVM and bridge | Not in the runtime | Frontier and Hyperlane route (Section 14), or rely on the atomic swap until a bridge is audited | Runtime, contracts | Decision, then build and audit |

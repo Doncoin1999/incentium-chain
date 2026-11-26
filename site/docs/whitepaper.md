@@ -163,7 +163,7 @@ In Phase 2 anyone can buy a subnet slot and run a subnet with its own task and i
 - **Price.** SN1's slot starts at 50,000 ICT; every later slot starts at 4 times the price the previous slot sold for. The price falls by 25% a day, smoothly from block to block, down to a floor, and stays there until someone buys. The first buyer at the current price wins, so there is no race between bots.
 - **Floors** by sale number: 1st slot 1,000 ICT, 2nd–4th 500 ICT, 5th–8th 300 ICT, 9th and later 200 ICT.
 - **Openness instead of approval.** In the same transaction the buyer publishes the subnet's name, a description and the hash of its incentive-mechanism code. Nobody approves a buyer.
-- **Payment.** Not refunded, ever: half goes to the on-chain treasury and half is burned.
+- **Payment.** Not refunded, ever: half is burned, and half becomes the ICT side of the subnet's pool when it opens (Section 6.5), up to what the pool's starting Alpha can match. Whatever the pool cannot take goes to the on-chain treasury.
 
 ### 6.2 Cap, immunity and removal
 
@@ -186,10 +186,12 @@ Within each subnet, its share is divided as follows:
 | Recipient | SN1 and later | SN0 (after registration unlocks) |
 | --- | --- | --- |
 | Miners | 50% | 50 / 88 (about 57%) |
-| Validators | 38% | 38 / 88 (about 43%) |
+| Validators and their stakers | 38% | 38 / 88 (about 43%) |
 | Subnet owner | 12% | none: SN0 has no owner |
 
 A subnet with no usable weights in an epoch is not paid for it; its slice stays in the pot.
+
+*Decided 26 November 2026.* Once Alpha is live, the validators' 38% is shared with everyone who has Alpha staked with them: each validator keeps a take it chooses between 0% and 18%, and the rest is paid in ICT to its stakers in proportion to their stake. This is the cash flow that gives Alpha its value (Section 6.5).
 
 ### 6.4 Control of a subnet
 
@@ -201,26 +203,35 @@ What the protocol fixes for every subnet: its share of issuance, the 50/38/12 sp
 
 ### 6.5 Alpha tokens and pools
 
-*Decided 25 November 2026.* Every subnet gets its own token, Alpha, with the same tokenomics as ICT, and one pool in which staking and trading are the same thing. The pay that covers a subnet's costs stays in ICT (Section 6.3); Alpha comes on top. No ICT issuance is used to buy Alpha: the earlier requirement that at least half of each subnet's issuance buy back its Alpha is dropped.
+*Decided 25 and 26 November 2026.* Every subnet gets its own token, Alpha, with the same tokenomics as ICT, and one pool in which staking and trading are the same thing. Alpha earns its holders ICT, never more Alpha, so its price can be worked out the way an analyst values a share: from the ICT it pays. No issuance and no revenue is spent buying Alpha back.
 
-**Same tokenomics as ICT.** Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. On the day a subnet opens, no Alpha exists. From then on exactly 7,200 Alpha are issued every day, halving on the same curve as ICT counted from the subnet's own first day, up to 21,000,000. A subnet that opens in 2029 therefore goes through the same first years as SN1. No owner or DAO can change these rules.
+**Same tokenomics as ICT.** Subnet 1 has Alpha1, Subnet 2 Alpha2, and so on. On the day a subnet opens, no Alpha exists. From then on exactly 7,200 Alpha are issued every day, halving on the same curve as ICT counted from the subnet's own first day, up to 21,000,000. No owner or DAO can change these rules.
 
-**Where each day's Alpha goes.** The 7,200 are split in two, half and half. The split is fixed for each subnet when it opens; a referendum can change it only for subnets opened later, and only within 25–75%.
+**Where each day's Alpha goes.** Half is bonus and half is stock. The split is fixed for each subnet when it opens; a referendum can change it only for subnets opened later, and only within 25–75%.
 
-- **Bonus (3,600 a day).** Paid every epoch to the subnet's miners, validators and owner in the same 50/38/12 split and by the same consensus result as their ICT. The owner's Alpha is released evenly over 6 months. If an epoch pays nothing, its bonus goes to the pool's stock instead.
-- **Stock (3,600 a day).** Goes to the pool's stock, which no one owns. The stock is sold only to buyers, at the pool's current price, and never dumped on the market. The pool sells at most one day's issuance (7,200 Alpha) from stock per day, so no one can sweep up a large stock that has built up in a quiet subnet.
+- **Bonus (3,600 a day).** Paid every epoch to the subnet's miners, validators and owner in the same 50/38/12 split and by the same consensus result as their ICT, as Alpha staked on their own keys. The owner's Alpha is released evenly over 6 months. On top of a subnet's ICT, the bonus is what draws miners to it: in simulation it was worth about 130 ICT a day after three months and 80 ICT a day after a year for a subnet paid 288 ICT a day.
+- **Stock (3,600 a day).** Goes into the pool, which no one owns, block by block (see Refilling).
 
-**Staking means buying Alpha.** Staking ICT on a subnet means putting it into the subnet's pool and receiving Alpha, staked with a validator of one's choice. Unstaking means selling the Alpha back to the pool for ICT. The pool is therefore all the ICT that stakers and buyers have put in, against Alpha: a market with depth from the first stake, and no one has to fund it. Once the Alpha module is live, a subnet's share of issuance follows the ICT in its pool, and a validator's weight within the subnet follows the Alpha staked with it. SN0 has no Alpha and keeps ordinary ICT staking.
+**What an Alpha pays: ICT.** The validators' 38% of the subnet's ICT, less each validator's take of 0–18%, is paid in ICT to the Alpha staked with them (Section 6.3); in Phase 3 user revenue is shared the same way (Section 7.4). The value of an Alpha is the present value of that ICT, divided over all the Alpha that will share it. Paying in ICT matters: a network that pays its stakers in newly issued tokens only spreads the dilution around, and its stakers lose even when the advertised yield is high.
 
-**Stakers carry the price risk.** Someone who stakes 1,000 ICT on a subnet does not necessarily get 1,000 ICT back: they get what their Alpha is worth when they sell. In a subnet with few users the daily stock pushes the price down, and many stakers leaving at once push it down further. Staking on a subnet is an investment in that subnet, not a deposit.
+**Staking means buying Alpha.** Staking ICT on a subnet means buying Alpha with it in the subnet's pool, staked with a validator of one's choice. Unstaking means selling it back. Every staked ICT therefore deepens the pool. A subnet's share of issuance follows the ICT in its pool, and a validator's weight within the subnet follows the Alpha staked with it. SN0 has no Alpha and keeps ordinary ICT staking.
 
-**Start price.** A pool starts at a price set by the subnet's own auction: one Alpha costs the slot's sale price divided by 1,000,000, and the pool moves as if the sale price lay in it as ICT. That amount only shapes the price curve and can never be paid out. A subnet bought for 1,000 ICT therefore starts at 0.001 ICT per Alpha, and its price doubles after about 400 ICT of net buying. Nobody chooses the number.
+**Opening the pool.**
 
-**Who owns the pool.** Nobody. The pool is an account derived from the subnet number with no private key, so no one can sign a withdrawal from it: not the subnet owner, not the treasury, not the founder. Only the code moves ICT and Alpha, and only by buying and selling under the pool formula; changing that takes a runtime upgrade by referendum. Everyone can always sell their Alpha back to the pool for the ICT in it at the current price.
+1. For the first 10 days nothing can be traded. The stock collects (36,000 Alpha), the bonus is paid but cannot be sold yet, and the treasury half of the auction price is held for the pool; it counts as the subnet's stake meanwhile, so the subnet is paid from its first day.
+2. On day 10 the pool opens as an ordinary pool with real reserves on both sides, at a start price P₀ worked out on chain by the valuation formula: the ICT the average subnet's Alpha is expected to pay, discounted at a required return of 20% a year (a parameter on the Parameters track) and divided over all the Alpha that will be issued.
+3. The pool starts with ICT = the smaller of the held auction ICT and 36,000 × P₀, and Alpha = that ICT ÷ P₀. Only Alpha that has been issued goes in; no Alpha is created ahead of schedule. Auction ICT the pool cannot match goes to the treasury, and stock it does not take waits and is refilled like the daily stock.
+4. Once open, a pool is never closed: anyone can always sell Alpha back for the ICT in it.
 
-**Trading.** The pool is a constant-product market (x · y = k) with a 0.5% fee, half of it burned and half left in the pool for the Alpha holders. A marketplace on top routes swaps, including from one Alpha to another through ICT. Alpha staked in the subnet receives the distributions of Section 7.4.
+**Trading.** The pool is an ordinary constant-product market (x · y = k): buying raises the price, selling lowers it. Every trade carries a price limit set by the trader, the least it accepts to receive; if the price has moved further, the trade is refused. The fee is 0.5%, half burned and half left in the pool. A marketplace on top routes swaps, including from one Alpha to another through ICT.
 
-**When a subnet is removed.** No more Alpha is issued, but the pool stays open: anyone can still sell Alpha back for the ICT in it.
+**Refilling.** The ICT side grows as people stake: when the price falls below what the dividend justifies, buying pays. The Alpha side grows with the stock, released block by block, never in lumps. While the price is more than 20% below its own 30-day average, the stock is held back; afterwards it is released, at most one extra day's stock per day. The total is unchanged, only the timing. In simulation this softened a 60-day buyers' strike only slightly, since bonus selling, not stock, drives such falls; it costs nothing and is kept.
+
+**Who owns the pool.** Nobody. The pool is an account derived from the subnet number with no private key, so no one can sign a withdrawal from it: not the subnet owner, not the treasury, not the founder. Only trades move ICT and Alpha in it. Outside liquidity providers are not part of the first version; the pool is built so they can be added later by runtime upgrade.
+
+**Stakers carry the price risk.** Someone who stakes 1,000 ICT does not necessarily get 1,000 ICT back: they get the dividends plus what their Alpha is worth when they sell. Because 7,200 new Alpha arrive every day, the price of each Alpha falls over time while the dividend makes up for it; in simulation stakers earned the required return. Many holders selling at once still move the price hard: half of all holders selling on one day cut it by 81% that day in simulation, and it recovered within about 20 days as buyers priced Alpha by its dividend. A pool started with little auction ICT dropped about a third on its first trading day as the closed days' bonus was sold.
+
+**When a subnet is removed.** No more Alpha is issued, the pool stays open, and the owner's Alpha not yet released is burned.
 
 **Timing.** Alpha tokens and pools are not part of runtime 10. They are built as their own modules, audited, and installed by referendum before subnet registration unlocks, replacing ICT staking on subnets other than SN0. Until then no such stake exists, so nothing has to be moved.
 
@@ -271,7 +282,7 @@ where the bars denote moving averages: 90 days for L, 30 days for R and F. A sub
 
 ### 7.4 From subsidy to revenue
 
-Issuance never buys Alpha (Section 6.5). What users pay a subnet does: settled user revenue buys the subnet's Alpha in its pool, half of that Alpha is burned, and half goes to those who have Alpha staked in the subnet. A subnet's token is therefore backed by real demand, not by subsidy, and high-revenue subnets get both buying pressure on their token and, through R, a larger share of issuance.
+*Decided 26 November 2026.* User revenue is paid out like issuance: settled revenue in ICT is split 50/38/12 between miners, validators with their stakers, and the owner, and the stakers' part reaches them in ICT less the validator's take. Nothing is spent buying Alpha back. A subnet's token is therefore backed by real revenue, paid to its holders, and high-revenue subnets also get a larger share of issuance through R. Buying back would have done less for holders: in simulation only the half of a buyback handed to stakers reached them, while the ICT of the burned half stayed in the pool.
 
 ## 8. Consensus and verification
 
@@ -305,8 +316,8 @@ Incentium uses an extended variant of Yuma Consensus in which validator weights 
 | Validator collusion | Validators agree to favor certain miners | Square-root weighting, 10% cap per validator, random audits with slashing |
 | Fake work | Miners return output from a cheaper model | Spot checks; no epoch payout when half of the active validator stake reports a failure, bond slashed at two thirds; TEE attestation, fraud proofs |
 | Wash trading | Subnet owners trade with themselves to inflate metrics | Fees counted only on each account's net daily flow, with a low weight in the allocation formula |
-| Price pumping | Thin pools are pumped to raise market value | Geometric-mean metric, 90-day averages, and the start curve's ICT excluded from L |
-| Front-running buybacks | Traders buy ahead of predictable revenue buybacks (Phase 3) | Buybacks split into small purchases every block |
+| Price pumping | Thin pools are pumped to raise market value | Geometric-mean metric, 90-day averages, and the start reserve's ICT excluded from L |
+| Front-running stock releases | Traders trade ahead of predictable stock releases | Stock released in small amounts every block |
 | Supply-chain attack | Compromised software packages drain wallets | Signed releases, reproducible builds, hardware wallet support |
 | DDoS on miners | Attackers knock out competing miners | libp2p over QUIC, stake-based rate limits, relay nodes |
 
@@ -398,10 +409,10 @@ All modules are written in Rust as Substrate pallets. Phase transitions follow o
 | `weights` | 1 | Commit-reveal of validator weights |
 | `consensus` | 1–2 | Yuma consensus, staking per subnet, sharing issuance between subnets and epoch payouts spread over the epoch (computed on chain today; proof-based version planned) |
 | `alpha-assets` | 2 | Alpha coins with ICT's tokenomics: 7,200 a day, half as a bonus to the subnet, half to the pool's stock |
-| `amm` | 2 | Pools no one owns, where staking is buying Alpha; swaps and marketplace router |
-| `buyback` | 3 | Per-block purchase of Alpha with user revenue; half burned, half to Alpha stakers |
+| `amm` | 2 | Pools no one owns, where staking is buying Alpha; opening at the valuation price after 10 days, stock release with hold-back, swaps with price limits, marketplace router |
+| `dividends` | 2 | The validators' 38% of a subnet's ICT, less each validator's take (0–18%), paid in ICT to the Alpha staked with them |
 | `utility-metrics` | 3 | Utility measurement, caps and floors |
-| `payments` | 3 | User payments routed to buybacks |
+| `payments` | 3 | User revenue paid out 50/38/12 like issuance, the stakers' part in ICT |
 | governance | 1 | On-chain treasury, bounties and child bounties, multisig, referenda with conviction voting and four tracks including Emergency; removes sudo and creates the two launch bounties at day 90 |
 | `phase-control` | All | Phase transitions by on-chain criteria |
 
