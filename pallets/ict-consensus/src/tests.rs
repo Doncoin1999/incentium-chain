@@ -634,3 +634,31 @@ fn subnets_without_a_pool_keep_ict_staking() {
         assert_eq!(<Consensus as SubnetStakeInfo<u64>>::stake_of(1, &5), 1_000);
     });
 }
+
+#[test]
+fn with_alpha_a_new_subnet_without_any_alpha_still_pays_its_first_epoch() {
+    new_test_ext().execute_with(|| {
+        alpha_on();
+        add_subnet(1);
+        for a in 5..=7u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(a), 1, a));
+        }
+        // no Alpha staked anywhere in SN1 yet
+        ALPHA_ICT.with(|m| m.borrow_mut().insert(1, 500));
+        unlock_at(0);
+        let b = 200 * 7_200u64;
+        System::set_block_number(b);
+        let epoch = Weights::current_epoch();
+        commit_on(1, 5, vec![1, 2], vec![3, 1]);
+        System::set_block_number(b + 10);
+        reveal_on(1, 5, vec![1, 2], vec![3, 1]);
+        assert_ok!(Balances::force_set_balance(RuntimeOrigin::root(), POT, 900_000));
+        let m6 = Balances::free_balance(6);
+        Consensus::settle(epoch);
+        assert!(Balances::free_balance(6) > m6, "miners paid in the first epoch");
+        let eps = ALPHA_EPOCHS.with(|e| e.borrow().clone());
+        assert_eq!(eps.len(), 1);
+        assert_eq!(eps[0].2.len(), 2, "miners get the first bonus");
+        assert_eq!(eps[0].3.len(), 1, "the validator gets the first bonus");
+    });
+}
