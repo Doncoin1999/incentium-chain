@@ -393,11 +393,33 @@ impl pallet_subnet_pools::SubnetInfo<AccountId> for RegistrySubnets {
 
 parameter_types! {
     pub const SubnetPoolsPalletId: PalletId = PalletId(*b"ict/alph");
-    /// 0.5 % per trade, half burned (proposed).
+    /// 0.5 % per trade, half burned (decided 26 Nov 2026).
     pub const PoolFeePpm: u32 = 5_000;
     pub const PoolFeeBurnPpm: u32 = 500_000;
     /// Smallest stake or unstake: 0.01 ICT or Alpha.
     pub const PoolMinTrade: u128 = UNIT / 100;
+}
+
+/// What the start-price formula needs: the ICT a day the average subnet other than SN0
+/// receives (all issuance less the fund, less SN0's floor of half of all issuance, shared
+/// by the subnets) and the days until ICT's next halving.
+pub struct PoolIssuance;
+impl pallet_subnet_pools::IssuanceInfo for PoolIssuance {
+    fn subnet_ict_per_day() -> u128 {
+        let halvings = pallet_ict_emission::Halvings::<Runtime>::get();
+        let per_day = ict_economics::emission::block_reward(halvings) * ict_economics::BLOCKS_PER_DAY as u128;
+        let fund = pallet_ict_emission::FundShare::<Runtime>::get() as u128;
+        let others_ppm = 1_000_000u128.saturating_sub(fund).saturating_sub(500_000);
+        let n = (pallet_subnet_registry::SubnetCount::<Runtime>::get() as u128).max(1);
+        per_day * others_ppm / 1_000_000 / n
+    }
+    fn days_to_ict_halving() -> u64 {
+        let halvings = pallet_ict_emission::Halvings::<Runtime>::get();
+        let left = ict_economics::emission::next_threshold(halvings)
+            .saturating_sub(pallet_ict_emission::TotalIssued::<Runtime>::get());
+        let per_day = (ict_economics::emission::block_reward(halvings) * ict_economics::BLOCKS_PER_DAY as u128).max(1);
+        (left / per_day) as u64
+    }
 }
 
 impl pallet_subnet_pools::Config for Runtime {
@@ -405,6 +427,8 @@ impl pallet_subnet_pools::Config for Runtime {
     type Currency = Balances;
     type PalletId = SubnetPoolsPalletId;
     type Subnets = RegistrySubnets;
+    type Issuance = PoolIssuance;
+    type Treasury = FundAccount;
     type FeePpm = PoolFeePpm;
     type FeeBurnPpm = PoolFeeBurnPpm;
     type MinTrade = PoolMinTrade;
