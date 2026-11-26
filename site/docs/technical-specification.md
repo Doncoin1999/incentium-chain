@@ -1,6 +1,6 @@
 # Incentium Technical Specification v0.2
 
-Nov 25, 2026 · **Ichiro Pakeshi Miyamoto**
+Nov 26, 2026 · **Ichiro Pakeshi Miyamoto**
 
 ## 1. Scope and conventions
 
@@ -91,7 +91,7 @@ Issues ICT every block and splits it between the development fund and subnets; t
 
 1. Reward r = R₀ / 2^k, with R₀ = 1 ICT (*protected*).
 2. Next threshold T = 21,000,000 × (1 − 2^−(k+1)). If `TotalIssued` + r would pass T, issue only up to T and increment k; the rest of the block uses the new reward.
-3. 10% of r goes to `FundAccount` (*proposed*); 90% goes to the subnet pot for `utility-metrics` to allocate.
+3. 10% of r goes to `FundAccount` (*proposed*); 90% goes to the subnet pot for `utility-metrics` to allocate. From runtime 12, `ValidatorShare` (20,000 ppm = 2%) of r goes to the block producers' reward pot instead of the fund, so the fund gets 8% and the subnet pot is unchanged (Section 17).
 4. In Phase 1 the subnet pot goes entirely to SN0.
 
 **Invariants**
@@ -99,7 +99,7 @@ Issues ICT every block and splits it between the development fund and subnets; t
 - `TotalIssued` ≤ 21,000,000 ICT at all times (*protected*).
 - No call can mint ICT outside this module.
 
-**Calls:** none for users. Governance can change the fund share and the fund account.
+**Calls:** none for users. Governance can change the fund share and the fund account; `set_fund_share` and `set_validator_share` are also open to the Parameters track.
 
 ## 4. Module `subnet-registry`
 
@@ -125,10 +125,11 @@ Sells subnet slots by Dutch auction once registration has unlocked, registers mi
 2. At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.
 3. Sudo removed and at least 3 approved referenda.
 4. `attest_swap` passed by referendum: the Base swap contract is audited and has no pause guardian.
+5. The Alpha module is installed (`alpha_installed`, true from the runtime that contains `subnet-pools`), so every subnet sold gets its Alpha and pool (Section 7).
 
 **Auction price.** The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.
 
-**Payment.** Not refunded, not even on deregistration: 50 % to the treasury, 50 % burned. When `alpha-assets` and `amm` arrive, the split becomes 50 % pool seed, 25 % treasury, 25 % burned.
+**Payment.** Not refunded, not even on deregistration: 50 % burned, and 50 % held in the subnet's pool account as `reserved_ict` until the pool opens, when the part the pool can match becomes its ICT reserve and the rest goes to the treasury (Section 7).
 
 **Pace.** One slot at a time. After a sale the next auction starts `MinSpacing` later, and only while fewer than `MaxSubnets` exist. A full cap does not push anyone out: the auction waits until a slot frees up or the cap rises, and a waiting auction then starts at once.
 
@@ -277,11 +278,13 @@ The development fund takes its share of each block first (10 %); the rest goes t
 | SN0 split | Miners 66.7 %, validators 33.3 % of SN0's slice (60 % / 30 % of issuance) | Miners 50 / 88, validators 38 / 88 of SN0's slice; SN0 has no owner |
 | SN1 and later split | – | Miners 50 %, validators 38 %, owner 12 % of the subnet's slice |
 
+**Bootstrap of a new subnet (runtime 12).** Until any Alpha is staked in a subnet (`AlphaHooks::total_alpha_stake` = 0), every validator of that subnet counts with equal weight in consensus, so the subnet pays from its first epoch. From the first staked Alpha, a validator's weight follows the Alpha staked with it. SN0 is unaffected.
+
 Settlement is spread over the epoch: the epoch's first block shares the pot and settles SN0, and each following block settles one further subnet (an epoch has 360 blocks, so 256 subnets fit). Validators of SN1 and later stake on their own subnet (`stake_subnet`, `unstake_subnet`; same minimum and unbonding as SN0). From the Alpha upgrade, staking on these subnets means buying Alpha in their pool, and the ICT in the pool is their stake (Section 7). Closing a subnet moves its stake to the unbonding queue. A subnet with no usable weights in an epoch is not paid; its slice stays in the pot. Spot checks (`work-verify`) penalise SN0 miners only; other subnets verify work with their own incentive mechanism. The 50 % floor for SN0 holds through 2028 and can only be changed by a runtime upgrade.
 
 ## 7. Modules `alpha-assets`, `amm` and `dividends`
 
-*Rules decided 25 and 26 Nov 2026; not in runtime 10. Simulated in `sim/alpha_valuation.py` and `sim/alpha_decided.py` (results in `sim/VALUATION.md`, `sim/DECIDED.md`).* Each subnet other than SN0 has one Alpha asset with ICT's tokenomics and one pool in which staking and trading are the same thing. Alpha pays its holders ICT; neither issuance nor revenue buys Alpha back.
+*Rules decided 25 and 26 Nov 2026. Built as one pallet, `subnet-pools` (Alpha, pool and dividends), connected to `subnet-registry` and `ict-consensus`; runtime 12 on the testnet since 26 Nov 2026. Simulated in `sim/alpha_valuation.py` and `sim/alpha_decided.py` (results in `sim/VALUATION.md`, `sim/DECIDED.md`).* Each subnet other than SN0 has one Alpha asset with ICT's tokenomics and one pool in which staking and trading are the same thing. Alpha pays its holders ICT; neither issuance nor revenue buys Alpha back.
 
 **Alpha asset (`alpha-assets`)**
 
@@ -372,7 +375,7 @@ Then floors (1% for a subnet's first 30 days) and the cap (18%) are applied, and
 
 | Switch | Turns on | Requires |
 | --- | --- | --- |
-| `Phase2` | `register_subnet`, Alpha, AMM | `register_subnet`: the four unlock criteria of Section 4, checked on chain, no vote needed. Alpha and AMM: installed by a runtime upgrade passed by referendum after an audit, no earlier than the unlock |
+| `Phase2` | `register_subnet`, Alpha, AMM | `register_subnet`: the five unlock criteria of Section 4, checked on chain, no vote needed. Alpha and AMM: installed by a runtime upgrade after an audit, before the unlock (criterion 5) |
 | `Phase3` | Phase 3 allocation formula, revenue paid out | Gate 2 criteria (whitepaper Section 11) and a passed referendum |
 
 Switches can only move forward. Each switch takes effect at the start of the epoch after a 14-day enactment delay.
@@ -543,7 +546,7 @@ A runtime test runs the whole period: registration and stake from the 100 ICT al
 | Item | Rule |
 | --- | --- |
 | Development fund | `pallet-treasury` on the fund account; spends paid once a day; unspent funds are not burned |
-| Referendum tracks | Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support) |
+| Referendum tracks | Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Parameters (runtime 12: a fixed list of calls — `set_fund_share`, `set_validator_share`, `set_min_spacing`, `set_max_subnets`, `set_tier`, the staking calls `set_validator_count`, `increase_validator_count`, `scale_validator_count`, `set_staking_configs`, and `set_required_return`, `set_next_bonus_ppm` — each within its pallet's bounds; 50 ICT decision deposit, 1 day prepare, 7-day vote, 1 day confirm, 1 day before it takes effect; approval 100 % falling to 60 %, support 30 % falling to 3 %), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support) |
 | Runtime upgrades | Decided by hash: a referendum on `authorize_upgrade(blake2_256(wasm))` (Root or Emergency track) needs no preimage. Once enacted, anyone uploads the code with `system.apply_authorized_upgrade`; the chain takes it only if the hash matches, the spec name is unchanged and the spec version is higher, and charges no fee. Tool: `scripts/governance.py` (propose-upgrade, vote, status, apply-upgrade) |
 | Voting | Conviction voting; vote locking period 7 days; submission deposit 1 ICT; undecided proposals time out after 14 days |
 | Turnout | Counts only ICT that can vote; the launch vault, the fund, the subnet pot and stake and work accounts are left out |
@@ -664,14 +667,15 @@ A seventh, open category covers anything else and uses the generic receipt forma
 
 ## 16. Implementation status and required changes
 
-On 25 November 2026 the testnet runs runtime 10 (subnet registration and issuance sharing), and a referendum is installing runtime 11 (Emergency track) on it without sudo. Mainnet runs the Phase 1 core and gets runtimes 10 and 11 before day 90, once the testnet rehearsal is complete. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.
+On 26 November 2026 the testnet runs runtime 12 (subnet registration and issuance sharing, open block production, the Parameters track and Alpha), installed by sudo from runtime 10, and a referendum installing runtime 11's Emergency track without sudo takes effect about 4 December. A full rehearsal of Alpha with a bought SN1 runs on it now. Mainnet runs the Phase 1 core (runtime 8 with the swap) and gets runtimes 10, 11 and 12 before day 90, aimed at 1 February 2027. Most changes from the SN0 review are in the reference neuron, not the runtime. The table lists, per area, what the code does today, what has to change, where, and what kind of step it is.
 
 | Area | In the code today | Change or action | Where | Kind of step |
 | --- | --- | --- | --- | --- |
 | Issuance | Done; mainnet since 18 Nov 2026 | None | `ict-emission` | – |
 | Launch period and vault | Done; 25% paid, 75% locked, release from day 150 to day 690 | None | `subnet-registry`, `ict-consensus` | – |
-| Governance | Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook; Emergency track and upgrades by hash (runtime 11); `scripts/governance.py` | Rehearse on the testnet without sudo; a parameter track; a governance web page | runtime `governance` | Referendum on testnet, runtime upgrade |
-| Subnets (Phase 2) | Runtime 10 on the testnet: automatic unlock, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, cap ladder, spread settlement, `SubnetRegistryApi`; incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet | `subnet-registry`, `ict-consensus` | Runtime upgrade |
+| Governance | Done: treasury, bounties, multisig, referenda, conviction voting, launch-end hook; Emergency track and upgrades by hash (runtime 11); Parameters track (runtime 12); `scripts/governance.py`; incentium.org/governance with voting and deposits from one's own wallet | Finish the referendum rehearsal on the testnet; sudo in a 2-of-3 multisig until day 90; simulate turnout against the Root and Parameters thresholds | runtime `governance` | Referendum on testnet, runtime upgrade |
+| Block production | Mainnet: Aura and GRANDPA with four genesis keys on two servers; a third full node serves as bootnode and rpc2. Runtime 12: `pallet-block-producers` with staking, session, offences and bags list (Section 17); on the testnet since 26 Nov 2026; incentium.org/validators reads the set from the chain | Rehearsal with outside candidates on the testnet; bond, nominate, set keys and validate from the Validators page; benchmarked weights; mainnet with runtime 12; recruit at least 7 independent producers | `pallets/block-producers`, runtime | Runtime upgrade, recruitment |
+| Subnets (Phase 2) | Runtime 10 on the testnet (now inside runtime 12): automatic unlock with five criteria, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, cap ladder, spread settlement, `SubnetRegistryApi`; incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet | `subnet-registry`, `ict-consensus` | Runtime upgrade |
 | Tier table | Four tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed | Tier 0 to Qwen3.5-4B with pinned file hash; embedding job type; validator tier declarations; three-validator rule for opening a tier | `subnet-registry` | Runtime upgrade, then governance call |
 | Task source | Synthetic prompts (`SN0 task <epoch>:<uid>:<i>: <nonce>`), 8 per miner per epoch, at most 32 tokens | Public-goods queue and hidden control tasks; later paid jobs from the gateway | `neuron/validator.py` | Software release |
 | Task fetching | Miner polls validators every 5 s and gets a fixed task count | Protocol assignment by capacity with a drand-seeded draw; WebSocket streaming for real-time tiers | `neuron/miner.py`, `tasks.py` | Software release |
@@ -680,12 +684,62 @@ On 25 November 2026 the testnet runs runtime 10 (subnet registration and issuanc
 | Slashing and pools | Done: quorum reports, 10% slash, three-strike ban, pool bonds and pro-rata payouts | None | `work-verify` | – |
 | Weights | Hash commit-reveal per epoch | drand time-lock (Section 6) | `weights` | Runtime upgrade |
 | Consensus | Yuma-lite computed on chain for SN0 | Proof-based Yuma when subnets outgrow on-chain computation (Section 6) | `ict-consensus` | Runtime upgrade |
-| ICT⇄USDC swap | Pallet `ict-swap` (index 15) on testnet since 20 Nov 2026; `IncentiumSwap` at 0x24836E90fEA706DA855D0f3cD7772D7282fD962D on Base Sepolia; keeper and trading page on testnet; 19 pallet, 16 contract and 4 keeper end-to-end tests pass | Full testnet run including failure paths; benchmarked weights; replace `ValidateUnsigned` before April 2027; external audit; mainnet upgrade and Base mainnet contract | `pallets/ict-swap`, `swap/` | Audit, runtime upgrade, contract deployment |
+| ICT⇄USDC swap | Version 1 on mainnet since 24 Nov 2026 (runtime 8; contract 0x118B45764555B57c0886D53978de4aa0D0D32e55 on Base, with a 0.1 % fee and a pause guardian held by the launch operator, free reservations). Version 2 (Section 18) on branch `feat/swap-v2`, 26 Nov 2026: no fee, no pause, no arbiter, deposits half returned and half burned, deadlines extended by downtime; 25 pallet, 21 contract and 6 keeper end-to-end tests pass; still to be merged into the mainnet line of runtime 12 (`feat/npos`) | Testnet runtime with version 2 and a Base Sepolia contract, full run including failure paths; benchmarked weights; replace `ValidateUnsigned` before April 2027; audit together with Alpha; Base mainnet contract, then pause version 1; trading page reading both chains directly | `pallets/ict-swap`, `swap/` | Audit, runtime upgrade, contract deployment |
 | Explorer | Live at explorer.incentium.org; swap events classified in code but not yet deployed | Deploy swap events; from Phase 2 show allocation inputs per subnet and epoch | `explorer/` | Software release |
-| Alpha and Phase 3 economics | Alpha rules decided 25–26 Nov 2026 and simulated (`sim/DECIDED.md`); first module on `feat/alpha-pools` | Rebuild `amm` to the 26 Nov rules (real reserves, opening after 10 days, hold-back, price limits), build `dividends`, connect to the registry and consensus, then `utility-metrics`, `payments`; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole | New pallets | Build, simulation, audit, referendum |
+| Alpha and Phase 3 economics | Alpha rules decided 25–26 Nov 2026 and simulated (`sim/DECIDED.md`); `subnet-pools` built to them (real reserves, opening after 10 days, hold-back, price limits, dividends and take), connected to the registry and consensus with the bootstrap rule; 23 pallet tests; in runtime 12 on the testnet, where SN1 was bought on 26 Nov 2026 and its pool opens 10 days later; incentium.org/pools stakes from one's own wallet | Finish the rehearsal (opening, staking, a crash test, dividends, take); audit; then `utility-metrics`, `payments`; add the revenue cap and the pooled SN0 payment pot; simulate the Phase 3 setup as a whole | `pallets/subnet-pools`, new pallets | Rehearsal, audit, runtime upgrade |
 | Gateway and access | Not built | Gateway with streaming, failover, batch and payment receipts; `access` module (Section 13) | New service, new pallet | Build, legal review |
 | Miner onboarding | Pull-based miner; node for Mac and Windows; `install-miner.sh` picks the tier on Linux; the model takes at most a quarter of memory | Test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12) | `neuron/`, `scripts/` | Software release |
 | EVM and bridge | Not in the runtime | Frontier and Hyperlane route (Section 14), or rely on the atomic swap until a bridge is audited | Runtime, contracts | Decision, then build and audit |
 | Legal | No legal entity | Review of the contracting party for paid users, GDPR for the gateway, MiCA for trading and marketing, EU AI Act Article 50 | – | External advice |
 
 None of the proposed changes touches protected parameters (maximum supply and halving, for ICT and every Alpha token). The 50% issuance-funded buyback floor was dropped on 25 Nov 2026, before any Alpha module was built.
+
+## 17. Open block production (runtime 12)
+
+*Decided 26 Nov 2026.* Anyone can stand as a block producer or back one with ICT, and the chain elects the set every day. Aura stays the block engine and GRANDPA gives finality; the election is nominated Proof of Stake. Block producers and subnet validators are separate roles.
+
+| Item | Value |
+| --- | --- |
+| Session | 1,800 blocks (6 h) |
+| Era | 4 sessions = 7,200 blocks (1 day) |
+| Elected seats | 20 while the genesis keys keep their reserve seats, then 24; the Parameters or Root track may change it (at most 100) |
+| Candidate minimum bond | 100 ICT |
+| Nominator minimum bond | 10 ICT, up to 16 candidates each |
+| Election | On chain, sequential Phragmén, up to 1,000 voters ordered by stake (bags list) |
+| Unbonding | 7 eras |
+| Slash deferral | 6 eras; a Root or Emergency referendum can cancel a deferred slash |
+| Payout history | 84 eras |
+
+**Pallets.** `pallet_authorship` (era points), `pallet_staking` (bonding, nominating, exposures, rewards, slashing), `pallet_session` with `historical` (the producer set and session keys; Aura and GRANDPA keys rotate through it), `pallet_offences` (GRANDPA equivocation reports), `pallet_bags_list`, and `pallet-block-producers` (this repository: the genesis keys' reserve, the offline rule and the reward pot).
+
+**Rewards.** `ict-emission` sends `ValidatorShare` (2 % of issuance) to the reward pot instead of the fund, and transaction fees, burned before, go to the same pot. At the end of each era the pot's balance is burned and reported as the era's payout; `payout_stakers` mints it again to producers and nominators by era points, after each producer's commission. Supply is unchanged, except that rewards nobody claims within 84 eras stay burned.
+
+**Slashing and offline.** A GRANDPA equivocation can be reported by anyone with a membership proof; the slash is at least 10 % of the offender's and its nominators' exposure, deferred 6 eras, then burned, and the offender is disabled for the rest of the era. A producer elected for an era that writes no block in it gets no reward and is removed as a candidate at the start of the next era; it can stand again with `validate`. Going offline is not slashed.
+
+**The genesis keys' reserve.** The four genesis authorities are stored in `GenesisValidators`. While `ReserveActive`, the session manager adds them to every elected set. At each new era the pallet counts elected producers that are not genesis keys; when that count has been at least 7 in each of 30 consecutive eras, `ReserveActive` turns off for good, the seat count rises by 4, and the genesis keys leave at the next era. They may still stand as ordinary candidates. Root may end the reserve earlier, never restart it.
+
+**Migration of a live chain.** Session storage is seeded from the current Aura and GRANDPA authorities, paired by index; staking starts empty with the minimum bonds and 20 seats. Until candidates exist the election returns nothing and the genesis keys keep producing. The genesis keys need no funds and have no exposure, so they are never slashed. On the testnet the switch ran on 26 Nov 2026 without a stop in block production or finality.
+
+**Open.** `session.set_keys` needs an ownership proof signed by the new keys, so the Validators page and installer must create the keys and proof on the node and submit them with `bond` and `validate`; benchmarked weights; a testnet rehearsal with outside candidates.
+
+## 18. ICT⇄USDC atomic swap, version 2
+
+*Decided 26 Nov 2026; replaces the first mainnet deployment.* An order on one chain is filled against a hash-locked payment on the other: Incentium's `ict-swap` pallet holds the ICT side and the `IncentiumSwap` contract on Base the USDC side. No bridge and no third party holds funds. Version 2 removes every privileged address: after deployment no one has rights over the contract or the pallet that any other address does not have.
+
+| Item | Version 1 (mainnet since 24 Nov 2026) | Version 2 |
+| --- | --- | --- |
+| Fee | 0.1 % of the USDC side, to a fixed address | None |
+| Pause | A pause guardian held by the launch operator | None |
+| Reservations | Free; anyone could reserve fills and let them expire, blocking orders | Deposit of 2 % of the fill, at least 2 ICT or 0.5 USDC; one open reservation per recipient per order |
+| Deposit on a completed trade | – | Returned in full |
+| Deposit on an expired reservation | – | Half returned to its payer, half burned; no arbiter |
+| Incentium halts | Reservation deadlines pass during the halt | Deadlines are extended by the chain's downtime |
+| Order size | 100 ICT until day 90, 1,000 ICT until day 120, 5,000 ICT after, by block height | Unchanged |
+
+**Why half is burned.** The two chains cannot see each other, so an expiry cannot tell whether the taker never locked (blocking an order) or the maker never confirmed. Burning half makes blocking cost 1 % of the fill, and nobody, maker included, gains from a failed trade, so there is no reason to let one fail on purpose. An honest taker whose maker never confirmed also loses 1 %; the taker's own funds on the other chain are refunded as before. Every case can be classified afterwards from the two chains' public data.
+
+**Base contract.** Constructor `(usdc, genesisTime)` only. A burned half stays in the contract for good (`burnedDeposits`); no call can move it, and it is not sent to a dead address, so a USDC blacklist of that address cannot block an expiry. A deposit refund that USDC refuses, for example to a blacklisted address, is recorded in `owed` and paid later by `claimOwed(address)`, which anyone may call; it never blocks a claim or an expiry. Removed from version 1: `withdrawFees`, `setPaused`, `returnDeposit`, `payDepositToMaker`.
+
+**Incentium pallet.** On `expire_reservation` (unsigned, callable by anyone after the deadline) half the held deposit is released and half burned with `burn_held`, reducing total issuance; event `DepositHalfBurned`. Removed: `DepositArbiter`, `set_deposit_arbiter`, `return_deposit`, `pay_deposit_to_maker`, `DepositDisputeWindow`.
+
+**Rollout.** A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then attests the contract (`attest_swap`), unlock criterion 4.

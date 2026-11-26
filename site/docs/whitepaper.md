@@ -1,14 +1,14 @@
 # Incentium
 
-Nov 25, 2026
+Nov 26, 2026
 
 ## Abstract
 
-Incentium (incentium.org) is an open, decentralized network in which machine intelligence is produced, verified and rewarded on a dedicated blockchain. The network's native coin is ICT. The protocol builds on the ideas behind Bittensor but addresses three weaknesses: scoring that cannot be audited, work that cannot be verified, and issuance that is not tied to real demand.
+Incentium (incentium.org) is a reward system for resource allocation of decentralized artificial intelligence: an open network in which machine intelligence is produced, verified and rewarded on a dedicated blockchain that no one owns. The network's native coin is ICT. The protocol builds on the ideas behind Bittensor but addresses three weaknesses: scoring that cannot be audited, work that cannot be verified, and issuance that is not tied to real demand.
 
-Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once four on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. Each subnet gets its own Alpha token with the same tokenomics as ICT, paid to its miners, validators and owner as a bonus on top of their ICT; staking on a subnet means buying its Alpha in a pool no one owns. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.
+Incentium launches in three phases. In Phase 1 (Genesis) there is a single subnet with one standardized task, and rewards are paid for verified work. Its first 90 days are a launch period with lighter participation rules, and three quarters of the rewards from that period are locked and released between day 150 and day 690. In Phase 2 (Subnet Growth) subnet registration opens by itself once five on-chain criteria are met, and new subnets are sold one at a time by Dutch auction; SN0 keeps at least half of all issuance, and the other subnets share the rest by stake. Each subnet gets its own Alpha token with the same tokenomics as ICT, paid to its miners, validators and owner as a bonus on top of their ICT; staking on a subnet means buying its Alpha in a pool no one owns. In Phase 3 (Utility Calibration) issuance is allocated by measurable utility — locked capital, burned fees and user revenue — with safeguards against manipulation.
 
-The goal is a network where rewards follow real value, and where every rule is enforced by the protocol rather than by trust in individual participants: if its founder left, nothing would stop and nobody would notice.
+Anyone can produce blocks: block producers are elected by stake every day, and the launch operator's keys step aside by themselves once enough independent producers have taken part for 30 days. The goal is a network where rewards follow real value, and where every rule is enforced by the protocol rather than by trust in individual participants: if its founder left, nothing would stop and nobody would notice.
 
 ## 1. Introduction and motivation
 
@@ -47,6 +47,7 @@ Requests flow down from users to subnets; results, scores and proofs flow down t
 - **Miners** perform AI work and are rewarded for verified output.
 - **Validators** evaluate miners, commit weights and are audited themselves.
 - **Delegators** stake ICT with validators and share in rewards.
+- **Block producers** write and finalize the chain's blocks. Anyone can stand with a bond of ICT, and ICT holders back them by nominating; the chain elects the set every day (Section 8).
 - **Subnet owners** buy a subnet slot at auction and define its task and scoring; they can hand control to a multisig or to the subnet's stakers.
 
 **Networking:** Nodes communicate over libp2p and QUIC. Every message is signed with the sender's hot key, request limits scale with stake, and miners can sit behind relay nodes for DDoS protection.
@@ -63,7 +64,8 @@ ICT has a fixed maximum supply of 21,000,000 and is issued only through block re
 | Block time | 12 seconds (7,200 blocks per day) |
 | Initial block reward | 1 ICT per block (7,200 ICT per day) |
 | Halving | When half of the remaining supply has been issued (about every 4 years) |
-| Development fund | 10% of issuance, governed by on-chain vote |
+| Development fund | 8% of issuance, governed by on-chain vote (10% until block production opens; Section 8) |
+| Block producers | 2% of issuance plus all transaction fees |
 | Registration fee (miners and validators) | Burned in full |
 | Subnet slot | Sold by Dutch auction; half to the treasury, half burned (Section 6.1) |
 | Pool trading fee | 0.5%, half of which is burned |
@@ -73,10 +75,12 @@ Halving is triggered by the amount issued, not by block height, so the schedule 
 **Uses of ICT:**
 
 - Staking with validators, including on the subnet a validator serves.
+- Standing as a block producer, or nominating one (Section 8).
 - Buying subnet slots at auction.
 - Buying and selling subnets' Alpha tokens in their pools.
 - Payment for AI services through the payment gateway.
 - Access: ICT locked for access in the holder's own wallet gives a share of the public gateway's capacity, pro rata to the share of all ICT locked for access. Locked ICT cannot be moved during a 7-day unbonding period, so the same tokens cannot grant access twice. A small free tier with a bot check stays open, so anyone can try the network without buying ICT. The public demo opens when Tier 1 (Qwen3.5-9B on GPU) is live, before the launch period ends; access tiers open once ICT can be traded. Gateway traffic does not count towards miner rewards at first, so a gateway operator cannot pay its own miners with fake traffic.
+- Trading against USDC: an atomic swap between the Incentium chain and Base trades ICT for USDC wallet to wallet, with no bridge and no one holding funds in between. The swap contract on Base has no fee, no pause key and no privileged address of any kind. Whoever reserves part of an order pays a deposit of 2% (at least 2 ICT or 0.5 USDC), returned when the trade completes; if the reservation runs out, half is returned and half burned, so blocking orders costs something and nobody gains from a failed trade.
 - Trading on EVM chains: the Incentium chain is EVM-compatible, so MetaMask works on it directly, and ICT moves to Base as an ERC-20 through a Hyperlane Warp Route that the project deploys and runs itself. Native ICT is locked while the same amount exists on Base, so the supply cap is unchanged. The bridge opens around the end of the launch period with transfer caps, a pause switch, continuous supply monitoring and an external audit; its validators start with the project, which is disclosed, and move to independent operators over time.
 - Voting rights in governance.
 
@@ -104,7 +108,7 @@ where T is the number of tokens served and accepted, Q is a quality factor betwe
 | --- | --- |
 | Miners | 60% |
 | Validators and their delegators | 30% |
-| Development fund | 10% |
+| Development fund | 10% (8% once block production opens, and 2% to block producers) |
 
 **Sybil protection:** Registration costs a fee that is burned, and each key is capped in how many work units it can be credited per epoch.
 
@@ -144,12 +148,13 @@ The first 90 days after genesis (18 November 2026) are a launch period designed 
 
 **How the bounties are run.** The curator is at first the launch operator, through a 2-of-3 multisig account whose keys are stored apart. The curator splits each bounty into child bounties — for example a brief for a video or a series of posts — and awards each one to the creator's or provider's address after the result is measured, publishing the measurement. Every award is public on chain and waits a few days before it can be claimed, during which governance can stop it; governance can also replace the curator at any time. A curator can never pay out more than the bounty holds, and what is left when a bounty closes returns to the fund. Paid content must be marked as advertising. The aim is to hand curation to independent curators over time.
 
-**Criteria for moving to Phase 2.** Phase 2 begins when subnet registration unlocks, and it unlocks by itself (decided 25 Nov 2026): the chain checks once a day and opens registration in the first block where all four of these hold. No vote or person is needed.
+**Criteria for moving to Phase 2.** Phase 2 begins when subnet registration unlocks, and it unlocks by itself (decided 25 Nov 2026): the chain checks once a day and opens registration in the first block where all five of these hold. No vote or person is needed.
 
 - Day 180 after genesis (about 17 May 2027).
 - At least 300 active SN0 miners as a 30-day average; an active miner is one paid in an epoch, neither caught by a failed spot check nor banned.
 - Governance runs by itself: the sudo key is gone and at least 3 referenda have been approved.
 - Trading is safe: governance has attested that the ICT⇄USDC swap contract on Base is audited and has no pause key.
+- Alpha is live: the Alpha module (Section 6.5) is part of the runtime, so every subnet sold gets its own token and pool from its first day.
 
 The progress towards each criterion is shown live at incentium.org/subnets.
 
@@ -175,7 +180,7 @@ In Phase 2 anyone can buy a subnet slot and run a subnet with its own task and i
 
 ### 6.3 Allocation of issuance
 
-The development fund takes its 10% first; the rest goes to the subnets.
+The development fund takes its share first (10%; once block production opens, 8% to the fund and 2% to block producers); the rest goes to the subnets.
 
 - **SN0 keeps at least half of all issuance** through 2028; after that the floor can only be changed by a runtime upgrade.
 - **The other subnets' share is phased in.** From the block where registration unlocks, their combined share rises linearly from zero to the rest (40% of issuance) over 180 days, so SN0 miners see no sudden drop.
@@ -233,7 +238,9 @@ What the protocol fixes for every subnet: its share of issuance, the 50/38/12 sp
 
 **When a subnet is removed.** No more Alpha is issued, the pool stays open, and the owner's Alpha not yet released is burned.
 
-**Timing.** Alpha tokens and pools are not part of runtime 10. They are built as their own modules, audited, and installed by referendum before subnet registration unlocks, replacing ICT staking on subnets other than SN0. Until then no such stake exists, so nothing has to be moved.
+**A new subnet starts paying at once.** Until any Alpha is staked in a subnet, all its validators count equally, so its first epochs pay miners and validators even though no one has bought Alpha yet. From the first staked Alpha, a validator's weight follows the Alpha staked with it.
+
+**Timing.** Alpha tokens and pools are built (module `subnet-pools`, runtime 12) and run on the testnet since 26 November 2026. They are audited and installed on mainnet before subnet registration unlocks, which it cannot do without them (Section 5.1), replacing ICT staking on subnets other than SN0. Until then no such stake exists, so nothing has to be moved.
 
 ### 6.6 Subnet categories
 
@@ -286,7 +293,9 @@ where the bars denote moving averages: 90 days for L, 30 days for R and F. A sub
 
 ## 8. Consensus and verification
 
-Incentium uses an extended variant of Yuma Consensus in which validator weights can be audited and poor judgment is penalized.
+**Block production (decided 26 November 2026).** Blocks are produced and finalized by an elected set of block producers (Aura for block production, GRANDPA for finality, nominated Proof of Stake for the election). Anyone can stand with a bond of at least 100 ICT, and any holder can back up to 16 candidates with at least 10 ICT; every day the chain elects 20 producers by stake (Phragmén). Producers and their nominators share 2% of issuance, taken from the development fund's share, plus every transaction fee, by the blocks they write and after each producer's commission. A producer that signs two conflicting blocks loses at least 10% of its own and its nominators' bond, burned after a 6-day delay in which a referendum can cancel it; a producer that writes no block in a day is paid nothing and has to stand again. During the launch phase the four genesis keys of the launch operator keep reserve seats beside the elected set; once at least 7 independent producers have been elected every day for 30 days in a row, the reserve ends by itself, for good, and four more seats open to election. Validators of subnets and block producers are separate roles: a validator scores AI work, a block producer writes the chain.
+
+**Subnet consensus.** Incentium uses an extended variant of Yuma Consensus in which validator weights can be audited and poor judgment is penalized.
 
 **Commit-reveal weights.** Validators first submit an encrypted hash of their weights. The weights are revealed automatically after a fixed period using a drand time-lock. No one can therefore copy another validator's weights before they are locked in.
 
@@ -313,6 +322,7 @@ Incentium uses an extended variant of Yuma Consensus in which validator weights 
 | --- | --- | --- |
 | Sybil attack | One actor registers many identities to capture rewards | Burned registration fee, per-key caps on work units, stake requirements for validators |
 | Weight copying | Validators copy others' weights instead of evaluating | Commit-reveal with drand time-lock |
+| Taking over block production | An actor elects its own block producers to censor or rewrite the chain | Election by stake among open candidates; GRANDPA finality needs two thirds of the producers; slashing for conflicting votes |
 | Validator collusion | Validators agree to favor certain miners | Square-root weighting, 10% cap per validator, random audits with slashing |
 | Fake work | Miners return output from a cheaper model | Spot checks; no epoch payout when half of the active validator stake reports a failure, bond slashed at two thirds; TEE attestation, fraud proofs |
 | Wash trading | Subnet owners trade with themselves to inflate metrics | Fees counted only on each account's net daily flow, with a low weight in the allocation formula |
@@ -333,9 +343,11 @@ Incentium has no foundation or company. Governance is on-chain from genesis and 
 - **From day 90:** Every change goes through on-chain referenda (OpenGov model); there is no sudo key and no committee. A decision takes effect by itself when its referendum passes.
 - **Bug fixes** use the Emergency track (below) instead of a committee with special powers.
 
-**Voting in practice.** There are no meetings and no notice periods. Anyone can submit a proposal with a deposit. After a short preparation period, ICT holders vote yes, no or abstain from their own wallet during a fixed voting period (proposed 7 days, and 3 days for small spends from the fund), with more weight for those who lock their ICT for longer after the vote. A proposal passes when it reaches both the required approval and the required turnout, and takes effect after the time-lock. ICT held in the launch vault cannot vote until it is released. Three referendum tracks exist from genesis: Root for runtime changes and protocol settings, Treasurer for large spends and Small spender for spends up to 1,000 ICT. A fourth, Emergency, can do one thing only: authorize a runtime upgrade that fixes a bug. It needs a 1,000 ICT decision deposit and an approval of 90–100% with high turnout, and with broad, fast support a fix takes effect in about five hours. Turnout counts only ICT that can vote, so the launch vault, the fund and other protocol accounts are left out. Proposals, votes and the fund's bounties are shown at governance.incentium.org, where holders vote with Talisman or SubWallet.
+**Voting in practice.** There are no meetings and no notice periods. Anyone can submit a proposal with a deposit. After a short preparation period, ICT holders vote yes, no or abstain from their own wallet during a fixed voting period (proposed 7 days, and 3 days for small spends from the fund), with more weight for those who lock their ICT for longer after the vote. A proposal passes when it reaches both the required approval and the required turnout, and takes effect after the time-lock. ICT held in the launch vault cannot vote until it is released. Three referendum tracks exist from genesis: Root for runtime changes and protocol settings, Treasurer for large spends and Small spender for spends up to 1,000 ICT. A Parameters track (runtime 12) changes settings from a fixed list only, each within the bounds its own module enforces: the fund's and block producers' shares of issuance, the spacing, cap and tiers of subnets, the number of block producers and staking minimums, and Alpha's required return and bonus share for new subnets. It needs a 50 ICT decision deposit and a 7-day vote with approval falling from 100% to 60%, and takes effect a day after it passes. Everything else, including runtime upgrades, the subnet emergency brake and the swap attestation, stays on Root. A fifth track, Emergency, can do one thing only: authorize a runtime upgrade that fixes a bug. It needs a 1,000 ICT decision deposit and an approval of 90–100% with high turnout, and with broad, fast support a fix takes effect in about five hours. Turnout counts only ICT that can vote, so the launch vault, the fund and other protocol accounts are left out. Proposals, votes and the fund's bounties are shown at governance.incentium.org, where holders vote with Talisman or SubWallet.
 
 **Runtime upgrades by referendum.** A referendum approves only the hash of the new runtime, so the proposal is small and needs no large deposit. Once it passes, anyone can upload the code; the chain accepts it only if the hash matches, the name is unchanged and the version is higher, and charges no fee. The tool for this is part of the open-source code.
+
+**Who can still act alone.** Before day 90 the sudo key can do anything, and the launch operator's genesis keys produce the blocks. The plan for the remaining weeks is to hold sudo in a 2-of-3 multisig, and to have runtime 12, which opens block production, on mainnet well before sudo ends. After day 90 nothing is left that one person can do alone: no key can change the runtime, move the treasury, pause the swap or move funds out of a subnet's pool.
 
 **Sudo in the launch period.** During the launch period a sudo key held by the launch operator can make urgent fixes and runtime upgrades without a vote. This is disclosed, every use is visible on chain, and the key is removed automatically by the runtime at the end of the launch period. Apart from the two bounties described in Section 5.1, which the runtime creates at that moment, every payment from the development fund needs an on-chain vote.
 
@@ -359,23 +371,24 @@ Gate 1 is the automatic unlock of subnet registration described at the end of Se
 
 ## 12. Implementation status
 
-Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives in the reference miner and validator, not in the runtime, so it can change without a hard fork. The table below separates what is in the code on 25 November 2026 from what still has to change or be done. Section 16 of the specification lists each change with the module or file it touches.
+Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives in the reference miner and validator, not in the runtime, so it can change without a hard fork. The table below separates what is in the code on 26 November 2026 from what still has to change or be done. Section 16 of the specification lists each change with the module or file it touches.
 
 | Area | In the code today | What changes or must be done |
 | --- | --- | --- |
-| Chain, issuance and launch period | Mainnet live since 18 Nov 2026; issuance with halving, 10% to the fund, launch period and launch vault | Nothing planned |
-| Governance | Treasury, bounties, referenda with conviction voting; the runtime removes sudo at day 90. Emergency track and upgrades by hash in runtime 11: a referendum to install it on the testnet runs now, as a full rehearsal without sudo | Mainnet upgrade to runtime 10 and 11 before day 90; a governance web page |
+| Chain, issuance and launch period | Mainnet live since 18 Nov 2026; issuance with halving, 10% to the fund, launch period and launch vault | 2% of issuance to block producers with runtime 12 |
+| Block production | Mainnet: four genesis keys of the launch operator on two servers, plus a third node for bootstrapping and RPC. Runtime 12 (open block production) on the testnet since 26 Nov 2026; the move from fixed keys to elected producers ran without a stop | Mainnet upgrade to runtime 10, 11 and 12 before day 90, aimed at 1 February 2027; at least 7 independent producers; signing on the Validators page |
+| Governance | Treasury, bounties, referenda with conviction voting; the runtime removes sudo at day 90. Emergency track and upgrades by hash in runtime 11 (a referendum installing it on the testnet takes effect about 4 Dec 2026); Parameters track in runtime 12. Governance page at incentium.org/governance with voting from one's own wallet | Mainnet upgrade before day 90; sudo in a 2-of-3 multisig until then; test that turnout thresholds can be met |
 | SN0 tasks | The reference validator sends synthetic prompts (random text); the checks are sound but the answers have no use | Paid jobs, an open public-goods queue and hidden control tasks (Section 5) |
 | Models and tiers | Tier table on chain; tier 0 is Qwen3.5-2B and the only open tier; the miner software keeps the model within a quarter of memory and picks the tier on Mac, Windows and Linux | Tier 0 to Qwen3.5-4B, Tier 1 opened before day 90, model files pinned by hash, tolerance tested on Intel, AMD and Apple processors |
 | Work units | W = T × Q × A × G; every miner gets the same number of tasks per epoch | Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G set from measured cost per token and recalibrated quarterly |
 | Verification | Spot checks regenerate the answer; quorum slashing and a three-strike ban | Prefill scoring; validators declare their tiers; a tier opens when three validators can check it |
 | Weights and consensus | Hash-based commit-reveal; Yuma computed on chain for SN0 | drand time-lock and proof-based Yuma remain planned (Section 8) |
 | Pools and onboarding | Pools, bonds and pro-rata payouts in the runtime; pull-based miner and install script | Pool web page and a miner app for Windows and Mac before day 90 |
-| Trading ICT | ICT⇄USDC atomic swap: swap module on testnet (runtime 8, 20 Nov 2026), contract on Base Sepolia, trading page and keeper on testnet | Full testnet run including failure paths, external audit, then the mainnet upgrade and the Base mainnet contract; liquidity from the fund only by vote |
+| Trading ICT | ICT⇄USDC atomic swap on mainnet since 24 Nov 2026 (version 1: 0.1% fee and pause key held by the launch operator, free reservations, orders capped at 100 ICT). Version 2 built and tested on 26 Nov 2026: no fee, no pause key, reservation deposits half returned and half burned, deadlines extended if Incentium halts | Version 2 on the testnet and Base Sepolia, then audit; switch mainnet to version 2 and pause version 1; trading page that reads both chains directly |
 | Explorer | explorer.incentium.org live | Show swap activity; from Phase 2 show each subnet's allocation inputs per epoch |
 | Gateway and API | Not built | OpenAI-compatible API with streaming, a batch API and payment; a public chat demo; listing on OpenRouter |
-| Phase 2 | Runtime 10 (on the testnet since 25 Nov 2026): automatic unlock, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, the cap ladder and the subnet page at incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet that penalties can slash |
-| Alpha and Phase 3 | Alpha rules decided 25 Nov 2026 (Section 6.5); pool arithmetic and price-aware injection exist as tested library code; the Alpha, pool, marketplace, metrics, payments and access modules are not in the runtime | Build, simulate and audit the Alpha modules and install them by referendum; simulate Phase 3 with the new rules |
+| Phase 2 | Runtime 10 (on the testnet since 25 Nov 2026): automatic unlock with five criteria, Dutch auction, issuance sharing, staking per subnet, subnet control and DAO, penalties, dead-subnet removal, the cap ladder and the subnet page at incentium.org/subnets | Mainnet upgrade before day 90; a miner bond per subnet that penalties can slash |
+| Alpha and Phase 3 | Alpha, pools and dividends (Section 6.5) built as module `subnet-pools` and connected to the registry and consensus; runtime 12 on the testnet since 26 Nov 2026, where a full rehearsal with a bought SN1 runs now; pool page at incentium.org/pools with staking from one's own wallet. Metrics, payments and access modules are not built | Finish the rehearsal; audit together with swap version 2; mainnet before registration unlocks; simulate Phase 3 with the new rules |
 | EVM and bridge | Not in the runtime | EVM support and a bridge route to Base as specified, or rely on the atomic swap until a bridge is audited |
 | Legal | No legal entity | Legal review of who contracts with paying users, privacy, MiCA and the EU AI Act before public trading, the paid gateway and the miner app |
 
@@ -388,7 +401,7 @@ Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives 
 - **Stakers' price risk:** Staking on a subnet means holding its Alpha (Section 6.5). A subnet that loses its users loses its stakers money, and a rush to unstake makes it worse.
 - **Concentration:** Subnet issuance follows stake, and Phase 2 starts with few subnets and few large holders, so a small group could steer much of it at first. SN0's floor of half of all issuance limits how much.
 - **Technical risk:** zk proofs of consensus and verification of AI output are still maturing technologies.
-- **Centralization in Phase 1:** The network depends on a small group of core contributors and validators until the transition to Phase 2; sudo ends by itself at day 90, but code maintenance still depends on people, paid from the treasury. About 145,800 ICT earned in the launch period can be sold as soon as they are paid, and about 437,400 more (2.1% of the maximum supply) unlock between day 150 and day 690 and may then be sold.
+- **Centralization in Phase 1:** The network depends on a small group of core contributors and validators until the transition to Phase 2. The launch operator's keys produce every block until runtime 12 is on mainnet and independent producers are elected, and the testnet runs on one operator's server; sudo ends by itself at day 90, but code maintenance still depends on people, paid from the treasury. About 145,800 ICT earned in the launch period can be sold as soon as they are paid, and about 437,400 more (2.1% of the maximum supply) unlock between day 150 and day 690 and may then be sold.
 - **Competition:** Bittensor and other decentralized AI networks have a large head start.
 
 **Regulation:** If ICT is offered to the public or admitted to trading in the EU/EEA, it will likely fall under the Markets in Crypto-Assets Regulation (MiCA). This requires, among other things, a published crypto-asset white paper meeting MiCA's content requirements. Incentium has no issuing company, foundation or chosen jurisdiction: the protocol, the marketplace front end and the reference software are published as open source and operated by no one in particular. That does not by itself remove legal exposure for the people who develop, launch or promote it, so legal advice should be obtained before launch.
@@ -408,12 +421,14 @@ All modules are written in Rust as Substrate pallets. Phase transitions follow o
 | `work-verify` | 1 | Spot checks, slashing, task tiers and pool payouts |
 | `weights` | 1 | Commit-reveal of validator weights |
 | `consensus` | 1–2 | Yuma consensus, staking per subnet, sharing issuance between subnets and epoch payouts spread over the epoch (computed on chain today; proof-based version planned) |
-| `alpha-assets` | 2 | Alpha coins with ICT's tokenomics: 7,200 a day, half as a bonus to the subnet, half to the pool's stock |
+| `alpha-assets` | 2 | Alpha coins with ICT's tokenomics: 7,200 a day, half as a bonus to the subnet, half to the pool's stock (built with `amm` and `dividends` as one module, `subnet-pools`) |
 | `amm` | 2 | Pools no one owns, where staking is buying Alpha; opening at the valuation price after 10 days, stock release with hold-back, swaps with price limits, marketplace router |
 | `dividends` | 2 | The validators' 38% of a subnet's ICT, less each validator's take (0–18%), paid in ICT to the Alpha staked with them |
 | `utility-metrics` | 3 | Utility measurement, caps and floors |
 | `payments` | 3 | User revenue paid out 50/38/12 like issuance, the stakers' part in ICT |
-| governance | 1 | On-chain treasury, bounties and child bounties, multisig, referenda with conviction voting and four tracks including Emergency; removes sudo and creates the two launch bounties at day 90 |
+| governance | 1 | On-chain treasury, bounties and child bounties, multisig, referenda with conviction voting and five tracks including Emergency and Parameters; removes sudo and creates the two launch bounties at day 90 |
+| `block-producers` with staking and session | 1 | Open block production: election by nominated Proof of Stake, the genesis keys' reserve and its automatic end, rewards from 2% of issuance and transaction fees, slashing and the offline rule |
+| `ict-swap` | 1 | The Incentium side of the ICT⇄USDC atomic swap; the `IncentiumSwap` contract is its Base side |
 | `phase-control` | All | Phase transitions by on-chain criteria |
 
 ## Appendix B: Glossary
@@ -422,6 +437,8 @@ All modules are written in Rust as Substrate pallets. Phase transitions follow o
 | --- | --- |
 | Miner | A participant that performs AI work in a subnet |
 | Validator | A participant that evaluates miners and submits weights |
+| Block producer | A participant elected by stake to write and finalize the chain's blocks |
+| Nominator | An ICT holder who backs block producers with stake and shares in their rewards |
 | Subnet | A sub-network with its own task and incentive mechanism |
 | Alpha coin | A subnet's own token (Alpha1 for Subnet 1, and so on), issued like ICT; half is paid as a bonus to the subnet, and staking on the subnet means buying it in the subnet's pool |
 | Yuma Consensus | The algorithm that turns validator weights into rewards |
