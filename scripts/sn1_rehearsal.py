@@ -45,6 +45,7 @@ class Chain:
         from substrateinterface import SubstrateInterface
 
         self.s = SubstrateInterface(url=a.url)
+        self.s.init_runtime()
         name = self.s.rpc_request("system_chain", [])["result"]
         if "testnet" not in name.lower():
             sys.exit(f"refusing: this is '{name}', not a testnet")
@@ -75,6 +76,16 @@ class Chain:
     def free(self, addr):
         return self.q("System", "Account", [addr])["data"]["free"]
 
+    def fund(self, addr, amount):
+        """Testnet ICT for the rehearsal: from the faucet if it has enough, else by sudo."""
+        if self.free(self.faucet.ss58_address) > amount + 10 * UNIT:
+            self.submit(self.faucet, "Balances", "transfer_keep_alive", {"dest": addr, "value": amount})
+        elif self.q("Sudo", "Key") == self.operator.ss58_address:
+            self.submit(self.operator, "Balances", "force_set_balance",
+                        {"who": addr, "new_free": self.free(addr) + amount}, sudo=True)
+        else:
+            sys.exit(f"cannot fund {addr}: the faucet is short and the operator is not sudo")
+
 
 def ict(x):
     return f"{x / UNIT:,.2f}"
@@ -82,7 +93,7 @@ def ict(x):
 
 def cmd_status(c, a):
     now = c.head()
-    print(f"block {now:,}; runtime {c.s.runtime_version}; operator {c.operator.ss58_address} "
+    print(f"block {now:,}; runtime version {c.s.runtime_version}; operator {c.operator.ss58_address} "
           f"({ict(c.free(c.operator.ss58_address))} ICT)")
     sudo = c.q("Sudo", "Key") if c.has("Sudo") else None
     print(f"sudo key: {sudo or 'none'}{' (operator)' if sudo == c.operator.ss58_address else ''}")
@@ -123,7 +134,7 @@ def cmd_buy(c, a):
     print(f"auction: {price}")
     need = a.max_price * UNIT
     if c.free(c.operator.ss58_address) < need + 10 * UNIT:
-        c.submit(c.faucet, "Balances", "transfer_keep_alive", {"dest": c.operator.ss58_address, "value": need + 20 * UNIT})
+        c.fund(c.operator.ss58_address, need + 20 * UNIT)
     c.submit(c.operator, "Registry", "register_subnet", {
         "max_price": need, "name": "Rehearsal", "description": "Testnet rehearsal of Alpha pools",
         "code_hash": "0x" + "00" * 32})
@@ -132,7 +143,7 @@ def cmd_buy(c, a):
 def cmd_neurons(c, a):
     for n, kp in c.keys.items():
         if c.free(kp.ss58_address) < 5 * UNIT:
-            c.submit(c.faucet, "Balances", "transfer_keep_alive", {"dest": kp.ss58_address, "value": 20 * UNIT})
+            c.fund(kp.ss58_address, 20 * UNIT)
         if c.q("Registry", "NeuronUid", [NETUID, kp.ss58_address]) is None:
             c.submit(kp, "Registry", "register_neuron", {"netuid": NETUID, "hotkey": kp.ss58_address})
 
