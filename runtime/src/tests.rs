@@ -773,6 +773,10 @@ fn the_parameters_track_changes_listed_parameters_only() {
         assert_eq!(pallet_ict_emission::ValidatorShare::<Runtime>::get(), 10_000);
         assert_ok!(set(RuntimeCall::Staking(pallet_staking::Call::set_validator_count { new: 30 })));
         assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 30);
+        assert_ok!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 250_000 })));
+        assert_eq!(pallet_subnet_pools::RequiredReturnPpm::<Runtime>::get(), 250_000);
+        // its own bounds still hold
+        assert!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 10_000 })).is_err());
         // the pallet's own bounds still hold
         assert!(set(RuntimeCall::Emission(pallet_ict_emission::Call::set_fund_share { ppm: 900_000 })).is_err());
         // not listed: refused

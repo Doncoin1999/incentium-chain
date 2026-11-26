@@ -286,8 +286,9 @@ mod runtime {
     pub type Session = pallet_session;
     #[runtime::pallet_index(46)]
     pub type VoterList = pallet_bags_list<Instance1>;
-    /// Alpha tokens and subnet pools (spec Section 7). Wired to the registry and
-    /// consensus in a later step; until then no pool is opened.
+
+    /// Alpha tokens and subnet pools (spec Section 7, decided 25-26 Nov 2026), wired to the
+    /// registry and consensus. A pool exists only for a subnet sold after this upgrade.
     #[runtime::pallet_index(32)]
     pub type SubnetPools = pallet_subnet_pools;
 }
