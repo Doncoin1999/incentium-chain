@@ -21,6 +21,9 @@ assert.strictEqual(st.minBlock, 180 * 7200);
 assert.strictEqual(st.minMiners, 300);
 assert.strictEqual(st.minReferenda, 3);
 assert.strictEqual(st.minersAvg, null);
+// fifth criterion (runtime 12 with the Alpha module); an older runtime ends before the field
+assert.strictEqual(st.alphaInstalled, true);
+assert.strictEqual(IC.decode.unlockStatus(read("unlock_status").slice(0, -2)).alphaInstalled, false);
 
 const a = IC.decode.auction(read("auction"));
 assert.strictEqual(a.now, 200 * 7200);
