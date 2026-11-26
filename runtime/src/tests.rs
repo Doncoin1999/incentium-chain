@@ -641,3 +641,40 @@ fn an_emergency_referendum_authorizes_an_upgrade_within_hours() {
         );
     });
 }
+
+/// Raw storage of a real referendum, shared with scripts/test_governance_page.js so the
+/// governance page decodes exactly what the chain stores.
+#[test]
+fn governance_page_fixture() {
+    use frame_support::traits::{Bounded, StorePreimage};
+    use pallet_conviction_voting::{AccountVote, Conviction, Vote};
+    ext_from_preset(sp_genesis_builder::DEV_RUNTIME_PRESET).execute_with(|| {
+        System::set_block_number(1);
+        let call = RuntimeCall::System(frame_system::Call::authorize_upgrade {
+            code_hash: sp_core::H256::repeat_byte(7),
+        });
+        let proposal = <Preimage as StorePreimage>::bound(call).unwrap();
+        assert!(matches!(proposal, Bounded::Inline(_)));
+        assert_ok!(Referenda::submit(
+            signed(K::Alice),
+            Box::new(frame_system::RawOrigin::Root.into()),
+            proposal,
+            frame_support::traits::schedule::DispatchTime::After(100)
+        ));
+        assert_ok!(Referenda::place_decision_deposit(signed(K::Bob), 0));
+        assert_ok!(ConvictionVoting::vote(
+            signed(K::Charlie),
+            0,
+            AccountVote::Standard {
+                vote: Vote { aye: true, conviction: Conviction::Locked1x },
+                balance: 5_000 * UNIT,
+            }
+        ));
+        let key = pallet_referenda::ReferendumInfoFor::<Runtime>::hashed_key_for(0u32);
+        let raw = frame_support::storage::unhashed::get_raw(&key).unwrap();
+        let hex = |b: &[u8]| format!("0x{}", sp_core::hexdisplay::HexDisplay::from(&b.to_vec()));
+        println!("KEY={}\nVALUE={}", hex(&key), hex(&raw));
+        let fund = configs::FundAccount::get();
+        println!("FUNDKEY={}", hex(&frame_system::Account::<Runtime>::hashed_key_for(&fund)));
+    });
+}
