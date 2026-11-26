@@ -166,7 +166,12 @@ bash install-validator.sh mainnet YOUR_STASH_ADDRESS</code></pre></li>
       <li><b>Safety.</b> Blocks become final when more than two thirds of the producers agree. If no candidate is elected, the producers of the day before carry on, so the chain never stops for lack of candidates.</li>
       <li><b>The genesis keys.</b> The four keys that started the chain keep reserved places until at least 7 independent producers have been elected every day for 30 days in a row. Then they leave by themselves, and no one can bring the reserve back.</li>
     </ul>
-    <p class="note">Full rules: <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/docs/OPEN-BLOCK-PRODUCTION.md">docs/OPEN-BLOCK-PRODUCTION.md</a>. Chain specs for new nodes: <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/chain-specs">chain-specs/</a>.</p>
+    <p class="note">Full rules: <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/docs/OPEN-BLOCK-PRODUCTION.md">docs/OPEN-BLOCK-PRODUCTION.md</a>. Chain specs for new nodes: <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/chain-specs">chain-specs/</a>. Check your copy before you start a node:</p>
+    <table>
+      <tr><th>File</th><th>sha256</th></tr>
+      <tr><td><code>incentium-mainnet-raw.json</code></td><td><code>3e091db6ab790ad8a03c52a9052c1326b675b1188201fa60f29b15eeb41e9254</code></td></tr>
+      <tr><td><code>incentium-testnet-raw.json</code></td><td><code>709b0ffdb223aa4fc92bb40efc63a34f8e73d5bb64d85514ad28b0c624db4e7f</code></td></tr>
+    </table>
   </div>
   <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>BlockProducersApi</code>. Any Incentium node gives the same answers. Add <code>?net=testnet</code> to the address to see the testnet.</p>
 </main>
