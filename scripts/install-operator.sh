@@ -9,6 +9,11 @@
 #   --rpc <domain>                public RPC endpoint at wss://<domain>, with a TLS certificate (Caddy)
 #   --archive                     archive node: keeps the full history (choose this before the first sync)
 #
+# Ports, to run beside another node on the same server (defaults in brackets):
+#   --p2p-port <n> [30333]  --rpc-port <n> [9944]  --validator-port <n> [8100]  --model-port <n> [8095]
+# Services and files are named per network (e.g. incentium-node-testnet), so a testnet node can
+# run on a server that already runs a mainnet node.
+#
 # What it does, step by step (read it before you run it):
 #   1. installs build tools (Rust, protoc, clang) if missing,
 #   2. builds the node from the open source code (no binary from anyone) and prints the commit,
@@ -21,15 +26,16 @@
 #      and the entry in the endpoint register. Your stash key never touches this server.
 #
 # Needs: Ubuntu/Debian, 4 cores, 8 GB memory (more with an SN0 reference model), 200 GB SSD
-# (more for an archive node), a public IP with port 30333 open, and port 443 for --rpc.
+# (more for an archive node), a public IP with the p2p port open, and port 443 for --rpc.
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0"; exit 1; }
+usage() { sed -n '2,17p' "$0"; exit 1; }
 NET="${1:-}"; shift || true
 case "$NET" in mainnet|testnet) ;; *) usage ;; esac
 
 PRODUCER="" ; SN0=0 ; UID_ARG="" ; RPC_DOMAIN="" ; ARCHIVE=0
 NAME="incentium-$(hostname -s)" ; HC_URL=""
+P2P_PORT=30333 ; RPC_PORT=9944 ; VAL_PORT=8100 ; LLAMA_PORT=8095
 while [ $# -gt 0 ]; do
   case "$1" in
     --producer)      PRODUCER="${2:?--producer needs your stash address}"; shift 2 ;;
@@ -39,6 +45,10 @@ while [ $# -gt 0 ]; do
     --archive)       ARCHIVE=1; shift ;;
     --name)          NAME="${2:?}"; shift 2 ;;
     --healthchecks)  HC_URL="${2:?}"; shift 2 ;;
+    --p2p-port)      P2P_PORT="${2:?}"; shift 2 ;;
+    --rpc-port)      RPC_PORT="${2:?}"; shift 2 ;;
+    --validator-port) VAL_PORT="${2:?}"; shift 2 ;;
+    --model-port)    LLAMA_PORT="${2:?}"; shift 2 ;;
     -h|--help)       usage ;;
     *) echo "unknown option: $1"; usage ;;
   esac
@@ -52,10 +62,8 @@ BIN="$D/incentium-node"
 BASE="$D/data-$NET"
 SPEC="$SRC/chain-specs/incentium-$NET-raw.json"
 SERVICE="incentium-node-$NET"
-RPC_PORT=9944
-LLAMA_PORT=8095
 PY="$D/venv/bin/python"
-HOTKEY="$D/sn0-hotkey.json"
+HOTKEY="$D/sn0-hotkey-$NET.json"
 PUBLIC_RPC=$([ "$NET" = mainnet ] && echo wss://rpc.incentium.org || echo wss://testnet-rpc.incentium.org)
 
 say() { printf '\n== %s\n' "$*"; }
@@ -108,7 +116,7 @@ install -m 755 "$SRC/target/release/incentium-node" "$BIN"
 # with safe methods, which is also what a public RPC endpoint must expose.
 node_flags() {
   local methods="$1"
-  local f="--chain $SPEC --base-path $BASE --name \"$NAME\" --port 30333 --rpc-port $RPC_PORT --no-telemetry"
+  local f="--chain $SPEC --base-path $BASE --name \"$NAME\" --port $P2P_PORT --rpc-port $RPC_PORT --no-telemetry"
   [ -n "$PRODUCER" ] && f="$f --validator"
   [ "$ARCHIVE" = 1 ] && f="$f --state-pruning archive --blocks-pruning archive"
   if [ -n "$RPC_DOMAIN" ]; then
@@ -164,11 +172,11 @@ if [ -n "$PRODUCER" ]; then
   if [ -n "$RPC_DOMAIN" ]; then
     # The service exposes safe methods only; stop it and make the keys with a local process.
     sudo systemctl stop "$SERVICE"
-    "$BIN" --chain "$SPEC" --base-path "$BASE" --validator --rpc-port 9988 --rpc-methods unsafe \
-      --port 30399 --no-telemetry >/dev/null 2>&1 &
+    "$BIN" --chain "$SPEC" --base-path "$BASE" --validator --rpc-port $((RPC_PORT + 44)) --rpc-methods unsafe \
+      --port $((P2P_PORT + 66)) --no-telemetry >/dev/null 2>&1 &
     TMP_PID=$!
-    until rpc system_health '[]' 9988 >/dev/null 2>&1; do sleep 2; done
-    OUT="$(rpc author_rotateKeysWithOwner "[\"$OWNER_HEX\"]" 9988)"
+    until rpc system_health '[]' $((RPC_PORT + 44)) >/dev/null 2>&1; do sleep 2; done
+    OUT="$(rpc author_rotateKeysWithOwner "[\"$OWNER_HEX\"]" $((RPC_PORT + 44)))"
     kill "$TMP_PID"; wait "$TMP_PID" 2>/dev/null || true
     sudo systemctl start "$SERVICE"
   else
@@ -207,7 +215,7 @@ if [ "$SN0" = 1 ]; then
   # Creates the hotkey once; on later runs it only prints the address.
   SN0_ADDR=$(cd "$SRC/neuron" && "$PY" -m incentium_neuron.setup_miner keygen "$HOTKEY")
   chmod 600 "$HOTKEY"
-  sudo tee /etc/systemd/system/incentium-reference.service >/dev/null <<EOF
+  sudo tee /etc/systemd/system/incentium-reference-$NET.service >/dev/null <<EOF
 [Unit]
 Description=Incentium SN0 reference model ($MODEL_NAME)
 After=network-online.target
@@ -222,15 +230,15 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
   PUBLIC_IP="$(curl -fsS https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')"
-  sudo tee /etc/systemd/system/incentium-sn0-validator.service >/dev/null <<EOF
+  sudo tee /etc/systemd/system/incentium-sn0-validator-$NET.service >/dev/null <<EOF
 [Unit]
 Description=Incentium SN0 validator
-After=$SERVICE.service incentium-reference.service
+After=$SERVICE.service incentium-reference-$NET.service
 
 [Service]
 User=$USER
 WorkingDirectory=$SRC/neuron
-ExecStart=$PY -m incentium_neuron.validator --url ws://127.0.0.1:$RPC_PORT --key-file $HOTKEY --uid ${UID_ARG:-0} --reference http://127.0.0.1:$LLAMA_PORT --model $MODEL_NAME --tier $TIER --listen 0.0.0.0:8100 --public-url http://$PUBLIC_IP:8100 --state-file $D/validator-state-$NET.json
+ExecStart=$PY -m incentium_neuron.validator --url ws://127.0.0.1:$RPC_PORT --key-file $HOTKEY --uid ${UID_ARG:-0} --reference http://127.0.0.1:$LLAMA_PORT --model $MODEL_NAME --tier $TIER --listen 0.0.0.0:$VAL_PORT --public-url http://$PUBLIC_IP:$VAL_PORT --state-file $D/validator-state-$NET.json
 Restart=always
 RestartSec=30
 
@@ -238,9 +246,9 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
   sudo systemctl daemon-reload
-  sudo systemctl enable --now incentium-reference >/dev/null
+  sudo systemctl enable --now incentium-reference-$NET >/dev/null
   if [ -n "$UID_ARG" ]; then
-    sudo systemctl enable --now incentium-sn0-validator >/dev/null
+    sudo systemctl enable --now incentium-sn0-validator-$NET >/dev/null
   else
     echo "the validator service is ready but not started: register the hotkey first (see the end)."
   fi
@@ -269,7 +277,7 @@ say "6/7 watchdog"
 WD_ARGS="--url ws://127.0.0.1:$RPC_PORT"
 [ -n "$HC_URL" ] && WD_ARGS="$WD_ARGS --ping-url $HC_URL"
 [ -n "$RPC_DOMAIN" ] && WD_ARGS="$WD_ARGS --public-rpc https://$RPC_DOMAIN"
-sudo tee /etc/systemd/system/incentium-watchdog.service >/dev/null <<EOF
+sudo tee /etc/systemd/system/incentium-watchdog-$NET.service >/dev/null <<EOF
 [Unit]
 Description=Incentium watchdog
 After=$SERVICE.service
@@ -284,7 +292,7 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now incentium-watchdog >/dev/null
+sudo systemctl enable --now incentium-watchdog-$NET >/dev/null
 echo "watchdog running${HC_URL:+, pinging $HC_URL}"
 
 say "7/7 what you sign in your own wallet"
@@ -313,8 +321,8 @@ SN0 validator, hotkey $SN0_ADDR (kept on this server in $HOTKEY):
   2. Send ICT to the hotkey and stake it: consensus.stake(amount), signed by the hotkey;
      at least 1,000 ICT from day 90.
   3. Start the validator:  bash $0 $NET --sn0-validator --uid <uid>
-     (or edit --uid in /etc/systemd/system/incentium-sn0-validator.service and run
-      sudo systemctl enable --now incentium-sn0-validator)
+     (or edit --uid in /etc/systemd/system/incentium-sn0-validator-$NET.service and run
+      sudo systemctl enable --now incentium-sn0-validator-$NET)
 EOF
 fi
 if [ -n "$RPC_DOMAIN" ] || [ "$ARCHIVE" = 1 ]; then
@@ -330,5 +338,5 @@ fi
 cat <<EOF
 
 Bootnode (optional, unpaid): endpoints.register(kind: Bootnode,
-  url: /dns/<your domain>/tcp/30333/p2p/$PEER_ID, region: "...")
+  url: /dns/<your domain>/tcp/$P2P_PORT/p2p/$PEER_ID, region: "...")
 EOF
