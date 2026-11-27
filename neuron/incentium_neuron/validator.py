@@ -443,6 +443,8 @@ def main():
     ap.add_argument("--collect-seconds", type=float,
                     help="time miners get per epoch (default: 40 %% of an epoch)")
     ap.add_argument("--state-file", default=os.path.expanduser("~/.incentium/validator-state.json"))
+    ap.add_argument("--no-probe-endpoints", dest="probe_endpoints", action="store_false",
+                    help="do not probe the public RPC and archive endpoints in the on-chain register")
     a = ap.parse_args()
     chain = SubstrateChain(a.url, Keypair.create_from_uri(read_key(a, ap)), a.epoch_length)
     info = chain.tiers().get(a.tier)
@@ -472,6 +474,15 @@ def main():
                   collect_seconds=collect, state_file=a.state_file)
     if v.pending:
         print(f"loaded pending reveal for epoch {v.pending.epoch} from {a.state_file}", flush=True)
+    if a.probe_endpoints:
+        from . import probes
+
+        if probes.has_register(chain):
+            # Its own connection, so probes never wait on the validator loop's websocket.
+            pchain = SubstrateChain(a.url, chain.kp, a.epoch_length)
+            probes.start_thread(pchain, os.path.join(os.path.dirname(a.state_file), "endpoint-probes.json"),
+                                log=lambda m: print(m, flush=True))
+            print("probing the endpoint register every 30 minutes", flush=True)
     last = -1
     while True:
         e = chain.current_epoch()
