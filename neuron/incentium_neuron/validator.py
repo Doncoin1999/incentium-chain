@@ -395,11 +395,16 @@ def read_key(a, ap) -> str:
 
 
 def u8_list(v) -> list[int]:
-    """A Vec<u8> / BoundedVec<u8> as substrate-interface returns it (a 0x-hex string, or a list)."""
+    """A Vec<u8> / BoundedVec<u8> as substrate-interface returns it (hex, text or a list)."""
     if not v:
         return []
     if isinstance(v, str):
-        return list(bytes.fromhex(v[2:] if v.startswith("0x") else v))
+        # substrate-interface gives a byte vector as 0x-hex, or, when the bytes are valid
+        # UTF-8 (model ids below 128 always are), as the decoded text itself.
+        h = v[2:] if v.startswith("0x") else None
+        if h is not None and len(h) % 2 == 0 and all(c in "0123456789abcdefABCDEF" for c in h):
+            return list(bytes.fromhex(h))
+        return list(v.encode("utf-8"))
     return [int(x) for x in v]
 
 

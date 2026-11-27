@@ -245,3 +245,12 @@ def test_two_address_forms_of_one_key_are_the_same_miner():
     r = {"task_id": "t1", "hotkey": kp.ss58_address, "text": "x", "tokens": 1, "top_logprobs": [{"x": -0.1}],
          "signature": kp.sign(msg).hex()}
     assert board.submit(r) == 200
+
+
+def test_u8_list_reads_every_form_substrate_interface_returns():
+    from incentium_neuron.validator import u8_list
+
+    assert u8_list("\x00\x06") == [0, 6]      # bytes decoded as text
+    assert u8_list("0x0006") == [0, 6]        # hex
+    assert u8_list([0, 6]) == [0, 6]
+    assert u8_list(None) == [] and u8_list("") == []
