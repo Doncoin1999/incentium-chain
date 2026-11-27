@@ -314,7 +314,7 @@
     <header class="doc-head">
       <div class="kind">Technical specification</div>
       <h1>Incentium Technical Specification v0.2</h1>
-      <div class="by">Nov 26, 2026 · <strong>Ichiro Pakeshi Miyamoto</strong></div>
+      <div class="by">Nov 27, 2026 · <strong>Ichiro Pakeshi Miyamoto</strong></div>
       <div class="dl"><a class="main" href="incentium-technical-specification-v0.2.pdf" download>Download PDF</a> <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/site/docs/technical-specification.md">Markdown source</a></div>
       <details class="mtoc"><summary>Contents</summary>
     <ol>
@@ -740,70 +740,92 @@
 <p><strong>Open points:</strong> simulate the Alpha rules together with the Phase 3 metrics; an optional miner bond per subnet that penalties can slash (2/3 of active stake), with a call for miners to leave a subnet.</p>
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
-<p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time tiers it may include latency) and G the tier weight. Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a tier and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
-<p><strong>Task tiers (proposed, to be calibrated on testnet)</strong></p>
+<p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time work it may include latency) and G the value factor of the model the miner ran (see the open model list below). Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a model and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
+<p><strong>Open model list (decided 27 Nov 2026; replaces the fixed tiers).</strong> SN0 has no single model. A list on chain (<code>Models</code> in <code>work-verify</code>) holds the approved models, and each miner chooses one that its machine can run. A better model earns more per verified token, so miners who offer the network more AI capacity get more ICT. The protocol is model-neutral: any open-weight model whose licence allows the use can be listed; Qwen3.5 is only the starting point. There is no reward without verified work: a miner that runs no model earns nothing, and a holder who wants a share without running anything stakes ICT with a validator.</p>
+<p>Each entry holds: an id, the model's name, the hash of its weight file, the inference engine and version, the memory it needs with its context (two slots of 4,096 tokens), its value factor G, the spot-check tolerance, and a status (<code>Proposed</code>, <code>Open</code>, <code>Retiring</code>, <code>Closed</code>).</p>
+<p><strong>Starting list (proposed; G to be calibrated on testnet)</strong></p>
 <div class="tbl"><table>
 <thead>
 <tr>
-<th>Tier</th>
-<th>Recommended model (Apache 2.0)</th>
-<th>Typical hardware</th>
-<th>Inference engine</th>
-<th>Weight G</th>
+<th>Model, 4-bit</th>
+<th>Download</th>
+<th>Memory with context</th>
+<th>Smallest machine (25 % rule)</th>
+<th>Quality index</th>
+<th>G</th>
+<th>Status</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>0</td>
-<td>Qwen3.5-4B, 4-bit quantized (entry tier; the only tier in the launch period), plus a small embedding model to be pinned on testnet</td>
-<td>Ordinary PC with 16 GB memory or CPU server, no GPU</td>
-<td>llama.cpp</td>
-<td>0.15</td>
+<td>Qwen3.5-0.8B</td>
+<td>~0.5 GB</td>
+<td>~1 GB</td>
+<td>4 GB</td>
+<td>9</td>
+<td>0.05</td>
+<td>Proposed</td>
 </tr>
 <tr>
-<td>1</td>
-<td>Qwen3.5-9B, 4-bit quantized</td>
-<td>Gaming GPU or Apple Silicon laptop</td>
-<td>llama.cpp</td>
+<td>Qwen3.5-2B</td>
+<td>~1.3 GB</td>
+<td>~1.8 GB</td>
+<td>8 GB</td>
+<td>16</td>
+<td>0.10</td>
+<td>Open (the only model in the launch period)</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B</td>
+<td>~2.7 GB</td>
+<td>~3.3 GB</td>
+<td>16 GB</td>
+<td>27</td>
+<td>0.20</td>
+<td>Proposed</td>
+</tr>
+<tr>
+<td>Qwen3.5-9B</td>
+<td>~5.5 GB</td>
+<td>~6.7 GB</td>
+<td>32 GB, or an 8 GB graphics card</td>
+<td>32</td>
 <td>1.0</td>
+<td>Proposed</td>
 </tr>
 <tr>
-<td>2</td>
 <td>Qwen3.5-27B</td>
-<td>One 48–80 GB data-center GPU</td>
-<td>vLLM</td>
+<td>~16 GB</td>
+<td></td>
+<td>A 24 GB graphics card or a data-center GPU</td>
+<td></td>
 <td>about 3</td>
-</tr>
-<tr>
-<td>3</td>
-<td>Qwen3.5-122B-A10B</td>
-<td>Multi-GPU server</td>
-<td>vLLM</td>
-<td>about 5</td>
+<td>Later</td>
 </tr>
 </tbody>
 </table></div>
-<p>One model family across all tiers keeps the tokenizer and output format identical, which simplifies spot checks. Tiers 0, 1 and 2 use dense models, whose outputs vary less between machines than mixture-of-experts models; tier 3 gets a wider tolerance. The exact weight files are pinned by hash at genesis, together with the inference engine version. Alternative if a non-Qwen family is preferred: gpt-oss-20b (fits in 16 GB) and gpt-oss-120b (one 80 GB GPU), also Apache 2.0. <em>Decided 14 Nov 2026.</em></p>
-<p>G values are relative starting points set by governance. They are calibrated from the measured cost per token on each tier (hardware depreciation, power and what the machine could earn elsewhere) plus a premium for larger tiers, so that running a larger, more useful model earns somewhat more per unit of cost. Governance recalibrates G every quarter, with a limit on each step (<em>proposed</em>: ±25%). An optional demand adjustment, up to +20% for a tier with unserved tasks, can be added later. Model names and versions are fixed at genesis and changed only by governance.</p>
-<p><strong>Tier 0 and the launch period.</strong> During the 90-day launch period SN0 runs only tier 0, which runs on ordinary CPU servers and keeps launch costs low. Tier 0 moves from Qwen3.5-2B to Qwen3.5-4B (<em>proposed</em> 20 Nov 2026): the 4B model scores 27 against 16 for the 2B on the Artificial Analysis index and still fits an ordinary PC. The switch is a governance call on the tier table after a test on testnet with mixed Intel, AMD and Apple processors. Tier 1 (Qwen3.5-9B) is enabled by a governance vote at a time the launch operator chooses, preferably a few weeks before day 90, so the switch is tested before outside miners join. After that, tier 0 remains the entry tier for miners without a GPU.</p>
-<p><strong>At most a quarter of memory (decided 25 Nov 2026).</strong> The miner software picks the largest open tier whose model, with its context (two slots of 4,096 tokens), takes at most 25% of the system or Apple unified memory, or fits entirely in a separate NVIDIA graphics card, which the miner uses alone. Memory a tier then needs: tier 0 (2B) 8 GB; tier 1 (9B) 32 GB, or an 8 GB card; tier 2 (27B) 96 GB, or a 24 GB card. Without a card a machine runs tier 0 only, since larger models are too slow on a processor for the validators' deadlines. The Mac and Windows node and the Linux installer (<code>setup_miner choose</code>, Vulkan build of llama.cpp on NVIDIA) apply the same rule, and the miner declares its tier on chain.</p>
-<p><strong>Declared tier and verification.</strong> Each miner declares its tier on chain when it registers. Validators keep a reference model for every enabled tier and spot-check each miner against the model of its declared tier. A miner that declares tier 1 but runs the 4B model fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below.</p>
-<p><strong>Adding or switching a model.</strong> A governance call adds a tier (model name, weight hash, engine version, G and tolerance). A new tier runs alongside existing ones for a transition window (proposed: 14 days) so miners can upgrade without losing rewards.</p>
+<p>Quality index: Artificial Analysis Intelligence Index for the reasoning variants (March 2026). All are Apache 2.0. Dense models are preferred, since their outputs vary less between machines than mixture-of-experts models; a mixture-of-experts model gets a wider tolerance.</p>
+<p><strong>Value factor G.</strong> A miner's work units become W × G for the model it ran. G starts from the model's quality and its measured cost per token (hardware, power and what the machine could earn elsewhere), so a larger, better model pays somewhat more per unit of cost. The Parameters track sets G when a model opens and recalibrates it every quarter, at most ±25 % per step (<em>proposed</em>). Throughput still counts: tasks are assigned in proportion to measured capacity, so within one model a faster machine earns more, and two machines with equal capacity earn the same.</p>
+<p><strong>Choosing a model.</strong> The miner software lists the open models whose memory need fits within a quarter of the system or Apple unified memory, or entirely in a separate NVIDIA graphics card that the miner uses alone (<em>decided 25 Nov 2026</em>), and suggests the one with the highest G. Without a card, models above 4B are too slow on a processor for the validators' deadlines and are not offered. The miner declares its model on chain; a change takes effect from the next epoch. The Mac and Windows node and the Linux installer (<code>setup_miner choose</code>, Vulkan build of llama.cpp on NVIDIA) apply the same rule.</p>
+<p><strong>Adding a model.</strong> Anyone can propose a model with a deposit: name, weight-file hash, engine version, memory need, proposed G and tolerance. It opens when both hold: at least three validators have declared on chain that they hold it (validator model declarations, new storage), and a Parameters-track referendum has approved its G and tolerance (<code>set_model</code>). A new model, such as a small open Qwen4 model once released, therefore needs no new software: miners download it, check its hash and switch.</p>
+<p><strong>Retiring a model.</strong> A model being replaced goes to <code>Retiring</code> for a transition window (<em>proposed</em>: 14 days), in which both it and its successor are paid; the miner software suggests the switch and downloads the new file by itself. A model with fewer than three declaring validators gets no new tasks until it has three again.</p>
+<p><strong>Launch period.</strong> During the 90-day launch period only Qwen3.5-2B is open, which runs on ordinary CPU servers and keeps launch costs low. Qwen3.5-4B and 9B open by Parameters-track votes a few weeks before day 90, after a testnet run on mixed Intel, AMD and Apple processors, so the change is tested before outside miners join.</p>
+<p><strong>Declared model and verification.</strong> Validators spot-check each miner against the model it declared. A miner that declares 9B but runs 4B fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below. Tasks for a model are assigned and checked only by validators that hold it.</p>
 <p><strong>Spot checks</strong></p>
 <ol>
 <li>Each epoch, validators pick 1–5% of requests at random, seeded by the drand beacon so miners cannot predict which.</li>
-<li>The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the tier's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the tier's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp on tier 0 is still to be settled.</li>
+<li>The validator scores the miner's output with the reference model in one forward pass over prompt and output (prefill) and compares the top-k logits at every position; a check passes if the distance is within the model's tolerance. Prefill is many times cheaper than generation, so checking 5% of tasks needs well under 1% of the model's capacity. The reference validator still regenerates answers and must be changed; vLLM returns prompt log-probabilities directly, and the method for llama.cpp is still to be settled.</li>
 <li>When reporters with at least half of the active validator stake (stake whose weights counted in the last settled epoch) report the same failed check, the miner's W for the epoch is zeroed. When they hold at least 2/3, 10% of the miner's bond (or, for a pool, the pool's bond) is also slashed. Three penalties in 30 days ban the key. <em>Thresholds decided 25 Nov 2026 (previously 1/3 for both).</em></li>
 <li>Slashed ICT: 50% burned, 50% to the insurance fund.</li>
 </ol>
-<p><strong>Validator tiers (proposed).</strong> Each validator declares on chain which tiers it checks and must hold the pinned model for each (new storage in <code>subnet-registry</code>). A tier opens only when at least three validators have declared it. Later, a piece of work can be sent to two miners of the same tier, and the validator checks only when their answers disagree.</p>
+<p><strong>Validator model declarations (proposed).</strong> Each validator declares on chain which models it checks and must hold the pinned file for each (new storage in <code>work-verify</code>). Later, a piece of work can be sent to two miners of the same model, and the validator checks only when their answers disagree.</p>
 <p><strong>Task sources (proposed).</strong> Validators fill miners' capacity from three sources in fixed priority:</p>
 <ol>
 <li>Paid jobs from the gateway (Section 13).</li>
 <li>An open public-goods queue, for example structuring and translating public texts, synthetic training data for small models and embeddings of public archives; results are published openly.</li>
 <li>Hidden control tasks with known answers, indistinguishable from the others.</li>
 </ol>
-<p><strong>Assignment.</strong> All three sources count in W in the same way. Tasks are assigned by the protocol, not chosen by a gateway or a miner: each piece goes to a miner drawn at random among the eligible miners of its tier, weighted by measured capacity, with the draw seeded by the drand beacon so anyone can check it. Real-time jobs may be limited to miners within a latency bound, with the draw random inside that set. The public-goods queue fills whatever capacity paid jobs leave, so W reflects capacity made available rather than demand a miner happened to receive. Equal capacity, quality and availability therefore give equal ICT; within one epoch the draw causes small differences that even out within days. Tasks for open tiers carry no sensitive data.</p>
+<p><strong>Assignment.</strong> All three sources count in W in the same way. Tasks are assigned by the protocol, not chosen by a gateway or a miner: each piece goes to a miner drawn at random among the eligible miners of its model, weighted by measured capacity, with the draw seeded by the drand beacon so anyone can check it. Real-time jobs may be limited to miners within a latency bound, with the draw random inside that set. The public-goods queue fills whatever capacity paid jobs leave, so W reflects capacity made available rather than demand a miner happened to receive. Equal capacity, quality and availability therefore give equal ICT; within one epoch the draw causes small differences that even out within days. Tasks for open tiers carry no sensitive data.</p>
 <p><strong>Pools</strong></p>
 <div class="tbl"><table>
 <thead>
@@ -1074,7 +1096,7 @@
 <li>[x] Decided: Alpha is a transferable token traded in canonical pools through a marketplace (Section 10).</li>
 <li>[x] Decided: the chain is built on the Polkadot SDK solochain template.</li>
 <li>[x] Decided: no legal entity or chosen jurisdiction; the protocol, the marketplace front end and the reference software are open source and run by no one in particular. The development fund is an on-chain treasury governed by vote from genesis.</li>
-<li>[x] Decided: SN0 uses the Qwen3.5 family (Section 5).</li>
+<li>[x] Decided: SN0 uses an open list of models, starting with the Qwen3.5 family; miners choose, and better models earn more per token (Section 5, 27 Nov 2026).</li>
 <li>[x] Decided: the network is named Incentium (incentium.org) and its coin ICT; both documents use these names.</li>
 <li>[x] Done: whitepaper references to a foundation are replaced with core contributors and on-chain governance.</li>
 </ul>
@@ -1083,7 +1105,7 @@
 <li>The recommended Phase 3 setup (geometric-mean L, weights 0.45 / 0.45 / 0.10, net-flow fee metric) has not been simulated as a whole yet; Section 2 tested its parts separately.</li>
 <li>Add an ICT price model and miner/validator selling pressure.</li>
 <li>Stress tests: a market crash (inflow drops 90%), a bank run on one subnet, and 32 subnets instead of 12.</li>
-<li>Calibrate SN0 tier weights against real hardware costs once testnet data exists.</li>
+<li>Calibrate the value factor G of each model against real hardware costs once testnet data exists.</li>
 </ul>
 <p>Simulate the revenue cap (Section 8) with self-paid revenue at several sizes, and calibrate f, k and the pooled SN0 payment pot before Phase 3 is switched on.</p>
 <p><strong>Step 2: chain build (done; mainnet live since 18 Nov 2026)</strong></p>
@@ -1484,7 +1506,7 @@
 <tr>
 <td>Incentium Miner app</td>
 <td>Mac or Windows PC with a GPU or Apple Silicon</td>
-<td>Install and press Start. The app detects the hardware and picks the tier (2B, 9B, 27B or 122B), downloads the pinned model and checks its hash, creates a wallet with a recovery phrase, registers the miner and shows earnings.</td>
+<td>Install and press Start. The app lists the open models the machine can run within a quarter of its memory and suggests the best, downloads the pinned file and checks its hash, creates a wallet with a recovery phrase, registers the miner and shows earnings.</td>
 </tr>
 <tr>
 <td>One-line install</td>
@@ -1546,7 +1568,7 @@
 <h2 id="13-public-access-and-stake-for-access">13. Public access and stake-for-access<a class="anchor" href="#13-public-access-and-stake-for-access" aria-label="Link to this section">#</a></h2>
 <p>The public reaches the network's models through a gateway, not through individual miners. The first gateway is a free public demo run by the launch operator; once ICT circulates, larger shares of capacity are reserved for wallets that lock ICT for access.</p>
 <h3 id="131-request-path">13.1 Request path<a class="anchor" href="#131-request-path" aria-label="Link to this section">#</a></h3>
-<p>A user or app calls the gateway's OpenAI-compatible API (for example <code>chat.incentium.org</code>). The protocol's draw picks a miner of the requested tier (Section 5, Assignment), limited to miners within the latency bound, and the gateway returns the answer. Validators spot-check a share of gateway traffic in the same way as their own tasks. Miners see the content of requests, so the terms state that sensitive data must not be sent; trusted execution (TEE) can remove this limit later.</p>
+<p>A user or app calls the gateway's OpenAI-compatible API (for example <code>chat.incentium.org</code>). The protocol's draw picks a miner of the requested model (Section 5, Assignment), limited to miners within the latency bound, and the gateway returns the answer. Validators spot-check a share of gateway traffic in the same way as their own tasks. Miners see the content of requests, so the terms state that sensitive data must not be sent; trusted execution (TEE) can remove this limit later.</p>
 <p><strong>Streaming, failover and batch (<em>proposed</em>).</strong> Miners keep an outbound WebSocket open to the gateway, so answers stream token by token without inbound ports; if a miner drops mid-answer, the gateway continues on another miner. Checks run after delivery. Besides real-time chat the gateway offers a batch API: jobs that can wait up to 24 hours are split into pieces of one to two minutes and served by tier-0 PCs at a lower price. A paid tier (per million tokens) sits beside stake-for-access, the API is listed on OpenRouter, and a private tier routes confidential work only to approved operators or TEE machines.</p>
 <h3 id="132-access-tiers">13.2 Access tiers<a class="anchor" href="#132-access-tiers" aria-label="Link to this section">#</a></h3>
 <div class="tbl"><table>
@@ -1586,7 +1608,7 @@
 <ul>
 <li><strong>Gateway traffic</strong> counts towards miner rewards like any other task, because the protocol, not the gateway, assigns it (Section 5, Assignment): a gateway operator cannot route traffic to its own miners, and payments are pooled per epoch (Section 8).</li>
 <li><strong>Abuse protection:</strong> per-user and per-IP limits, a bot check (for example Cloudflare Turnstile) in front of the free tier, and a queue with a clear message when capacity is full.</li>
-<li><strong>Timing:</strong> the gateway is built and tested against the devnet now. The public demo opens when Tier 1 (Qwen3.5-9B on GPU) is enabled, before day 90, because the CPU-only 2B model is too slow for a public showcase. Holder and Developer tiers open once ICT can be traded, since almost all ICT issued before day 90 sits in the launch vault.</li>
+<li><strong>Timing:</strong> the gateway is built and tested against the devnet now. The public demo opens when Qwen3.5-9B (on GPU) is open, before day 90, because the CPU-only 2B model is too slow for a public showcase. Holder and Developer tiers open once ICT can be traded, since almost all ICT issued before day 90 sits in the launch vault.</li>
 <li><strong>Legal:</strong> terms of use, AI disclosure and data retention (preferably none) are set before the public opening; how stake-for-access affects the token's assessment under MiCA is part of the pre-launch legal review.</li>
 </ul>
 <h2 id="14-evm-compatibility-and-bridge-to-base">14. EVM compatibility and bridge to Base<a class="anchor" href="#14-evm-compatibility-and-bridge-to-base" aria-label="Link to this section">#</a></h2>
@@ -1745,11 +1767,11 @@
 <td>Runtime upgrade</td>
 </tr>
 <tr>
-<td>Tier table</td>
-<td>Four tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed</td>
-<td>Tier 0 to Qwen3.5-4B with pinned file hash; embedding job type; validator tier declarations; three-validator rule for opening a tier</td>
-<td><code>subnet-registry</code></td>
-<td>Runtime upgrade, then governance call</td>
+<td>Model list</td>
+<td>Four fixed tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed</td>
+<td>Replace the tiers with the open model list (Section 5, 27 Nov 2026): <code>Models</code> storage with hash, memory need, G, tolerance and status; <code>set_model</code> on the Parameters track; validator model declarations and the three-validator rule; miners declare and change their model; transition window; embedding job type</td>
+<td><code>work-verify</code>, <code>subnet-registry</code>, <code>neuron/</code></td>
+<td>Runtime upgrade, software release, governance call</td>
 </tr>
 <tr>
 <td>Task source</td>
@@ -1761,15 +1783,15 @@
 <tr>
 <td>Task fetching</td>
 <td>Miner polls validators every 5 s and gets a fixed task count</td>
-<td>Protocol assignment by capacity with a drand-seeded draw; WebSocket streaming for real-time tiers</td>
+<td>Protocol assignment by capacity with a drand-seeded draw; WebSocket streaming for real-time models</td>
 <td><code>neuron/miner.py</code>, <code>tasks.py</code></td>
 <td>Software release</td>
 </tr>
 <tr>
 <td>Work units</td>
 <td>W = T × Q × A × G; T = output tokens capped at the task's limit</td>
-<td>T by token type; G from measured cost per token, quarterly recalibration</td>
-<td><code>neuron/scoring.py</code>, tier table</td>
+<td>T by token type; G per model from quality and measured cost per token, quarterly recalibration</td>
+<td><code>neuron/scoring.py</code>, model list</td>
 <td>Software release, governance</td>
 </tr>
 <tr>
@@ -1830,8 +1852,8 @@
 </tr>
 <tr>
 <td>Miner onboarding</td>
-<td>Pull-based miner; node for Mac and Windows; <code>install-miner.sh</code> picks the tier on Linux; the model takes at most a quarter of memory</td>
-<td>Test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12)</td>
+<td>Pull-based miner; node for Mac and Windows; <code>install-miner.sh</code> picks the model on Linux; the model takes at most a quarter of memory</td>
+<td>Model picker in the app listing every open model the machine can run; test the Linux installer on an NVIDIA machine; pool web page, Docker image (Section 12)</td>
 <td><code>neuron/</code>, <code>scripts/</code></td>
 <td>Software release</td>
 </tr>

@@ -296,7 +296,7 @@
     <header class="doc-head">
       <div class="kind">Whitepaper</div>
       <h1>Incentium Whitepaper</h1>
-      <div class="by">Nov 26, 2026</div>
+      <div class="by">Nov 27, 2026</div>
       <div class="dl"><a class="main" href="incentium-whitepaper-v0.2.pdf" download>Download PDF</a> <a href="https://git.incentium.org/incentium/incentium-chain/src/branch/main/site/docs/whitepaper.md">Markdown source</a></div>
       <details class="mtoc"><summary>Contents</summary>
     <ol>
@@ -452,7 +452,7 @@
 <p><strong>Burning:</strong> Registration fees, half of every subnet slot payment, part of the trading fees and part of slashed stake are burned. As usage grows, burning can eventually offset new issuance.</p>
 <h2 id="5-phase-1-genesis">5. Phase 1 – Genesis<a class="anchor" href="#5-phase-1-genesis" aria-label="Link to this section">#</a></h2>
 <p>Phase 1 has one standardized task in a single subnet (SN0), and rewards follow verified effort. The phase lasts at least 6 months and ends only when the transition criteria are met.</p>
-<p><strong>The task:</strong> Miners run a fixed, open language model and answer tasks from validators. Tasks come from three sources, in this order: paid jobs from the gateway; an open public-goods queue that fills spare capacity, for example structuring and translating public texts, synthetic training data for small models and embeddings of public archives, with results published openly; and hidden control tasks with known answers that cannot be told apart from the others. Issuance therefore pays for useful output rather than for work done only to prove effort. The model and its version are set at launch and can only be changed by governance vote.</p>
+<p><strong>The task:</strong> Miners run an open language model of their choice, from a list approved on chain, and answer tasks from validators. Tasks come from three sources, in this order: paid jobs from the gateway; an open public-goods queue that fills spare capacity, for example structuring and translating public texts, synthetic training data for small models and embeddings of public archives, with results published openly; and hidden control tasks with known answers that cannot be told apart from the others. Issuance therefore pays for useful output rather than for work done only to prove effort. There is no reward without verified work: a computer that runs no model earns nothing, and a holder who wants a share without running anything stakes ICT with a validator.</p>
 <p><strong>Effort is measured in verified work units:</strong></p>
 <div class="math">W_i = T_i \cdot Q_i \cdot A_i</div>
 <p>where T is the number of tokens served and accepted, Q is a quality factor between 0 and 1, and A is availability during the period. A miner receives a share of the miner reward equal to its share of the sum of W.</p>
@@ -482,7 +482,51 @@
 </table></div>
 <p><strong>Sybil protection:</strong> Registration costs a fee that is burned, and each key is capped in how many work units it can be credited per epoch.</p>
 <p><strong>Validators:</strong> During the 90-day launch period, the launch operator registers and runs the first validators and miners (Section 5.1). After that, validators are run by the core contributors and by any independent operator that registers and stakes. This centralization is temporary and ends at the transition to Phase 2.</p>
-<p><strong>Task tiers:</strong> To keep SN0 open to ordinary hardware, the task is offered in tiers by model size. All tiers use the Qwen3.5 model family (Apache 2.0): Tier 0 runs Qwen3.5-2B today and is planned to move to Qwen3.5-4B, 4-bit quantized, which runs on an ordinary PC or a CPU server without a GPU and is the only tier during the launch period; Tier 1 is Qwen3.5-9B, 4-bit quantized, which runs on a gaming PC or an Apple Silicon Mac; Tier 2 is Qwen3.5-27B on a single data-center GPU; Tier 3 is Qwen3.5-122B-A10B on multi-GPU servers. Tier 0 is to move from the 2B to the 4B model because the 4B scores far higher in independent tests (27 against 16 on the Artificial Analysis index) and still runs on an ordinary PC. <strong>The model never takes more than a quarter of a miner's memory</strong> (decided 25 Nov 2026), so the computer stays fully usable while it mines: the miner software picks the largest open tier whose model, with its context, fits in 25% of the system or Apple unified memory, or entirely in a separate graphics card. Tier 0 then needs 8 GB of memory, Tier 1 32 GB or an 8 GB graphics card, and Tier 2 96 GB or a 24 GB card. A machine without a graphics card runs Tier 0 only, because larger models are too slow on a processor to meet the validators' deadlines. One family keeps tokenizer and output format identical across tiers, which simplifies spot checks. Each tier has a weight G, and a miner's work units become W × G. G is set from the measured cost per token on each tier (hardware, power and what the machine could earn elsewhere) plus a premium for larger tiers decided by governance, so running a larger, more useful model pays somewhat more per unit of cost; governance recalibrates G every quarter within a limited step. Tasks are assigned at random in proportion to each miner's measured capacity, so a faster machine earns more within its tier, and two machines with equal capacity earn the same. Each miner declares its tier, and validators spot-check it against the model of that tier, so a miner cannot claim a larger model than it runs. A tier opens only when at least three validators can check it. New tiers are added by governance with a transition window; Tier 1 is enabled shortly before the launch period ends.</p>
+<p><strong>Model choice (decided 27 November 2026):</strong> SN0 is open to ordinary hardware and to new models as they appear. Instead of one fixed model, the chain holds a list of approved open models, each with its weight file's hash, the memory it needs and a value factor G. Each miner chooses a model its machine can run, and its work units become W × G, so a miner that offers the network a better model earns more ICT per verified token. The list starts with the Qwen3.5 family (Apache 2.0):</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Model, 4-bit</th>
+<th>Download</th>
+<th>Smallest machine</th>
+<th>G (proposed)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3.5-0.8B</td>
+<td>~0.5 GB</td>
+<td>4 GB of memory</td>
+<td>0.05</td>
+</tr>
+<tr>
+<td>Qwen3.5-2B</td>
+<td>~1.3 GB</td>
+<td>8 GB of memory</td>
+<td>0.10</td>
+</tr>
+<tr>
+<td>Qwen3.5-4B</td>
+<td>~2.7 GB</td>
+<td>16 GB of memory</td>
+<td>0.20</td>
+</tr>
+<tr>
+<td>Qwen3.5-9B</td>
+<td>~5.5 GB</td>
+<td>32 GB of memory, or an 8 GB graphics card</td>
+<td>1.0</td>
+</tr>
+<tr>
+<td>Qwen3.5-27B</td>
+<td>~16 GB</td>
+<td>a 24 GB graphics card or a data-center GPU</td>
+<td>about 3</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>The model never takes more than a quarter of a miner's memory</strong> (decided 25 November 2026), so the computer stays fully usable while it mines: the miner software lists the open models whose memory need, with context, fits in 25% of the system or Apple unified memory, or entirely in a separate graphics card, and suggests the best of them. Without a graphics card, models above 4B are too slow to meet the validators' deadlines. G is set from each model's quality and measured cost per token, so a larger, better model pays somewhat more per unit of cost; the Parameters track recalibrates it every quarter within a limited step. Tasks are assigned at random in proportion to each miner's measured capacity, so a faster machine earns more with the same model, and two machines with equal capacity earn the same.</p>
+<p><strong>New models without new software.</strong> The protocol is model-neutral: anyone can propose an open-weight model, for example a small open Qwen4 model once it is released. It opens when at least three validators have declared that they hold it and a Parameters-track vote has approved its G and tolerance; miners then download it and check its hash. A model being replaced is paid alongside its successor for a transition window (proposed: 14 days), and the miner software switches by itself. Each miner declares its model, and validators spot-check it against that model, so a miner cannot claim a better model than it runs. During the launch period only Qwen3.5-2B is open; 4B and 9B open a few weeks before day 90, after a test on the testnet.</p>
 <p><strong>Pool mining:</strong> The protocol supports pools natively, so that anyone can mine without running a validator-facing node of their own:</p>
 <ul>
 <li>A pool registers one key in SN0 and accepts any number of sub-workers.</li>
@@ -492,7 +536,7 @@
 <li>Anyone may operate a pool; the reference pool published with the open-source software has no special rights.</li>
 </ul>
 <p>Sub-workers always mine with their own key and wallet. A participant who rents a GPU from a third-party provider and runs the miner on it is mining in their own name; the protocol does not offer or arrange shares in other people's mining.</p>
-<p><strong>Paid work:</strong> Jobs that users pay for through the gateway (specification, Section 13) are served by SN0 miners, checked the same way and counted in W like any other task. The protocol, not the gateway or the miner, assigns every task: it goes to a miner drawn at random among the eligible miners of its tier, weighted by capacity, using a public random beacon that anyone can check. Payments are pooled per epoch: the proposed 70% for miners is paid pro rata to W, exactly like issuance, 10% goes to validators by consensus weight, and 20% buys ICT on the market and burns it. The open public-goods queue fills whatever capacity paid jobs leave. Equal capacity, quality and uptime therefore earn equal ICT, from issuance and payments alike, whichever jobs a machine happened to get; within a single epoch the draw causes small differences that even out within days. Paying for fake jobs spreads the payment over all miners and burns a fifth of it, so it cannot pay off. Work that can wait, such as classification, extraction, short summaries, embeddings and image descriptions, is split into pieces of one to two minutes and sent to ordinary PCs, mostly through pools; real-time chat goes to Tier 1 and above. Tasks for open tiers carry no sensitive data, because miners see what they process.</p>
+<p><strong>Paid work:</strong> Jobs that users pay for through the gateway (specification, Section 13) are served by SN0 miners, checked the same way and counted in W like any other task. The protocol, not the gateway or the miner, assigns every task: it goes to a miner drawn at random among the eligible miners of its model, weighted by capacity, using a public random beacon that anyone can check. Payments are pooled per epoch: the proposed 70% for miners is paid pro rata to W, exactly like issuance, 10% goes to validators by consensus weight, and 20% buys ICT on the market and burns it. The open public-goods queue fills whatever capacity paid jobs leave. Equal capacity, quality and uptime therefore earn equal ICT, from issuance and payments alike, whichever jobs a machine happened to get; within a single epoch the draw causes small differences that even out within days. Paying for fake jobs spreads the payment over all miners and burns a fifth of it, so it cannot pay off. Work that can wait, such as classification, extraction, short summaries, embeddings and image descriptions, is split into pieces of one to two minutes and sent to ordinary PCs, mostly through pools; real-time chat goes to models of 9B and above. Tasks carry no sensitive data, because miners see what they process.</p>
 <h3 id="51-launch-period-first-90-days">5.1 Launch period (first 90 days)<a class="anchor" href="#51-launch-period-first-90-days" aria-label="Link to this section">#</a></h3>
 <p>The first 90 days after genesis (18 November 2026) are a launch period designed to get the service running quickly. The participation rules meant for a mature, open network — registration fees, minimum validator stake and the per-key work cap — take effect after 90 days, so they do not hold back the start. In return, only a quarter of the ICT paid out for work done in the launch period is paid at once; the other three quarters are locked and released gradually.</p>
 <div class="tbl"><table>
@@ -853,19 +897,19 @@
 <td>Paid jobs, an open public-goods queue and hidden control tasks (Section 5)</td>
 </tr>
 <tr>
-<td>Models and tiers</td>
-<td>Tier table on chain; tier 0 is Qwen3.5-2B and the only open tier; the miner software keeps the model within a quarter of memory and picks the tier on Mac, Windows and Linux</td>
-<td>Tier 0 to Qwen3.5-4B, Tier 1 opened before day 90, model files pinned by hash, tolerance tested on Intel, AMD and Apple processors</td>
+<td>Models</td>
+<td>Four fixed tiers on chain; Qwen3.5-2B is the only open model; the miner software keeps the model within a quarter of memory and picks it on Mac, Windows and Linux</td>
+<td>The open model list replacing the tiers (decided 27 Nov 2026): model storage, <code>set_model</code> on the Parameters track, miners declaring and changing their model, a model picker in the miner software; 4B and 9B opened before day 90; tolerance tested on Intel, AMD and Apple processors</td>
 </tr>
 <tr>
 <td>Work units</td>
 <td>W = T × Q × A × G; every miner gets the same number of tasks per epoch</td>
-<td>Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G set from measured cost per token and recalibrated quarterly</td>
+<td>Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G per model from quality and measured cost per token, recalibrated quarterly</td>
 </tr>
 <tr>
 <td>Verification</td>
 <td>Spot checks regenerate the answer; quorum slashing and a three-strike ban</td>
-<td>Prefill scoring; validators declare their tiers; a tier opens when three validators can check it</td>
+<td>Prefill scoring; validators declare the models they hold; a model opens when three validators can check it</td>
 </tr>
 <tr>
 <td>Weights and consensus</td>
@@ -926,7 +970,7 @@
 <li><strong>Competition:</strong> Bittensor and other decentralized AI networks have a large head start.</li>
 </ul>
 <p><strong>Regulation:</strong> If ICT is offered to the public or admitted to trading in the EU/EEA, it will likely fall under the Markets in Crypto-Assets Regulation (MiCA). This requires, among other things, a published crypto-asset white paper meeting MiCA's content requirements. Incentium has no issuing company, foundation or chosen jurisdiction: the protocol, the marketplace front end and the reference software are published as open source and operated by no one in particular. That does not by itself remove legal exposure for the people who develop, launch or promote it, so legal advice should be obtained before launch.</p>
-<p><strong>Privacy:</strong> Miners on open tiers see the content they process. A public chat or API must therefore tell users not to send personal or confidential data and keep no logs, and confidential work must go only to approved operators or machines with trusted execution. Sending personal data of users in the EU/EEA to anonymous machines in unknown countries is hard to make lawful, which is part of the legal review before the gateway opens.</p>
+<p><strong>Privacy:</strong> Miners on open models see the content they process. A public chat or API must therefore tell users not to send personal or confidential data and keep no logs, and confidential work must go only to approved operators or machines with trusted execution. Sending personal data of users in the EU/EEA to anonymous machines in unknown countries is hard to make lawful, which is part of the legal review before the gateway opens.</p>
 <p><strong>Disclaimer:</strong> This document is a draft for discussion. It is not an offer to sell or a solicitation to buy any asset, and it is not financial, legal or tax advice. All parameters are proposals and may change. Crypto-assets can lose all of their value.</p>
 <h2 id="appendix-a-protocol-modules">Appendix A: Protocol modules<a class="anchor" href="#appendix-a-protocol-modules" aria-label="Link to this section">#</a></h2>
 <p>All modules are written in Rust as Substrate pallets. Phase transitions follow on-chain criteria, so no hard fork is needed between phases.</p>
@@ -952,7 +996,7 @@
 <tr>
 <td><code>work-verify</code></td>
 <td>1</td>
-<td>Spot checks, slashing, task tiers and pool payouts</td>
+<td>Spot checks, slashing, the open model list and pool payouts</td>
 </tr>
 <tr>
 <td><code>weights</code></td>
