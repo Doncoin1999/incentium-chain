@@ -753,7 +753,7 @@
 <h2 id="5-module-work-verify-sn0">5. Module <code>work-verify</code> (SN0)<a class="anchor" href="#5-module-work-verify-sn0" aria-label="Link to this section">#</a></h2>
 <p>Credits SN0 miners for verified work units, slashes failed spot checks and pays pool sub-workers on-chain.</p>
 <p><strong>Work units:</strong> W = T × Q × A × G per miner per epoch, where T is accepted tokens from all verified tasks, whatever their source (output tokens count in full; input and embedding tokens at a lower factor, to be set on testnet), Q the quality factor (0–1), A availability (0–1; for real-time work it may include latency) and G the value factor of the model the miner ran (see the open model list below). Tasks are assigned at random in proportion to each miner's measured capacity (see Task sources below), so throughput counts within a model and equal capacity earns equal W. The reference validator today gives every miner the same number of tasks per epoch (8 tasks of at most 32 tokens) and must be changed. A key's credited W per epoch is capped at 2% of the SN0 total (<em>proposed</em>).</p>
-<p><strong>Open model list (decided 27 Nov 2026; replaces the fixed tiers).</strong> SN0 has no single model. A list on chain (<code>Models</code> in <code>work-verify</code>) holds the approved models, and each miner chooses one that its machine can run. A better model earns more per verified token, so miners who offer the network more AI capacity get more ICT. The protocol is model-neutral: any open-weight model whose licence allows the use can be listed; Qwen3.5 is only the starting point. There is no reward without verified work: a miner that runs no model earns nothing, and a holder who wants a share without running anything stakes ICT with a validator.</p>
+<p><strong>Open model list (decided 27 Nov 2026; replaces the fixed tiers).</strong> SN0 has no single model. A list on chain (<code>Models</code> in the subnet registry, replacing the tier table with the same ids) holds the approved models, and each miner chooses one that its machine can run. A better model earns more per verified token, so miners who offer the network more AI capacity get more ICT. The protocol is model-neutral: any open-weight model whose licence allows the use can be listed; Qwen3.5 is only the starting point. There is no reward without verified work: a miner that runs no model earns nothing, and a holder who wants a share without running anything stakes ICT with a validator.</p>
 <p>Each entry holds: an id, the model's name, the hash of its weight file, the inference engine and version, the memory it needs with its context (two slots of 4,096 tokens), its value factor G, the spot-check tolerance, and a status (<code>Proposed</code>, <code>Open</code>, <code>Retiring</code>, <code>Closed</code>).</p>
 <p><strong>Starting list (proposed; G to be calibrated on testnet)</strong></p>
 <div class="tbl"><table>
@@ -819,7 +819,7 @@
 <p>Quality index: Artificial Analysis Intelligence Index for the reasoning variants (March 2026). All are Apache 2.0. Dense models are preferred, since their outputs vary less between machines than mixture-of-experts models; a mixture-of-experts model gets a wider tolerance.</p>
 <p><strong>Value factor G.</strong> A miner's work units become W × G for the model it ran. G starts from the model's quality and its measured cost per token (hardware, power and what the machine could earn elsewhere), so a larger, better model pays somewhat more per unit of cost. The Parameters track sets G when a model opens and recalibrates it every quarter, at most ±25 % per step (<em>proposed</em>). Throughput still counts: tasks are assigned in proportion to measured capacity, so within one model a faster machine earns more, and two machines with equal capacity earn the same.</p>
 <p><strong>Choosing a model.</strong> The miner software lists the open models whose memory need fits within a quarter of the system or Apple unified memory, or entirely in a separate NVIDIA graphics card that the miner uses alone (<em>decided 25 Nov 2026</em>), and suggests the one with the highest G. Without a card, models above 4B are too slow on a processor for the validators' deadlines and are not offered. The miner declares its model on chain; a change takes effect from the next epoch. The Mac and Windows node and the Linux installer (<code>setup_miner choose</code>, Vulkan build of llama.cpp on NVIDIA) apply the same rule.</p>
-<p><strong>Adding a model.</strong> Anyone can propose a model with a deposit: name, weight-file hash, engine version, memory need, proposed G and tolerance. It opens when both hold: at least three validators have declared on chain that they hold it (validator model declarations, new storage), and a Parameters-track referendum has approved its G and tolerance (<code>set_model</code>). A newer size or version of a model family the software already runs therefore needs no new software: miners download it, check its hash and switch. A new generation with a new architecture, such as a small open Qwen4 model once released, first needs a software release with an inference engine that supports it; that release's hash is approved in the same proposal (whitepaper, Section 10, Updating models and software).</p>
+<p><strong>Adding a model.</strong> Anyone can propose a model with a deposit: name, weight-file hash, engine version, memory need, proposed G and tolerance. It opens when both hold: at least three validators with SN0 validator stake have declared on chain that they hold it (<code>declare_validator_models</code>), and a Parameters-track referendum has approved its G and tolerance and pinned its hash (<code>set_model</code>). The deposit (100 ICT, <em>proposed</em>) is returned when the model opens or the proposer withdraws it before then (<code>withdraw_model</code>), and burned if governance closes it without opening it. A newer size or version of a model family the software already runs therefore needs no new software: miners download it, check its hash and switch. A new generation with a new architecture, such as a small open Qwen4 model once released, first needs a software release with an inference engine that supports it; that release's hash is approved in the same proposal (whitepaper, Section 10, Updating models and software).</p>
 <p><strong>Retiring a model.</strong> A model being replaced goes to <code>Retiring</code> for a transition window (<em>proposed</em>: 14 days), in which both it and its successor are paid; the miner software suggests the switch and downloads the new file by itself. A model with fewer than three declaring validators gets no new tasks until it has three again.</p>
 <p><strong>Launch period.</strong> During the 90-day launch period only Qwen3.5-2B is open, which runs on ordinary CPU servers and keeps launch costs low. Qwen3.5-4B and 9B open by Parameters-track votes a few weeks before day 90, after a testnet run on mixed Intel, AMD and Apple processors, so the change is tested before outside miners join.</p>
 <p><strong>Declared model and verification.</strong> Validators spot-check each miner against the model it declared. A miner that declares 9B but runs 4B fails the check, because the two models' top-k logits differ, and is reported and slashed as described under Spot checks below. Tasks for a model are assigned and checked only by validators that hold it.</p>
@@ -830,7 +830,7 @@
 <li>When reporters with at least half of the active validator stake (stake whose weights counted in the last settled epoch) report the same failed check, the miner's W for the epoch is zeroed. When they hold at least 2/3, 10% of the miner's bond (or, for a pool, the pool's bond) is also slashed. Three penalties in 30 days ban the key. <em>Thresholds decided 25 Nov 2026 (previously 1/3 for both).</em></li>
 <li>Slashed ICT: 50% burned, 50% to the insurance fund.</li>
 </ol>
-<p><strong>Validator model declarations (proposed).</strong> Each validator declares on chain which models it checks and must hold the pinned file for each (new storage in <code>work-verify</code>). Later, a piece of work can be sent to two miners of the same model, and the validator checks only when their answers disagree.</p>
+<p><strong>Validator model declarations.</strong> Each validator declares on chain which models it checks and must hold the pinned file for each (<code>ValidatorModels</code> in the subnet registry; the reference validator declares its model when it starts). A model other than the launch model gets no tasks while fewer than three validators declare it; the launch model (Qwen3.5-2B) is exempt, so the network keeps running with fewer validators in the launch period. Later, a piece of work can be sent to two miners of the same model, and the validator checks only when their answers disagree.</p>
 <p><strong>Task sources (proposed).</strong> Validators fill miners' capacity from three sources in fixed priority:</p>
 <ol>
 <li>Paid jobs from the gateway (Section 13).</li>
@@ -1780,7 +1780,7 @@
 </tr>
 <tr>
 <td>Model list</td>
-<td>Four fixed tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed</td>
+<td>Four fixed tiers on chain; tier 0 (Qwen3.5-2B) open, tiers 1–3 closed. The open model list is built (branch <code>feat/models</code>, not yet on any chain)</td>
 <td>Replace the tiers with the open model list (Section 5, 27 Nov 2026): <code>Models</code> storage with hash, memory need, G, tolerance and status; <code>set_model</code> on the Parameters track; validator model declarations and the three-validator rule; miners declare and change their model; transition window; embedding job type</td>
 <td><code>work-verify</code>, <code>subnet-registry</code>, <code>neuron/</code></td>
 <td>Runtime upgrade, software release, governance call</td>
@@ -2049,12 +2049,12 @@
 <ul>
 <li><code>register(kind, url, region)</code>: anyone, with the deposit (100 ICT, <em>proposed</em>) held; at most 4 entries per account.</li>
 <li><code>update(id, url, region)</code> and <code>deregister(id)</code> by the owner; the deposit is released on deregistration.</li>
-<li><code>report_down(id, evidence)</code>: SN0 validators and block producers probe registered endpoints as part of their regular work and report failures; an entry that fails in more than half of the probes for 7 days in a row is marked inactive and drops out of what clients use, with no slashing.</li>
+<li><code>report(day, scores)</code>: SN0 validators and block producers probe registered endpoints during the day and, the next day, report each endpoint's share of passed probes (0–100), once per reporter per day. The reference validator probes every RPC and archive entry every 30 minutes: a probe passes when the endpoint returns the same hash for a recent finalized block as the validator's own node, and, for an archive node, <code>System::Number</code> at a block about 100,000 blocks back (a pruned node no longer has that state). Bootnodes are not probed. An entry that scores below 50 for 7 days in a row is marked inactive and drops out of what clients use, with no slashing.</li>
 <li>Clients (web pages, the miner app, wallets) ship with a few seed endpoints, read the register through them, measure latency, and use the fastest healthy endpoints, falling back to others on failure. The light client (smoldot) can later replace the seeds.</li>
 </ul>
 <p><strong>Rewards (decided 27 Nov 2026).</strong> <code>ict-emission</code> sends <code>EndpointShare</code> (5 % of issuance, from the fund's 10 %) to the endpoint pot each block. Once a day the pallet pays the pot to active entries:</p>
 <ul>
-<li>Each probe checks that the endpoint answers within a time limit and returns the same finalized block hash as the chain. A probe result counts only when reporters holding a majority of the active validator and producer stake agree on it for that day.</li>
+<li>A day's score for an entry is the stake-weighted median of the reports, and counts only when reporters holding more than half of all reporter stake (block producers and SN0 validators) reported on it.</li>
 <li>An entry's daily score is its share of passed probes (0–1); entries below 0.9 get nothing that day. Weight: <code>Rpc</code> 1, <code>Archive</code> 2 (an archive node also serves RPC).</li>
 <li>Payout per entry = pot × weight × score ÷ Σ(weight × score), capped per owner account at <code>MaxPerOperator</code> (<em>proposed</em>: 10 % of the pot). One owner may hold at most 4 entries, and a URL can be registered only once. The chain cannot see IP addresses; probes may report entries that resolve to the same server, and the reporting rules for that are open.</li>
 <li>Whatever is not paid out (no entries, low scores, caps) goes back to the fund, so 5 % is a ceiling.</li>
@@ -2069,6 +2069,7 @@
 <th>Item</th>
 <th>Where</th>
 <th>Depends on</th>
+<th>Status (27 Nov 2026)</th>
 </tr>
 </thead>
 <tbody>
@@ -2077,48 +2078,56 @@
 <td><code>install-operator.sh</code> with the four roles; testnet first</td>
 <td><code>scripts/</code></td>
 <td>–</td>
+<td>Done; tested with a testnet archive node beside a mainnet node</td>
 </tr>
 <tr>
 <td>2</td>
 <td>Signing on the Validators page: <code>bond</code>, <code>nominate</code>, <code>set_keys</code> with proof, <code>validate</code>, <code>chill</code>, <code>unbond</code></td>
 <td><code>site/validators/</code></td>
 <td>Runtime 12</td>
+<td>Done</td>
 </tr>
 <tr>
 <td>3</td>
 <td><code>endpoints</code> pallet with tests and benchmarks</td>
 <td><code>pallets/endpoints</code>, runtime</td>
 <td>–</td>
+<td>Done; benchmarks open</td>
 </tr>
 <tr>
 <td>4</td>
 <td>Clients read the register: shared RPC picker in the web pages, the miner app and the explorer</td>
 <td><code>site/</code>, <code>neuron/</code>, <code>explorer/</code></td>
 <td>3</td>
+<td>Done (web pages, miner)</td>
 </tr>
 <tr>
 <td>5</td>
-<td>Validator model declarations and the three-validator rule</td>
-<td><code>work-verify</code>, <code>neuron/validator.py</code></td>
-<td>Open model list</td>
+<td>Open model list, validator model declarations and the three-validator rule</td>
+<td><code>subnet-registry</code>, <code>neuron/</code></td>
+<td>–</td>
+<td>Done in code; testnet rehearsal open</td>
 </tr>
 <tr>
 <td>6</td>
-<td>Endpoint probes in the validator software; <code>report_down</code></td>
+<td>Endpoint probes in the validator software; <code>report</code></td>
 <td><code>neuron/</code></td>
 <td>3</td>
+<td>Done in code; testnet rehearsal open. Block producers report with their stash account, which never sits on a server, so their probes need a separate reporter key (open)</td>
 </tr>
 <tr>
 <td>7</td>
 <td><code>EndpointShare</code> in <code>ict-emission</code> and the daily payout in <code>endpoints</code>; switched on by a Parameters-track vote after the testnet rehearsal</td>
 <td><code>ict-emission</code>, <code>pallets/endpoints</code></td>
 <td>3, 6</td>
+<td>Done in code; switched on by vote</td>
 </tr>
 <tr>
 <td>8</td>
 <td>Explorer that can index from any registered archive node</td>
 <td><code>explorer/</code></td>
 <td>3, 4</td>
+<td>Open</td>
 </tr>
 </tbody>
 </table></div>
