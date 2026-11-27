@@ -64,6 +64,20 @@
   .join ol { padding-left: 20px; } .join li { margin: 6px 0; }
   pre.cmd { margin: 8px 0; }
   pre.cmd code { display: block; white-space: pre-wrap; word-break: break-all; padding: 10px 12px; }
+  #stake label { display: block; margin: 12px 0 0; color: var(--muted); font-size: 14px; }
+  #stake select, #stake input, #stake textarea { display: block; width: 100%; max-width: 620px; margin-top: 4px; padding: 7px 8px; background: #11151e; color: inherit; border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+  #stake textarea { font: 13px var(--mono); min-height: 44px; }
+  .btn { padding: 8px 14px; border-radius: 6px; border: 1px solid #4f7cff; background: #4f7cff; color: #fff; font: 600 14px/1.2 system-ui, sans-serif; cursor: pointer; margin: 14px 8px 0 0; }
+  .btn.ghost { background: transparent; color: #9fb6ff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+  .tab { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 600 14px/1.2 system-ui, sans-serif; cursor: pointer; }
+  .tab.on { color: #fff; border-color: #4f7cff; background: #1d2a4d; }
+  #b-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin-top: 4px; max-width: 620px; }
+  #b-list label { display: flex; gap: 8px; align-items: center; margin: 4px 0; color: var(--text); font-size: 14px; }
+  #b-list input { width: auto; display: inline; margin: 0; }
+  #w-msg { margin-top: 12px; min-height: 1.4em; }
+  #w-me { font-size: 14px; color: var(--muted); }
 </style>
 </head>
 <body data-site="validators">
@@ -283,7 +297,48 @@ bash install-validator.sh mainnet YOUR_STASH_ADDRESS</code></pre></li>
         <li>Nominate up to 16 candidates from the list above: <code>staking.nominate</code>.</li>
         <li>Rewards follow each day; unbonding takes 7 days.</li>
       </ol>
-      <p class="note">Signing from this page comes later. Today use <a id="apps-link" href="https://polkadot.js.org/apps/?rpc=wss://rpc.incentium.org#/staking/actions">polkadot.js apps</a> with Talisman or SubWallet. If a producer you back cheats, your bond is cut by the same share as theirs.</p>
+      <p class="note">Sign below with your own wallet, or in <a id="apps-link" href="https://polkadot.js.org/apps/?rpc=wss://rpc.incentium.org#/staking/actions">polkadot.js apps</a>. If a producer you back cheats, your bond is cut by the same share as theirs.</p>
+    </div>
+  </div>
+
+  <div class="card" id="stake">
+    <h3>Stake from your wallet</h3>
+    <p class="note">Sign in your own wallet (Talisman, SubWallet or the polkadot.js extension). This page never sees your keys; it shows what each step does before you sign. The account you choose is your stash: it bonds the ICT and receives the rewards, which are added to the bond.</p>
+    <button class="btn" id="w-connect">Connect wallet</button>
+    <div id="w-form" hidden>
+      <label>Account <select id="w-acct"></select></label>
+      <div id="w-me"></div>
+      <div class="tabs">
+        <button class="tab on" data-tab="back">Back producers</button>
+        <button class="tab" data-tab="produce">Produce blocks</button>
+        <button class="tab" data-tab="unbond">Unbond</button>
+        <button class="tab" data-tab="rewards">Rewards</button>
+      </div>
+      <div data-pane="back">
+        <label>ICT to bond now (empty: keep the bond as it is) <input id="b-amt" type="number" min="0" step="any" placeholder="at least the minimum for backers"></label>
+        <label>Producers to back, up to 16</label>
+        <div id="b-list"><p class="note">Waiting for the list of candidates…</p></div>
+        <button class="btn" id="b-go">Bond and back</button>
+      </div>
+      <div data-pane="produce" hidden>
+        <label>ICT to bond now (empty: keep the bond as it is) <input id="p-amt" type="number" min="0" step="any" placeholder="at least the minimum for producers"></label>
+        <label>Session keys, as the installer printed them (empty: keep the keys already set) <textarea id="p-keys" placeholder="0x…"></textarea></label>
+        <label>Proof <textarea id="p-proof" placeholder="0x…"></textarea></label>
+        <label>Commission, % of the rewards you keep before sharing <input id="p-comm" type="number" min="0" max="100" step="0.1" value="5"></label>
+        <label><input id="p-block" type="checkbox" style="display:inline;width:auto"> Take no new backers</label>
+        <button class="btn" id="p-go">Bond, set keys and stand</button>
+      </div>
+      <div data-pane="unbond" hidden>
+        <label>ICT to unbond (free after 7 days) <input id="u-amt" type="number" min="0" step="any"></label>
+        <button class="btn" id="u-go">Unbond</button>
+        <button class="btn ghost" id="u-chill">Stop standing or backing</button>
+        <button class="btn ghost" id="u-withdraw">Withdraw what is free</button>
+      </div>
+      <div data-pane="rewards" hidden>
+        <p class="note">Rewards for a day are paid when anyone asks for them, for the producer and all its backers at once, within 84 days. These are the days still to pay for the producers you are or back.</p>
+        <div id="r-list"><p class="note">–</p></div>
+      </div>
+      <p class="note" id="w-msg"></p>
     </div>
   </div>
 
@@ -553,6 +608,7 @@ const IC = (() => {
   const stat = (v, label) => `<div class="stat"><b>${v}</b><span>${label}</span></div>`;
 
   function show(o, vs) {
+    stake.set(o, vs);
     $("notice").hidden = true; $("live").hidden = false;
     $("min-v").textContent = ict(o.minValidatorBond);
     $("min-n").textContent = ict(o.minNominatorBond);
@@ -628,6 +684,221 @@ const IC = (() => {
     };
   }
   function down() { $("status").textContent = "The chain cannot be reached right now. This page tries again every 10 seconds."; }
+
+  // ---- staking through the visitor's own wallet extension (site/assets/wallet.js)
+  const stake = (() => {
+    let api = null, overview = null, list = [], pane = "back";
+    const msg = (t) => { $("w-msg").textContent = t; };
+    const who = () => $("w-acct").value;
+    const load = () => new Promise((ok, fail) => {
+      if (window.IctWallet) return ok();
+      const sc = document.createElement("script");
+      sc.src = "/assets/wallet.js"; sc.onload = ok; sc.onerror = () => fail(new Error("could not load the wallet library"));
+      document.head.appendChild(sc);
+    });
+    const parse = (v) => {
+      v = String(v).trim();
+      if (v === "") return 0n;
+      if (!/^\d+(\.\d{0,9})?$/.test(v)) return null;
+      const [w, f = ""] = v.split(".");
+      return BigInt(w) * IC.UNIT + BigInt((f + "000000000").slice(0, 9));
+    };
+    const fmt = (x, d = 2) => IC.ict(x, d);
+
+    // What the chain knows about the chosen account.
+    async function me() {
+      const a = who();
+      const [acct, ledgerOpt, noms, prefs, keys, era] = await Promise.all([
+        api.query.system.account(a), api.query.staking.ledger(a), api.query.staking.nominators(a),
+        api.query.staking.validators(a), api.query.session.nextKeys(a), api.query.staking.activeEra(),
+      ]);
+      const l = ledgerOpt.isSome ? ledgerOpt.unwrap() : null;
+      const isCandidate = list.some((v) => v.addr === a && v.candidate);
+      return {
+        free: acct.data.free.toBigInt(),
+        active: l ? l.active.toBigInt() : 0n,
+        total: l ? l.total.toBigInt() : 0n,
+        unlocking: l ? l.unlocking.map((c) => ({ value: c.value.toBigInt(), era: c.era.toNumber() })) : [],
+        targets: noms.isSome ? noms.unwrap().targets.map((t) => t.toString()) : [],
+        candidate: Boolean(isCandidate),
+        commission: prefs.commission.toNumber(),
+        keysSet: keys.isSome,
+        era: era.isSome ? era.unwrap().index.toNumber() : 0,
+      };
+    }
+
+    async function showMe() {
+      if (!api || !who()) return;
+      try {
+        const m = await me();
+        const free = m.unlocking.filter((c) => c.era <= m.era).reduce((s, c) => s + c.value, 0n);
+        const waiting = m.unlocking.filter((c) => c.era > m.era).reduce((s, c) => s + c.value, 0n);
+        const role = m.candidate ? `standing as a producer, commission ${(m.commission / 1e7).toFixed(1)} %${m.keysSet ? "" : " (no session keys set)"}`
+          : m.targets.length ? `backing ${m.targets.length} producer${m.targets.length > 1 ? "s" : ""}` : "not standing or backing";
+        $("w-me").innerHTML = `${fmt(m.free)} ICT in the account · ${fmt(m.active)} ICT bonded · ${role}` +
+          (waiting ? ` · ${fmt(waiting)} ICT unbonding` : "") + (free ? ` · ${fmt(free)} ICT free to withdraw` : "");
+        document.querySelectorAll("#b-list input").forEach((c) => { c.checked = m.targets.includes(c.value); });
+        state.me = m;
+        rewards(m);
+      } catch (e) { $("w-me").textContent = "Could not read this account: " + (e.message || e); }
+    }
+    const state = { me: null };
+
+    function fillList() {
+      const box = $("b-list");
+      const cands = list.filter((v) => v.candidate && !v.blocked);
+      if (!cands.length) { box.innerHTML = '<p class="note">No candidates yet.</p>'; return; }
+      const ticked = new Set([...box.querySelectorAll("input:checked")].map((c) => c.value));
+      box.innerHTML = cands.map((v) => `<label><input type="checkbox" value="${v.addr}"${ticked.has(v.addr) ? " checked" : ""}>
+        ${v.addr.slice(0, 8)}…${v.addr.slice(-6)} · ${v.producing ? "producing" : "candidate"} · commission ${(v.commissionPpb / 1e7).toFixed(1)} % · ${fmt(v.backing, 0)} ICT backing</label>`).join("");
+      box.querySelectorAll("input").forEach((c) => { c.onchange = () => {
+        if (box.querySelectorAll("input:checked").length > 16) { c.checked = false; msg("At most 16 producers."); }
+      }; });
+    }
+
+    // Days still to pay for the producers this account is or backs (the last 14 days).
+    async function rewards(m) {
+      const vs = new Set(m.targets); if (m.candidate) vs.add(who());
+      const rows = [];
+      for (const v of vs) {
+        for (let e = Math.max(0, m.era - 14); e < m.era; e++) {
+          const ov = await api.query.staking.erasStakersOverview(e, v);
+          if (!ov.isSome) continue;
+          const claimed = await api.query.staking.claimedRewards(e, v);
+          if (claimed.length) continue;
+          rows.push({ v, e });
+        }
+      }
+      $("r-list").innerHTML = rows.length
+        ? rows.map((r, k) => `<div>Day ${r.e} · ${r.v.slice(0, 8)}…${r.v.slice(-6)} <button class="btn ghost" data-pay="${k}">Pay out</button></div>`).join("")
+        : '<p class="note">Nothing to pay for the last 14 days.</p>';
+      $("r-list").querySelectorAll("[data-pay]").forEach((b) => {
+        b.onclick = () => { const r = rows[Number(b.dataset.pay)]; run([[payout(r.v, r.e), `Pay out day ${r.e}`]]); };
+      });
+    }
+    const payout = (v, e) => (api.tx.staking.payoutStakersByPage ? api.tx.staking.payoutStakersByPage(v, e, 0) : api.tx.staking.payoutStakers(v, e));
+
+    // Bond or add to the bond: `bond` for a new stash, `bondExtra` after that.
+    function bondTx(amt, m) {
+      if (!amt) return null;
+      return m.total > 0n ? [api.tx.staking.bondExtra(amt), `Add ${fmt(amt)} ICT to the bond`]
+                          : [api.tx.staking.bond(amt, "Staked"), `Bond ${fmt(amt)} ICT (rewards added to the bond)`];
+    }
+
+    function planBack() {
+      const m = state.me, amt = parse($("b-amt").value);
+      if (amt === null) return msg("Write the amount as a number, e.g. 25 or 25.5.");
+      const targets = [...document.querySelectorAll("#b-list input:checked")].map((c) => c.value);
+      if (!targets.length) return msg("Tick at least one producer.");
+      const min = overview ? overview.minNominatorBond : 0n;
+      if (m.active + amt < min) return msg(`The bond must be at least ${fmt(min, 0)} ICT.`);
+      if (amt > m.free) return msg("That is more than the account holds.");
+      return [bondTx(amt, m), [api.tx.staking.nominate(targets), `Back ${targets.length} producer${targets.length > 1 ? "s" : ""}`]].filter(Boolean);
+    }
+
+    function planProduce() {
+      const m = state.me, amt = parse($("p-amt").value);
+      if (amt === null) return msg("Write the amount as a number, e.g. 100.");
+      const min = overview ? overview.minValidatorBond : 0n;
+      if (m.active + amt < min) return msg(`A producer's own bond must be at least ${fmt(min, 0)} ICT.`);
+      if (amt > m.free) return msg("That is more than the account holds.");
+      const keys = $("p-keys").value.trim(), proof = $("p-proof").value.trim();
+      if (keys && !/^0x[0-9a-fA-F]+$/.test(keys)) return msg("The session keys must be the 0x… line the installer printed.");
+      if (keys && !/^0x[0-9a-fA-F]+$/.test(proof)) return msg("Paste the proof too: the second 0x… line the installer printed.");
+      if (!keys && !m.keysSet) return msg("This account has no session keys yet: paste the keys and proof the installer printed.");
+      const pct = Number($("p-comm").value);
+      if (!(pct >= 0 && pct <= 100)) return msg("Commission must be between 0 and 100 %.");
+      return [
+        bondTx(amt, m),
+        keys ? [api.tx.session.setKeys(keys, proof), "Set the session keys"] : null,
+        [api.tx.staking.validate({ commission: Math.round(pct * 1e7), blocked: $("p-block").checked }), `Stand as a producer, commission ${pct} %`],
+      ].filter(Boolean);
+    }
+
+    async function spans() {
+      const s = await api.query.staking.slashingSpans(who());
+      return s.isSome ? s.unwrap().prior.length + 1 : 0;
+    }
+
+    // Sign and send the steps one after another; stop at the first that fails.
+    async function run(steps) {
+      if (!steps || !steps.length) return;
+      const { web3FromAddress } = window.IctWallet;
+      const inj = await web3FromAddress(who());
+      document.querySelectorAll("#stake .btn").forEach((b) => { b.disabled = true; });
+      try {
+        for (let k = 0; k < steps.length; k++) {
+          const [tx, what] = steps[k];
+          const n = steps.length > 1 ? ` (step ${k + 1} of ${steps.length})` : "";
+          msg(`${what}${n}: confirm in your wallet…`);
+          await new Promise((ok, fail) => {
+            tx.signAndSend(who(), { signer: inj.signer }, ({ status, dispatchError }) => {
+              if (dispatchError) {
+                let t = dispatchError.toString();
+                if (dispatchError.isModule) { const d = api.registry.findMetaError(dispatchError.asModule); t = `${d.section}.${d.name}: ${d.docs.join(" ")}`; }
+                return fail(new Error(t));
+              }
+              if (status.isInBlock) msg(`${what}${n}: in a block, waiting for finality`);
+              if (status.isFinalized) ok();
+            }).catch(fail);
+          });
+        }
+        msg(steps.length > 1 ? "All steps done and final." : `${steps[0][1]}: done and final.`);
+      } catch (e) {
+        msg(`Stopped: ${e.message || e}`);
+      } finally {
+        document.querySelectorAll("#stake .btn").forEach((b) => { b.disabled = false; });
+        lastRun = 0; refresh(); showMe();
+      }
+    }
+
+    async function connectWallet() {
+      const b = $("w-connect"); b.disabled = true; b.textContent = "Connecting…";
+      try {
+        await load();
+        const W = window.IctWallet;
+        const ext = await W.web3Enable("Incentium block production");
+        if (!ext.length) throw new Error("no wallet extension found, or access was refused. Install Talisman, SubWallet or polkadot.js and allow incentium.org.");
+        const accounts = await W.web3Accounts({ ss58Format: 42 });
+        if (!accounts.length) throw new Error("the wallet has no accounts shared with this site");
+        api = await W.ApiPromise.create({ provider: new W.WsProvider([RPC, ...RPCS.filter((u) => u !== RPC)]), noInitWarn: true });
+        if (!api.tx.staking || !api.tx.session) throw new Error("open block production is not live on this chain yet. Try the testnet: add ?net=testnet to the address.");
+        $("w-acct").innerHTML = accounts.map((x) => `<option value="${x.address}">${(x.meta.name || "account").replace(/[<>&"]/g, "")} · ${x.address.slice(0, 8)}…${x.address.slice(-6)}</option>`).join("");
+        b.hidden = true; $("w-form").hidden = false;
+        fillList(); showMe();
+      } catch (e) { b.disabled = false; b.textContent = "Connect wallet"; $("w-form").hidden = false; msg(e.message || String(e)); }
+    }
+
+    if ($("w-connect")) {
+      $("w-connect").onclick = connectWallet;
+      $("w-acct").onchange = showMe;
+      document.querySelectorAll("#stake .tab").forEach((t) => {
+        t.onclick = () => {
+          pane = t.dataset.tab;
+          document.querySelectorAll("#stake .tab").forEach((x) => x.classList.toggle("on", x === t));
+          document.querySelectorAll("#stake [data-pane]").forEach((p) => { p.hidden = p.dataset.pane !== pane; });
+        };
+      });
+      $("b-go").onclick = () => run(planBack());
+      $("p-go").onclick = () => run(planProduce());
+      $("u-go").onclick = () => {
+        const amt = parse($("u-amt").value);
+        if (!amt) return msg("Write how much to unbond.");
+        if (state.me && amt > state.me.active) return msg("That is more than is bonded.");
+        run([[api.tx.staking.unbond(amt), `Unbond ${fmt(amt)} ICT`]]);
+      };
+      $("u-chill").onclick = () => run([[api.tx.staking.chill(), "Stop standing or backing"]]);
+      $("u-withdraw").onclick = async () => run([[api.tx.staking.withdrawUnbonded(await spans()), "Withdraw the unbonded ICT"]]);
+    }
+    return {
+      set(o, vs) {
+        overview = o;
+        list = vs.map((v) => ({ ...v, addr: IC.ss58(v.stash) }));
+        if (api) fillList();
+      },
+    };
+  })();
+
   connect();
 })();
 </script>
