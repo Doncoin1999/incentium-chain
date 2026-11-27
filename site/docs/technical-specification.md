@@ -786,7 +786,7 @@ A new pallet, `endpoints`, holds `Endpoints: map EndpointId → { owner, kind: R
 
 - Each probe checks that the endpoint answers within a time limit and returns the same finalized block hash as the chain. A probe result counts only when reporters holding a majority of the active validator and producer stake agree on it for that day.
 - An entry's daily score is its share of passed probes (0–1); entries below 0.9 get nothing that day. Weight: `Rpc` 1, `Archive` 2 (an archive node also serves RPC).
-- Payout per entry = pot × weight × score ÷ Σ(weight × score), capped per owner account at `MaxPerOperator` (*proposed*: 10 % of the pot). One owner may hold at most 4 entries, and identical URLs or IP addresses count once.
+- Payout per entry = pot × weight × score ÷ Σ(weight × score), capped per owner account at `MaxPerOperator` (*proposed*: 10 % of the pot). One owner may hold at most 4 entries, and a URL can be registered only once. The chain cannot see IP addresses; probes may report entries that resolve to the same server, and the reporting rules for that are open.
 - Whatever is not paid out (no entries, low scores, caps) goes back to the fund, so 5 % is a ceiling.
 - `set_endpoint_share`, the deposit, the caps and the 0.9 threshold are on the Parameters track.
 
