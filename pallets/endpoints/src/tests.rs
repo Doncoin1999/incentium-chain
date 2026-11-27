@@ -207,6 +207,54 @@ fn only_reporters_report_once_for_yesterday() {
 }
 
 #[test]
+fn a_reporter_key_reports_with_its_principals_stake_once_a_day() {
+    use crate::{PrincipalOf, ReporterKey};
+    use polkadot_sdk::frame_support::dispatch::Pays;
+    const KEY: u64 = 21;
+    const KEY2: u64 = 22;
+    new_test_ext().execute_with(|| {
+        let id = rpc(ALICE, "wss://rpc.alice.example");
+        // R1 (a stash with stake) names KEY; KEY has no stake of its own.
+        assert_ok!(Endpoints::set_reporter(RuntimeOrigin::signed(R1), Some(KEY)));
+        assert_eq!(PrincipalOf::<Test>::get(KEY), Some(R1));
+        // KEY cannot serve R2 too, cannot name a key itself, and R1 cannot be its own key.
+        assert_noop!(
+            Endpoints::set_reporter(RuntimeOrigin::signed(R2), Some(KEY)),
+            Error::<Test>::ReporterInUse
+        );
+        assert_noop!(
+            Endpoints::set_reporter(RuntimeOrigin::signed(KEY), Some(KEY2)),
+            Error::<Test>::ReporterInUse
+        );
+        assert_noop!(
+            Endpoints::set_reporter(RuntimeOrigin::signed(R2), Some(R1)),
+            Error::<Test>::ReporterInUse
+        );
+        run_to(DAY + 10);
+        let post = Endpoints::report(RuntimeOrigin::signed(KEY), 0, vec![(id, 100)]).unwrap();
+        assert_eq!(post.pays_fee, Pays::No);
+        assert_eq!(Tallies::<Test>::get(0, id).stake, 100);
+        // The principal already reported through its key.
+        assert_noop!(
+            Endpoints::report(RuntimeOrigin::signed(R1), 0, vec![(id, 100)]),
+            Error::<Test>::AlreadyReported
+        );
+        // A new key replaces the old one, which no longer reports for R1.
+        assert_ok!(Endpoints::set_reporter(RuntimeOrigin::signed(R1), Some(KEY2)));
+        assert_eq!(PrincipalOf::<Test>::get(KEY), None);
+        assert_eq!(ReporterKey::<Test>::get(R1), Some(KEY2));
+        run_to(2 * DAY + 10);
+        assert_noop!(
+            Endpoints::report(RuntimeOrigin::signed(KEY), 1, vec![(id, 100)]),
+            Error::<Test>::NotReporter
+        );
+        assert_ok!(Endpoints::report(RuntimeOrigin::signed(KEY2), 1, vec![(id, 90)]));
+        assert_ok!(Endpoints::set_reporter(RuntimeOrigin::signed(R1), None));
+        assert_eq!(PrincipalOf::<Test>::get(KEY2), None);
+    });
+}
+
+#[test]
 fn a_day_pays_by_weight_and_score_and_archive_counts_double() {
     new_test_ext().execute_with(|| {
         open_cap();

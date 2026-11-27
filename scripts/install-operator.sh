@@ -55,7 +55,10 @@ while [ $# -gt 0 ]; do
 done
 
 REPO="${INCENTIUM_REPO:-https://git.incentium.org/incentium/incentium-chain.git}"
-REF="${INCENTIUM_REF:-main}"
+# The code a network runs: mainnet from main; the testnet from its rehearsal branch, which is
+# ahead of mainnet until mainnet takes the same runtime upgrade.
+DEFAULT_REF=$([ "$NET" = mainnet ] && echo main || echo testnet-spec13)
+REF="${INCENTIUM_REF:-$DEFAULT_REF}"
 D="$HOME/incentium-operator"
 SRC="$D/src"
 BIN="$D/incentium-node"
@@ -64,6 +67,7 @@ SPEC="$SRC/chain-specs/incentium-$NET-raw.json"
 SERVICE="incentium-node-$NET"
 PY="$D/venv/bin/python"
 HOTKEY="$D/sn0-hotkey-$NET.json"
+REPORTER="$D/reporter-key-$NET.json"
 PUBLIC_RPC=$([ "$NET" = mainnet ] && echo wss://rpc.incentium.org || echo wss://testnet-rpc.incentium.org)
 
 say() { printf '\n== %s\n' "$*"; }
@@ -168,6 +172,15 @@ PEER_ID="$(rpc system_localPeerId '[]' | jq -r '.result')"
 
 KEYS="" ; PROOF="" ; SN0_ADDR=""
 say "5/7 roles"
+# Open block production arrives with runtime 12; until a network has it, the producer role waits.
+STAKING_KEY=0x5f3e4907f716ac89b6347d15ececedca138e71612491192d68deab7e6f563fe1   # Staking.ValidatorCount
+if [ -n "$PRODUCER" ] && [ "$(rpc state_getStorage "[\"$STAKING_KEY\"]" | jq -r '.result')" = null ]; then
+  echo "-- block producer: $NET has no open block production yet (it comes with runtime 12)."
+  echo "   The node runs as a full node now; run this again with --producer after the upgrade."
+  PRODUCER=""
+  write_service safe
+  sudo systemctl restart "$SERVICE"
+fi
 if [ -n "$PRODUCER" ]; then
   echo "-- block producer: session keys with an ownership proof for $PRODUCER"
   OWNER_HEX="$("$BIN" key inspect "$PRODUCER" 2>/dev/null | awk '/Account ID:/ {print $3}')"
@@ -192,6 +205,32 @@ if [ -n "$PRODUCER" ]; then
   PROOF="$(echo "$OUT" | jq -r '.result.proof')"
   [ "$KEYS" != null ] || die "the node did not create keys: $OUT"
   printf '%s\n%s\n' "$KEYS" "$PROOF" > "$D/session-keys-$NET.txt"
+
+  # Endpoint probes: a reporter key on this server reports for the stash (endpoints.setReporter),
+  # so the producer's stake counts towards the endpoint scores without the stash ever being here.
+  echo "-- block producer: endpoint probes with a reporter key"
+  sudo apt-get install -y -qq python3 python3-venv >/dev/null
+  [ -x "$PY" ] || python3 -m venv "$D/venv"
+  "$PY" -m pip install -q --upgrade pip substrate-interface
+  REPORTER_ADDR=$(cd "$SRC/neuron" && "$PY" -m incentium_neuron.setup_miner keygen "$REPORTER")
+  chmod 600 "$REPORTER"
+  sudo tee /etc/systemd/system/incentium-probes-$NET.service >/dev/null <<UNIT
+[Unit]
+Description=Incentium endpoint probes ($NET)
+After=$SERVICE.service
+
+[Service]
+User=$USER
+WorkingDirectory=$SRC/neuron
+ExecStart=$PY -m incentium_neuron.probes --url ws://127.0.0.1:$RPC_PORT --key-file $REPORTER --state-file $D/endpoint-probes-$NET.json
+Restart=always
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now incentium-probes-$NET >/dev/null
 fi
 
 if [ "$SN0" = 1 ]; then
@@ -317,6 +356,9 @@ Block producer, signed by the stash $PRODUCER (also at https://incentium.org/val
        proof: $PROOF
      (saved in $D/session-keys-$NET.txt)
   3. staking.validate({commission, blocked: false})
+  4. endpoints.setReporter($REPORTER_ADDR)
+     and send 1 ICT to $REPORTER_ADDR for the fee check (accepted reports pay no fee).
+     This key, kept on this server in $REPORTER, reports the daily endpoint probes with your stake.
   The chain elects producers once a day.
 EOF
 fi
