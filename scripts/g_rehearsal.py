@@ -199,6 +199,22 @@ def cmd_reporter(c, a):
     if not a.stash_key:
         sys.exit("give --stash-key: a JSON file with the producer stash's secretPhrase")
     stash = Keypair.create_from_mnemonic(json.load(open(os.path.expanduser(a.stash_key)))["secretPhrase"])
+    validators = c.q("Session", "Validators") or []
+    if stash.ss58_address not in validators:
+        # Which key files hold the producers' stashes? Look through the secrets folder.
+        import glob
+        mine = {}
+        for f in glob.glob(f"{c.d}/*.json"):
+            try:
+                mine[Keypair.create_from_mnemonic(json.load(open(f))["secretPhrase"]).ss58_address] = f
+            except Exception:
+                pass
+        print(f"{stash.ss58_address} is not a block producer this session. The producers are:")
+        for v in validators:
+            print(f"  {v}  {mine.get(v, '(key not in ' + c.d + ')')}")
+        sys.exit(1)
+    if c.free(stash.ss58_address) < UNIT:
+        c.fund(stash.ss58_address, UNIT)
     rep = base.load_or_create(f"{c.d}/g/reporter-{stash.ss58_address[:8]}.json")
     if c.q("Endpoints", "PrincipalOf", [rep.ss58_address]) != stash.ss58_address:
         c.submit(stash, "Endpoints", "set_reporter", {"reporter": rep.ss58_address})
