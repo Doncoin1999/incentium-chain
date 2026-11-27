@@ -149,7 +149,9 @@ def cmd_models(c, a):
                                                           "status": "Open", "weights_hash": None})
         r = c.s.submit_extrinsic(c.s.create_signed_extrinsic(
             call=c.s.compose_call("Sudo", "sudo", {"call": call}), keypair=c.operator), wait_for_inclusion=True)
-        failed = any("TooFewHolders" in str(e.value) for e in r.triggered_events)
+        # Under sudo the error sits in the Sudid event as a module error index, not by name.
+        failed = any(e.value["event_id"] == "Sudid" and "Err" in str(e.value["attributes"])
+                     for e in r.triggered_events)
         print(f"opening with fewer than three declarations refused: {failed}")
         for n, kp in c.vals.items():
             have = c.q("Registry", "ValidatorModels", [kp.ss58_address]) or []
