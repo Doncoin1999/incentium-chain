@@ -365,8 +365,8 @@ fi
 if [ "$SN0" = 1 ]; then cat <<EOF
 
 SN0 validator, hotkey $SN0_ADDR (kept on this server in $HOTKEY):
-  1. Register the hotkey in SN0 (registry.register; during the launch period the launch
-     operator registers validators), then note its uid.
+  1. Register the hotkey in SN0: registry.registerNeuron(0, $SN0_ADDR), signed by any account
+     of yours; the current fee is burned. Note its uid.
   2. Send ICT to the hotkey and stake it: consensus.stake(amount), signed by the hotkey;
      at least 1,000 ICT from day 90.
   3. Start the validator:  bash $0 $NET --sn0-validator --uid <uid>
