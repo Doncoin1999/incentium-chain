@@ -53,7 +53,7 @@ setup() {
   if ! command -v crontab >/dev/null; then
     echo "no crontab here: add a timer that runs '$line' yourself"
   elif ! crontab -l 2>/dev/null | grep -qF "forgejo-sync.sh"; then
-    ( crontab -l 2>/dev/null; echo "$line" ) | crontab -
+    { crontab -l 2>/dev/null || true; echo "$line"; } | crontab -
     echo "cron: runs every minute"
   fi
   echo "done; log: $LOG"
