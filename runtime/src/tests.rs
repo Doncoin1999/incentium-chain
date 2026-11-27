@@ -775,6 +775,13 @@ fn the_parameters_track_changes_listed_parameters_only() {
         assert_eq!(pallet_staking::ValidatorCount::<Runtime>::get(), 30);
         assert_ok!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 250_000 })));
         assert_eq!(pallet_subnet_pools::RequiredReturnPpm::<Runtime>::get(), 250_000);
+        // the public RPC and archive nodes' share (0 at first) and the register's parameters
+        assert_eq!(pallet_ict_emission::EndpointShare::<Runtime>::get(), 0);
+        assert_ok!(set(RuntimeCall::Emission(pallet_ict_emission::Call::set_endpoint_share { ppm: 50_000 })));
+        assert_eq!(pallet_ict_emission::EndpointShare::<Runtime>::get(), 50_000);
+        let p = pallet_endpoints::Params { deposit: 200 * UNIT, min_score: 95, operator_cap_ppm: 50_000 };
+        assert_ok!(set(RuntimeCall::Endpoints(pallet_endpoints::Call::set_params { params: p })));
+        assert_eq!(pallet_endpoints::CurrentParams::<Runtime>::get(), p);
         // its own bounds still hold
         assert!(set(RuntimeCall::SubnetPools(pallet_subnet_pools::Call::set_required_return { ppm: 10_000 })).is_err());
         // the pallet's own bounds still hold

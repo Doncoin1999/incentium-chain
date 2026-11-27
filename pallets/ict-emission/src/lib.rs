@@ -1,7 +1,8 @@
 //! # ICT emission pallet (spec Section 3)
 //!
 //! Every block: issue the scheduled reward (halving triggered by total issued),
-//! mint `FundShare` of it to the development fund (an on-chain treasury account)
+//! mint `FundShare` of it to the development fund (an on-chain treasury account), less the
+//! block producers' `ValidatorShare` and the public RPC and archive nodes' `EndpointShare`,
 //! and the rest to the subnet pot, which `utility-metrics` will later allocate.
 //! In Phase 1 the pot belongs to SN0.
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -49,6 +50,11 @@ pub mod pallet {
         /// development-fund share (docs/OPEN-BLOCK-PRODUCTION.md).
         #[pallet::constant]
         type ValidatorPot: Get<Self::AccountId>;
+        /// Pot of the public RPC and archive nodes: receives `EndpointShare`, carved out of the
+        /// development-fund share; `pallet-endpoints` pays from it by measured availability and
+        /// returns what it does not pay to the fund (spec Section 19.2).
+        #[pallet::constant]
+        type EndpointPot: Get<Self::AccountId>;
     }
 
     /// ICT issued since genesis, in base units (1 ICT = 10^9).
@@ -77,6 +83,13 @@ pub mod pallet {
     /// issuance (2 %, decided 26 Nov 2026). Never more than the fund share itself.
     #[pallet::storage]
     pub type ValidatorShare<T> = StorageValue<_, u32, ValueQuery, DefaultValidatorShare>;
+
+    /// Part of the fund share that goes to the public RPC and archive nodes' pot, in ppm of
+    /// issuance (up to 5 %, decided 27 Nov 2026). 0 until the endpoint register and its probes
+    /// run; switched on by the Parameters track. With `ValidatorShare`, never more than the fund
+    /// share.
+    #[pallet::storage]
+    pub type EndpointShare<T> = StorageValue<_, u32, ValueQuery>;
 
     #[pallet::genesis_config]
     #[derive(polkadot_sdk::frame_support::DefaultNoBound)]
@@ -107,6 +120,8 @@ pub mod pallet {
         FundShareSet { ppm: u32 },
         /// The block producers' share was changed by governance.
         ValidatorShareSet { ppm: u32 },
+        /// The public RPC and archive nodes' share was changed by governance.
+        EndpointShareSet { ppm: u32 },
     }
 
     #[pallet::error]
@@ -115,6 +130,8 @@ pub mod pallet {
         FundShareTooHigh,
         /// The block producers' share would exceed the fund share.
         ValidatorShareTooHigh,
+        /// The block producers' and endpoints' shares together would exceed the fund share.
+        EndpointShareTooHigh,
     }
 
     #[pallet::hooks]
@@ -144,9 +161,27 @@ pub mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::set_fund_share())]
         pub fn set_validator_share(origin: OriginFor<T>, ppm: u32) -> DispatchResult {
             ensure_root(origin)?;
-            ensure!(ppm <= FundShare::<T>::get(), Error::<T>::ValidatorShareTooHigh);
+            ensure!(
+                ppm.saturating_add(EndpointShare::<T>::get()) <= FundShare::<T>::get(),
+                Error::<T>::ValidatorShareTooHigh
+            );
             ValidatorShare::<T>::put(ppm);
             Self::deposit_event(Event::ValidatorShareSet { ppm });
+            Ok(())
+        }
+
+        /// Change the public RPC and archive nodes' share of issuance, carved out of the fund
+        /// share (governance only).
+        #[pallet::call_index(2)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_fund_share())]
+        pub fn set_endpoint_share(origin: OriginFor<T>, ppm: u32) -> DispatchResult {
+            ensure_root(origin)?;
+            ensure!(
+                ppm.saturating_add(ValidatorShare::<T>::get()) <= FundShare::<T>::get(),
+                Error::<T>::EndpointShareTooHigh
+            );
+            EndpointShare::<T>::put(ppm);
+            Self::deposit_event(Event::EndpointShareSet { ppm });
             Ok(())
         }
     }
@@ -168,9 +203,18 @@ pub mod pallet {
             let to_validators = (issued.saturating_mul(ValidatorShare::<T>::get() as u128)
                 / 1_000_000)
                 .min(split.fund);
-            let _ = T::Currency::mint_into(&T::FundAccount::get(), split.fund - to_validators);
+            let to_endpoints = (issued.saturating_mul(EndpointShare::<T>::get() as u128)
+                / 1_000_000)
+                .min(split.fund - to_validators);
+            let _ = T::Currency::mint_into(
+                &T::FundAccount::get(),
+                split.fund - to_validators - to_endpoints,
+            );
             if to_validators > 0 {
                 let _ = T::Currency::mint_into(&T::ValidatorPot::get(), to_validators);
+            }
+            if to_endpoints > 0 {
+                let _ = T::Currency::mint_into(&T::EndpointPot::get(), to_endpoints);
             }
             let _ = T::Currency::mint_into(&T::SubnetPot::get(), split.subnets);
             TotalIssued::<T>::put(s.total_issued);

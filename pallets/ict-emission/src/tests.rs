@@ -1,4 +1,4 @@
-use crate::{mock::*, Error, FundShare, Halvings, TotalIssued, ValidatorShare};
+use crate::{mock::*, EndpointShare, Error, FundShare, Halvings, TotalIssued, ValidatorShare};
 use ict_economics::{emission::next_threshold, UNIT};
 use polkadot_sdk::frame_support::{assert_noop, assert_ok, traits::Hooks};
 use polkadot_sdk::sp_runtime::DispatchError;
@@ -106,5 +106,40 @@ fn genesis_allocation_counts_against_supply() {
         System::set_block_number(1);
         run_blocks(1);
         assert_eq!(TotalIssued::<Test>::get(), 101 * UNIT);
+    });
+}
+
+#[test]
+fn endpoint_share_starts_at_zero_and_is_carved_out_of_the_fund() {
+    new_test_ext().execute_with(|| {
+        assert_eq!(EndpointShare::<Test>::get(), 0);
+        run_blocks(10);
+        assert_eq!(Balances::free_balance(EPOT), 0);
+        assert_noop!(
+            Emission::set_endpoint_share(RuntimeOrigin::signed(1), 50_000),
+            DispatchError::BadOrigin
+        );
+        // 2 % to producers + 9 % to endpoints would exceed the fund's 10 %
+        assert_noop!(
+            Emission::set_endpoint_share(RuntimeOrigin::root(), 90_000),
+            Error::<Test>::EndpointShareTooHigh
+        );
+        assert_ok!(Emission::set_endpoint_share(RuntimeOrigin::root(), 50_000));
+        let (f0, v0, p0) = (
+            Balances::free_balance(FUND),
+            Balances::free_balance(VPOT),
+            Balances::free_balance(POT),
+        );
+        run_blocks(10);
+        // of 10 ICT: 0.3 to the fund, 0.2 to producers, 0.5 to endpoints, 9 to subnets
+        assert_eq!(Balances::free_balance(FUND) - f0, 3 * UNIT / 10);
+        assert_eq!(Balances::free_balance(VPOT) - v0, 2 * UNIT / 10);
+        assert_eq!(Balances::free_balance(EPOT), 5 * UNIT / 10);
+        assert_eq!(Balances::free_balance(POT) - p0, 9 * UNIT);
+        // and the producers' share can no longer be raised past what is left
+        assert_noop!(
+            Emission::set_validator_share(RuntimeOrigin::root(), 60_000),
+            Error::<Test>::ValidatorShareTooHigh
+        );
     });
 }
