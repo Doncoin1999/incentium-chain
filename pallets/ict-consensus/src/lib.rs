@@ -783,8 +783,15 @@ pub mod pallet {
                     {
                         continue;
                     }
+                    // A uid that was taken over during the epoch: the weights were for the
+                    // neuron that left, so nobody is paid for it.
+                    let reg = pallet_subnet_registry::ReplacedAt::<T>::get(netuid, uid as u16);
+                    if reg as u64 > we.saturating_mul(len) {
+                        continue;
+                    }
                     let amt = mul_div(to_miners, *inc, PPM);
                     if Self::pay(&pot_acct, &hk, amt, launch, netuid == SN0) {
+                        pallet_subnet_registry::Pallet::<T>::note_neuron_paid(netuid, uid as u16, amt);
                         paid += amt;
                         miners += 1;
                         if alpha {
@@ -806,6 +813,9 @@ pub mod pallet {
                     Self::pay(&pot_acct, &validators[i], amt, launch, false)
                 };
                 if ok {
+                    if let Some(vuid) = NeuronUid::<T>::get(netuid, &validators[i]) {
+                        pallet_subnet_registry::Pallet::<T>::note_neuron_paid(netuid, vuid, amt);
+                    }
                     paid += amt;
                     vals += 1;
                     if alpha {

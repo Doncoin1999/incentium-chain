@@ -432,35 +432,77 @@ fn endpoints_only_for_registered_neurons() {
 }
 
 #[test]
-fn bootstrap_only_operator_registers_without_fee_then_opens() {
+fn anyone_registers_during_bootstrap_and_only_the_operator_skips_the_fee() {
     new_bootstrap_ext().execute_with(|| {
         assert!(Registry::in_bootstrap());
-        assert_noop!(
-            Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, ALICE),
-            Error::<Test>::BootstrapRestricted
-        );
-        // operator has no balance at all and still registers its hotkeys
-        assert_ok!(Registry::register_neuron(
-            RuntimeOrigin::signed(OPERATOR),
-            SN0,
-            21
-        ));
-        assert_ok!(Registry::register_neuron(
-            RuntimeOrigin::signed(OPERATOR),
-            SN0,
-            22
-        ));
+        let before = Balances::free_balance(ALICE);
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, ALICE));
+        assert_eq!(Balances::free_balance(ALICE), before - NeuronFee::get());
+        // the operator has no balance at all and still registers hotkeys for new miners
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(OPERATOR), SN0, 21));
         System::set_block_number(100);
         assert!(!Registry::in_bootstrap());
-        assert_ok!(Registry::register_neuron(
-            RuntimeOrigin::signed(ALICE),
-            SN0,
-            ALICE
-        ));
+        assert_noop!(
+            Registry::register_neuron(RuntimeOrigin::signed(OPERATOR), SN0, 22),
+            polkadot_sdk::sp_runtime::TokenError::FundsUnavailable
+        );
         assert_noop!(
             Registry::end_bootstrap(RuntimeOrigin::signed(OPERATOR)),
             Error::<Test>::NotInBootstrap
         );
+    });
+}
+
+#[test]
+fn the_registration_fee_follows_demand() {
+    use crate::{REG_INTERVAL, REG_TARGET};
+    new_test_ext(false).execute_with(|| {
+        let base = NeuronFee::get();
+        assert_eq!(Registry::reg_fee(SN0), base);
+        // More than the target in one interval: the fee doubles in the next.
+        for h in 0..=REG_TARGET as u64 {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, 100 + h));
+        }
+        System::set_block_number(REG_INTERVAL as u64 + 1);
+        assert_eq!(Registry::reg_fee(SN0), 2 * base);
+        // Quiet intervals bring it back down, never below the base fee.
+        System::set_block_number(3 * REG_INTERVAL as u64 + 1);
+        assert_eq!(Registry::reg_fee(SN0), 2 * base * 9 / 10 * 9 / 10);
+        System::set_block_number(100 * REG_INTERVAL as u64 + 1);
+        assert_eq!(Registry::reg_fee(SN0), base);
+    });
+}
+
+#[test]
+fn a_full_subnet_replaces_the_lowest_scoring_neuron_past_its_immunity() {
+    use crate::{Neurons, RegisteredAt, ReplacedAt, NEURON_IMMUNITY};
+    new_test_ext(false).execute_with(|| {
+        // SN0 holds 4 in the mock: three miners and a validator with stake.
+        for h in [31, 32, 33, 34] {
+            assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, h));
+        }
+        set_stake(SN0, 34, 1_000 * UNIT);
+        // Everyone is still immune: the subnet is full.
+        assert_noop!(
+            Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, 40),
+            Error::<Test>::SubnetFull
+        );
+        System::set_block_number(NEURON_IMMUNITY as u64 + 10);
+        // Miners 31 and 33 earned; 32 earned least; 34 earned nothing but is a staked validator.
+        Registry::note_neuron_paid(SN0, 0, 500);
+        Registry::note_neuron_paid(SN0, 1, 100);
+        Registry::note_neuron_paid(SN0, 2, 900);
+        assert_eq!(Registry::prune_candidate(SN0), Some(1));
+        assert_ok!(Registry::register_neuron(RuntimeOrigin::signed(ALICE), SN0, 40));
+        assert_eq!(Neurons::<Test>::get(SN0, 1), Some(40));
+        assert!(crate::NeuronUid::<Test>::get(SN0, 32).is_none());
+        assert_eq!(crate::NeuronCount::<Test>::get(SN0), 4);
+        let now = System::block_number() as u32;
+        assert_eq!(RegisteredAt::<Test>::get(SN0, 1), now);
+        assert_eq!(ReplacedAt::<Test>::get(SN0, 1), now);
+        // The newcomer is immune; next is the lowest of the others (31, score decayed 500).
+        assert_eq!(Registry::prune_candidate(SN0), Some(0));
+        assert!(Registry::neuron_score(SN0, 1) == 0);
     });
 }
 
