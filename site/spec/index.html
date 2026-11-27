@@ -554,7 +554,7 @@
 <ol>
 <li>Reward r = R₀ / 2^k, with R₀ = 1 ICT (<em>protected</em>).</li>
 <li>Next threshold T = 21,000,000 × (1 − 2^−(k+1)). If <code>TotalIssued</code> + r would pass T, issue only up to T and increment k; the rest of the block uses the new reward.</li>
-<li>10% of r goes to <code>FundAccount</code> (<em>proposed</em>); 90% goes to the subnet pot for <code>utility-metrics</code> to allocate. From runtime 12, <code>ValidatorShare</code> (20,000 ppm = 2%) of r goes to the block producers' reward pot instead of the fund, so the fund gets 8% and the subnet pot is unchanged (Section 17).</li>
+<li>10% of r goes to <code>FundAccount</code> (<em>proposed</em>); 90% goes to the subnet pot for <code>utility-metrics</code> to allocate. From runtime 12, <code>ValidatorShare</code> (20,000 ppm = 2%) of r goes to the block producers' reward pot instead of the fund, so the fund gets 8% and the subnet pot is unchanged (Section 17). With the <code>endpoints</code> pallet, <code>EndpointShare</code> (50,000 ppm = 5%, <em>decided</em> 27 Nov 2026) of r goes to the endpoint reward pot as well, so the fund gets 3% plus whatever that pot does not pay out (Section 19.2).</li>
 <li>In Phase 1 the subnet pot goes entirely to SN0.</li>
 </ol>
 <p><strong>Invariants</strong></p>
@@ -1474,7 +1474,7 @@
 </tr>
 <tr>
 <td>Referendum tracks</td>
-<td>Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Parameters (runtime 12: a fixed list of calls — <code>set_fund_share</code>, <code>set_validator_share</code>, <code>set_min_spacing</code>, <code>set_max_subnets</code>, <code>set_tier</code>, the staking calls <code>set_validator_count</code>, <code>increase_validator_count</code>, <code>scale_validator_count</code>, <code>set_staking_configs</code>, and <code>set_required_return</code>, <code>set_next_bonus_ppm</code> — each within its pallet's bounds; 50 ICT decision deposit, 1 day prepare, 7-day vote, 1 day confirm, 1 day before it takes effect; approval 100 % falling to 60 %, support 30 % falling to 3 %), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support)</td>
+<td>Root (runtime changes and all protocol settings: 75 % approval at the end of a 7-day vote, 7 days before it takes effect), Treasurer (large spends), Small spender (up to 1,000 ICT), Parameters (runtime 12: a fixed list of calls — <code>set_fund_share</code>, <code>set_validator_share</code>, <code>set_endpoint_share</code> (with the <code>endpoints</code> pallet), <code>set_min_spacing</code>, <code>set_max_subnets</code>, <code>set_tier</code>, the staking calls <code>set_validator_count</code>, <code>increase_validator_count</code>, <code>scale_validator_count</code>, <code>set_staking_configs</code>, and <code>set_required_return</code>, <code>set_next_bonus_ppm</code> — each within its pallet's bounds; 50 ICT decision deposit, 1 day prepare, 7-day vote, 1 day confirm, 1 day before it takes effect; approval 100 % falling to 60 %, support 30 % falling to 3 %), Emergency (runtime 11, installed on the testnet by referendum as a rehearsal without sudo, then on mainnet before day 90: authorizes a runtime upgrade only; 1,000 ICT decision deposit, 1 h prepare, up to 2 days deciding, 3 h confirm, 1 h before it takes effect; approval 100 % falling to 90 %, support 50 % falling to 20 %; about 5 hours with broad, fast support)</td>
 </tr>
 <tr>
 <td>Runtime upgrades</td>
@@ -2022,15 +2022,15 @@
 <tr>
 <td>Public RPC</td>
 <td>Entry in <code>Endpoints</code> (kind <code>Rpc</code>)</td>
-<td>Deposit 10 ICT (<em>proposed</em>)</td>
-<td>Standing treasury bounty on measured availability</td>
+<td>Deposit 100 ICT (<em>proposed</em>)</td>
+<td>Up to 5 % of issuance, shared by availability score (weight 1)</td>
 <td>Open port 443 with TLS; 2 cores and 4 GB of memory more for traffic</td>
 </tr>
 <tr>
 <td>Archive</td>
 <td>Entry in <code>Endpoints</code> (kind <code>Archive</code>)</td>
-<td>Deposit 10 ICT (<em>proposed</em>)</td>
-<td>Standing treasury bounty on measured availability</td>
+<td>Deposit 100 ICT (<em>proposed</em>)</td>
+<td>Same share, weight 2</td>
 <td>Archive pruning; disk grows with the chain (about 200 GB the first year, <em>estimate</em>)</td>
 </tr>
 </tbody>
@@ -2047,12 +2047,20 @@
 <h3 id="192-endpoint-register">19.2 Endpoint register<a class="anchor" href="#192-endpoint-register" aria-label="Link to this section">#</a></h3>
 <p>A new pallet, <code>endpoints</code>, holds <code>Endpoints: map EndpointId → { owner, kind: Rpc | Archive | Bootnode, url, region, deposit, registered_at, last_seen_ok }</code>.</p>
 <ul>
-<li><code>register(kind, url, region)</code>: anyone, with the deposit held; at most 4 entries per account.</li>
+<li><code>register(kind, url, region)</code>: anyone, with the deposit (100 ICT, <em>proposed</em>) held; at most 4 entries per account.</li>
 <li><code>update(id, url, region)</code> and <code>deregister(id)</code> by the owner; the deposit is released on deregistration.</li>
 <li><code>report_down(id, evidence)</code>: SN0 validators and block producers probe registered endpoints as part of their regular work and report failures; an entry that fails in more than half of the probes for 7 days in a row is marked inactive and drops out of what clients use, with no slashing.</li>
 <li>Clients (web pages, the miner app, wallets) ship with a few seed endpoints, read the register through them, measure latency, and use the fastest healthy endpoints, falling back to others on failure. The light client (smoldot) can later replace the seeds.</li>
 </ul>
-<p><strong>Rewards.</strong> A standing treasury bounty pays RPC and archive operators monthly in proportion to measured availability, from the probe results above, with a cap per operator. Until the probes run on chain, a curator group of three pays it from published probe logs.</p>
+<p><strong>Rewards (decided 27 Nov 2026).</strong> <code>ict-emission</code> sends <code>EndpointShare</code> (5 % of issuance, from the fund's 10 %) to the endpoint pot each block. Once a day the pallet pays the pot to active entries:</p>
+<ul>
+<li>Each probe checks that the endpoint answers within a time limit and returns the same finalized block hash as the chain. A probe result counts only when reporters holding a majority of the active validator and producer stake agree on it for that day.</li>
+<li>An entry's daily score is its share of passed probes (0–1); entries below 0.9 get nothing that day. Weight: <code>Rpc</code> 1, <code>Archive</code> 2 (an archive node also serves RPC).</li>
+<li>Payout per entry = pot × weight × score ÷ Σ(weight × score), capped per owner account at <code>MaxPerOperator</code> (<em>proposed</em>: 10 % of the pot). One owner may hold at most 4 entries, and identical URLs or IP addresses count once.</li>
+<li>Whatever is not paid out (no entries, low scores, caps) goes back to the fund, so 5 % is a ceiling.</li>
+<li><code>set_endpoint_share</code>, the deposit, the caps and the 0.9 threshold are on the Parameters track.</li>
+</ul>
+<p>Until the pallet and the probes run on mainnet, <code>EndpointShare</code> is 0 and the fund keeps its 8 %.</p>
 <h3 id="193-work-items">19.3 Work items<a class="anchor" href="#193-work-items" aria-label="Link to this section">#</a></h3>
 <div class="tbl"><table>
 <thead>
@@ -2102,8 +2110,8 @@
 </tr>
 <tr>
 <td>7</td>
-<td>Standing bounties for RPC and archive, created by referendum</td>
-<td>governance</td>
+<td><code>EndpointShare</code> in <code>ict-emission</code> and the daily payout in <code>endpoints</code>; switched on by a Parameters-track vote after the testnet rehearsal</td>
+<td><code>ict-emission</code>, <code>pallets/endpoints</code></td>
 <td>3, 6</td>
 </tr>
 <tr>

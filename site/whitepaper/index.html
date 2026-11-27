@@ -416,18 +416,19 @@
 <tr>
 <td>Public RPC endpoint (optional)</td>
 <td>Lets wallets, websites and miners read the chain and send transactions</td>
-<td>Small deposit for its entry in the register</td>
-<td>Standing treasury bounty, paid on measured availability</td>
+<td>Deposit for its entry in the register</td>
+<td>Up to 5% of issuance, shared with archive nodes by measured availability</td>
 </tr>
 <tr>
 <td>Archive node (optional)</td>
 <td>Keeps the full history for explorers and audits</td>
-<td>Small deposit for its entry in the register</td>
-<td>Standing treasury bounty, paid on measured availability</td>
+<td>Deposit for its entry in the register</td>
+<td>Counts double in the same 5% share</td>
 </tr>
 </tbody>
 </table></div>
 <p>The roles are separate on chain, because they have different stakes, rewards and penalties, and an operator can take any of them. One installer sets up a server for the roles its owner chooses. Public RPC endpoints and archive nodes register on chain, so websites, wallets and miners find many independent operators instead of a fixed list.</p>
+<p><strong>Paying for public access (decided 27 November 2026).</strong> Public RPC endpoints and archive nodes share up to 5% of issuance, taken from the development fund's 10%, so the fund keeps 3% after the block producers' 2%. The chain pays it automatically every day by measured availability: many independent validators and block producers test every registered endpoint, only checks that a majority agree on count, and an endpoint must return the correct block, not merely answer. An archive node counts double, since it costs more to run and also serves as an RPC endpoint. Each operator has a cap, the entry deposit is about 100 ICT, and whatever is not paid out stays in the fund, so 5% is a ceiling, not a fixed amount. The Parameters track can change the share. Until the register and the availability checks run on mainnet, the 5% stays in the fund.</p>
 <p><strong>Networking:</strong> Nodes communicate over libp2p and QUIC. Every message is signed with the sender's hot key, request limits scale with stake, and miners can sit behind relay nodes for DDoS protection.</p>
 <p><strong>Developer tools:</strong> Python and Rust SDKs, a CLI, a wallet with hardware-wallet support, a subnet template with a standard evaluation harness, a block explorer and an indexer. The chain is EVM-compatible (Frontier) from day one, with a bridge to other ecosystems.</p>
 <h2 id="4-tokenomics-the-ict-coin">4. Tokenomics: the ICT coin<a class="anchor" href="#4-tokenomics-the-ict-coin" aria-label="Link to this section">#</a></h2>
@@ -458,11 +459,15 @@
 </tr>
 <tr>
 <td>Development fund</td>
-<td>8% of issuance, governed by on-chain vote (10% until block production opens; Section 8)</td>
+<td>3% of issuance, governed by on-chain vote, plus whatever the endpoint share below does not pay out (10% until block production opens; Section 8)</td>
 </tr>
 <tr>
 <td>Block producers</td>
 <td>2% of issuance plus all transaction fees</td>
+</tr>
+<tr>
+<td>Public RPC and archive nodes</td>
+<td>Up to 5% of issuance, by measured availability (Section 3)</td>
 </tr>
 <tr>
 <td>Registration fee (miners and validators)</td>
@@ -518,7 +523,7 @@
 </tr>
 <tr>
 <td>Development fund</td>
-<td>10% (8% once block production opens, and 2% to block producers)</td>
+<td>10% (once block production opens: 2% to block producers, up to 5% to public RPC and archive nodes, the rest to the fund)</td>
 </tr>
 </tbody>
 </table></div>
@@ -649,7 +654,7 @@
 <li>Nothing is refunded when a subnet is removed; stake on it moves to the normal unbonding queue.</li>
 </ul>
 <h3 id="63-allocation-of-issuance">6.3 Allocation of issuance<a class="anchor" href="#63-allocation-of-issuance" aria-label="Link to this section">#</a></h3>
-<p>The development fund takes its share first (10%; once block production opens, 8% to the fund and 2% to block producers); the rest goes to the subnets.</p>
+<p>The development fund takes its share first (10%; once block production opens, 2% of it goes to block producers and up to 5% to public RPC and archive nodes, the rest to the fund); the rest goes to the subnets.</p>
 <ul>
 <li><strong>SN0 keeps at least half of all issuance</strong> through 2028; after that the floor can only be changed by a runtime upgrade.</li>
 <li><strong>The other subnets' share is phased in.</strong> From the block where registration unlocks, their combined share rises linearly from zero to the rest (40% of issuance) over 180 days, so SN0 miners see no sudden drop.</li>
@@ -932,7 +937,7 @@
 <tr>
 <td>Chain, issuance and launch period</td>
 <td>Mainnet live since 18 Nov 2026; issuance with halving, 10% to the fund, launch period and launch vault</td>
-<td>2% of issuance to block producers with runtime 12</td>
+<td>2% of issuance to block producers with runtime 12; up to 5% to public RPC and archive nodes once the endpoint register and availability checks run</td>
 </tr>
 <tr>
 <td>Block production</td>
@@ -962,7 +967,7 @@
 <tr>
 <td>Network operators</td>
 <td>Block-producer installer (<code>install-validator.sh</code>); SN0 validator software set up by hand; two public RPC endpoints, both the launch operator's, written into the web pages; the testnet's RPC node keeps the archive</td>
-<td>One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; standing bounties for RPC and archive operators; the explorer able to use any registered archive node (specification, Section 19)</td>
+<td>One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; the 5% share for RPC and archive operators, paid by measured availability; the explorer able to use any registered archive node (specification, Section 19)</td>
 </tr>
 <tr>
 <td>Model and software updates</td>

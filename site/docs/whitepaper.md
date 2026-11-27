@@ -56,10 +56,12 @@ Requests flow down from users to subnets; results, scores and proofs flow down t
 | --- | --- | --- | --- |
 | Block producer | Writes and finalizes blocks (Section 8) | Bond of at least 100 ICT, plus nominations | 2% of issuance and all transaction fees, shared by blocks written |
 | SN0 validator | Checks the miners' AI work and sets weights; holds the models it checks | At least 1,000 ICT from day 90 | The validators' share of SN0 issuance |
-| Public RPC endpoint (optional) | Lets wallets, websites and miners read the chain and send transactions | Small deposit for its entry in the register | Standing treasury bounty, paid on measured availability |
-| Archive node (optional) | Keeps the full history for explorers and audits | Small deposit for its entry in the register | Standing treasury bounty, paid on measured availability |
+| Public RPC endpoint (optional) | Lets wallets, websites and miners read the chain and send transactions | Deposit for its entry in the register | Up to 5% of issuance, shared with archive nodes by measured availability |
+| Archive node (optional) | Keeps the full history for explorers and audits | Deposit for its entry in the register | Counts double in the same 5% share |
 
 The roles are separate on chain, because they have different stakes, rewards and penalties, and an operator can take any of them. One installer sets up a server for the roles its owner chooses. Public RPC endpoints and archive nodes register on chain, so websites, wallets and miners find many independent operators instead of a fixed list.
+
+**Paying for public access (decided 27 November 2026).** Public RPC endpoints and archive nodes share up to 5% of issuance, taken from the development fund's 10%, so the fund keeps 3% after the block producers' 2%. The chain pays it automatically every day by measured availability: many independent validators and block producers test every registered endpoint, only checks that a majority agree on count, and an endpoint must return the correct block, not merely answer. An archive node counts double, since it costs more to run and also serves as an RPC endpoint. Each operator has a cap, the entry deposit is about 100 ICT, and whatever is not paid out stays in the fund, so 5% is a ceiling, not a fixed amount. The Parameters track can change the share. Until the register and the availability checks run on mainnet, the 5% stays in the fund.
 
 **Networking:** Nodes communicate over libp2p and QUIC. Every message is signed with the sender's hot key, request limits scale with stake, and miners can sit behind relay nodes for DDoS protection.
 
@@ -75,8 +77,9 @@ ICT has a fixed maximum supply of 21,000,000 and is issued only through block re
 | Block time | 12 seconds (7,200 blocks per day) |
 | Initial block reward | 1 ICT per block (7,200 ICT per day) |
 | Halving | When half of the remaining supply has been issued (about every 4 years) |
-| Development fund | 8% of issuance, governed by on-chain vote (10% until block production opens; Section 8) |
+| Development fund | 3% of issuance, governed by on-chain vote, plus whatever the endpoint share below does not pay out (10% until block production opens; Section 8) |
 | Block producers | 2% of issuance plus all transaction fees |
+| Public RPC and archive nodes | Up to 5% of issuance, by measured availability (Section 3) |
 | Registration fee (miners and validators) | Burned in full |
 | Subnet slot | Sold by Dutch auction; half to the treasury, half burned (Section 6.1) |
 | Pool trading fee | 0.5%, half of which is burned |
@@ -119,7 +122,7 @@ where T is the number of tokens served and accepted, Q is a quality factor betwe
 | --- | --- |
 | Miners | 60% |
 | Validators and their delegators | 30% |
-| Development fund | 10% (8% once block production opens, and 2% to block producers) |
+| Development fund | 10% (once block production opens: 2% to block producers, up to 5% to public RPC and archive nodes, the rest to the fund) |
 
 **Sybil protection:** Registration costs a fee that is burned, and each key is capped in how many work units it can be credited per epoch.
 
@@ -203,7 +206,7 @@ In Phase 2 anyone can buy a subnet slot and run a subnet with its own task and i
 
 ### 6.3 Allocation of issuance
 
-The development fund takes its share first (10%; once block production opens, 8% to the fund and 2% to block producers); the rest goes to the subnets.
+The development fund takes its share first (10%; once block production opens, 2% of it goes to block producers and up to 5% to public RPC and archive nodes, the rest to the fund); the rest goes to the subnets.
 
 - **SN0 keeps at least half of all issuance** through 2028; after that the floor can only be changed by a runtime upgrade.
 - **The other subnets' share is phased in.** From the block where registration unlocks, their combined share rises linearly from zero to the rest (40% of issuance) over 180 days, so SN0 miners see no sudden drop.
@@ -413,13 +416,13 @@ Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives 
 
 | Area | In the code today | What changes or must be done |
 | --- | --- | --- |
-| Chain, issuance and launch period | Mainnet live since 18 Nov 2026; issuance with halving, 10% to the fund, launch period and launch vault | 2% of issuance to block producers with runtime 12 |
+| Chain, issuance and launch period | Mainnet live since 18 Nov 2026; issuance with halving, 10% to the fund, launch period and launch vault | 2% of issuance to block producers with runtime 12; up to 5% to public RPC and archive nodes once the endpoint register and availability checks run |
 | Block production | Mainnet: four genesis keys of the launch operator on two servers, plus a third node for bootstrapping and RPC. Runtime 12 (open block production) on the testnet since 26 Nov 2026; the move from fixed keys to elected producers ran without a stop | Mainnet upgrade to runtime 10, 11 and 12 before day 90, aimed at 1 February 2027; at least 7 independent producers; signing on the Validators page |
 | Governance | Treasury, bounties, referenda with conviction voting; the runtime removes sudo at day 90. Emergency track and upgrades by hash in runtime 11 (a referendum installing it on the testnet takes effect about 4 Dec 2026); Parameters track in runtime 12. Governance page at incentium.org/governance with voting from one's own wallet | Mainnet upgrade before day 90; sudo in a 2-of-3 multisig until then; test that turnout thresholds can be met |
 | SN0 tasks | The reference validator sends synthetic prompts (random text); the checks are sound but the answers have no use | Paid jobs, an open public-goods queue and hidden control tasks (Section 5) |
 | Models | Four fixed tiers on chain; Qwen3.5-2B is the only open model; the miner software keeps the model within a quarter of memory and picks it on Mac, Windows and Linux | The open model list replacing the tiers (decided 27 Nov 2026): model storage, `set_model` on the Parameters track, miners declaring and changing their model, a model picker in the miner software; 4B and 9B opened before day 90; tolerance tested on Intel, AMD and Apple processors |
 | Work units | W = T × Q × A × G; every miner gets the same number of tasks per epoch | Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G per model from quality and measured cost per token, recalibrated quarterly |
-| Network operators | Block-producer installer (`install-validator.sh`); SN0 validator software set up by hand; two public RPC endpoints, both the launch operator's, written into the web pages; the testnet's RPC node keeps the archive | One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; standing bounties for RPC and archive operators; the explorer able to use any registered archive node (specification, Section 19) |
+| Network operators | Block-producer installer (`install-validator.sh`); SN0 validator software set up by hand; two public RPC endpoints, both the launch operator's, written into the web pages; the testnet's RPC node keeps the archive | One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; the 5% share for RPC and archive operators, paid by measured availability; the explorer able to use any registered archive node (specification, Section 19) |
 | Model and software updates | Code open on git.incentium.org with a mirror on GitHub; releases built and published by the launch operator; the testnet runs on the launch operator's server | Register of approved software releases on chain, set by the Parameters track; reproducible builds; a testnet run by several operators; a standing bounty for model integration; several maintainers and mirrors (Section 10) |
 | Verification | Spot checks regenerate the answer; quorum slashing and a three-strike ban | Prefill scoring; validators declare the models they hold; a model opens when three validators can check it |
 | Weights and consensus | Hash-based commit-reveal; Yuma computed on chain for SN0 | drand time-lock and proof-based Yuma remain planned (Section 8) |
