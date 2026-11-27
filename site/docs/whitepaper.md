@@ -126,7 +126,7 @@ where T is the number of tokens served and accepted, Q is a quality factor betwe
 
 **Sybil protection:** Registration costs a fee that is burned, and each key is capped in how many work units it can be credited per epoch.
 
-**Validators:** During the 90-day launch period, the launch operator registers and runs the first validators and miners (Section 5.1). After that, validators are run by the core contributors and by any independent operator that registers and stakes. This centralization is temporary and ends at the transition to Phase 2.
+**Validators:** Anyone can register a validator or a miner and stake, from the first day: no one has to approve it. The fee for a place follows demand, and when a subnet is full a newcomer takes the place of the lowest earner that is past a 7-day immunity. During the 90-day launch period the launch operator runs the first validators and registers new miners for free through its registration service.
 
 **Model choice (decided 27 November 2026):** SN0 is open to ordinary hardware and to new models as they appear. Instead of one fixed model, the chain holds a list of approved open models, each with its weight file's hash, the memory it needs and a value factor G. Each miner chooses a model its machine can run, and its work units become W × G, so a miner that offers the network a better model earns more ICT per verified token. The list starts with the Qwen3.5 family (Apache 2.0):
 

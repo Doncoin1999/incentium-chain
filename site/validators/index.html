@@ -293,11 +293,11 @@ bash install-operator.sh mainnet --producer YOUR_STASH_ADDRESS</code></pre></li>
       <table>
         <tr><th>Role</th><th>Add</th><th>Condition</th><th>Paid from</th></tr>
         <tr><td>Block producer</td><td><code>--producer &lt;stash&gt;</code></td><td>Bond at least <span id="min-v">100</span> ICT</td><td>2 % of issuance and all fees, by blocks written</td></tr>
-        <tr><td>SN0 validator</td><td><code>--sn0-validator</code></td><td>1,000 ICT staked on the hotkey</td><td>The validators' share of SN0, by stake</td></tr>
+        <tr><td>SN0 validator</td><td><code>--sn0-validator</code></td><td>Registration fee, then 1,000 ICT staked on the hotkey</td><td>The validators' share of SN0, by stake</td></tr>
         <tr><td>Public RPC node</td><td><code>--rpc &lt;domain&gt;</code></td><td>100 ICT deposit in the endpoint register, returned when you leave</td><td>Up to 5 % of issuance, by measured availability</td></tr>
         <tr><td>Archive node</td><td><code>--rpc &lt;domain&gt; --archive</code></td><td>The same deposit</td><td>The same pot, counted double</td></tr>
       </table>
-      <p class="note">A producer earns by the blocks it writes, after its commission is shared with those who back it. Cheating in block finality costs at least 10 % of the bond; a day without blocks takes you off the candidate list, without a cut. The installer also sets up a reporter key that reports the daily endpoint probes with your stake. On mainnet the producer role waits for runtime 12 (see above); the other roles work there as the chain adds them. During the launch period new SN0 validators are registered by the launch operator; after it, anyone registers with the neuron fee.</p>
+      <p class="note">A producer earns by the blocks it writes, after its commission is shared with those who back it. Cheating in block finality costs at least 10 % of the bond; a day without blocks takes you off the candidate list, without a cut. The installer also sets up a reporter key that reports the daily endpoint probes with your stake. On mainnet the producer role waits for runtime 12 (see above); the other roles work there as the chain adds them. Anyone registers an SN0 hotkey (<code>registry.registerNeuron</code>) for a fee that follows demand; when SN0 is full, a new registration takes the place of the lowest earner that is past its 7-day immunity and holds no validator stake.</p>
     </div>
     <div class="card">
       <h3>Back a block producer</h3>

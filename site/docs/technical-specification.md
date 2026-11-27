@@ -533,7 +533,7 @@ Accounts collect their unlocked share with `claim_launch_rewards`. The schedule 
 | Item | Module | Rule |
 | --- | --- | --- |
 | `BootstrapUntil`, `BootstrapOperator` | `subnet-registry` | Set in genesis: 648,000 blocks and the launch operator |
-| `register_neuron` | `subnet-registry` | In the launch period only the launch operator registers, without fee |
+| `register_neuron` | `subnet-registry` | Anyone registers on any subnet (decided 27 Nov 2026). The fee follows demand: it doubles after a 2-hour interval with more than 3 registrations and falls 10 % after one with fewer, never below the subnet's base fee or above 1,000 ICT. A full subnet (1,024 slots) gives the uid of the neuron with the lowest earnings score (7/8 kept per epoch, payouts added) that is past its 7-day immunity and holds no validator stake to the newcomer; nobody is paid for that uid in the epoch it changed hands. In the launch period the launch operator still registers without a fee, for the free registration service |
 | `end_bootstrap` | `subnet-registry` | Ends the launch period early; it cannot be extended or restarted |
 | `stake` | `ict-consensus` | No minimum stake in the launch period |
 | Launch vault, `LaunchLocked`, `claim_launch_rewards` | `ict-consensus` | Pays 25% of launch-period rewards at once (LaunchImmediatePpm = 250,000) and locks 75%; 2-month lock, then 10% every 2 months |
@@ -590,7 +590,7 @@ A new miner should earn their first ICT within 15 minutes, without opening ports
 | 5 | Pool web page over the existing pallets | Day 90 of mainnet |
 | 6 | Onboarding test with outside users (a mainnet readiness criterion) | Before mainnet |
 
-During the 90-day launch period only the launch operator registers miners, so the app and the pool page must be ready when registration opens on day 90.
+Registration is open to anyone (decided 27 Nov 2026); in the 90-day launch period the launch operator's free registration service registers new miners without a fee.
 
 ## 13. Public access and stake-for-access
 
