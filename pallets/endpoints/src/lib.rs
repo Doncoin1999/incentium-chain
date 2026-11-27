@@ -257,6 +257,17 @@ pub mod pallet {
     pub type Reported<T: Config> =
         StorageDoubleMap<_, Twox64Concat, Day, Blake2_128Concat, T::AccountId, ()>;
 
+    /// Reporter key of a principal (a block producer's stash or an SN0 hotkey): a key kept on
+    /// the operator's server that reports on the principal's behalf, so the stash never has to.
+    #[pallet::storage]
+    pub type ReporterKey<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, T::AccountId>;
+
+    /// Principal a reporter key reports for.
+    #[pallet::storage]
+    pub type PrincipalOf<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, T::AccountId>;
+
     #[pallet::storage]
     pub type Tallies<T: Config> =
         StorageDoubleMap<_, Twox64Concat, Day, Twox64Concat, EndpointId, Tally<T>, ValueQuery>;
@@ -279,10 +290,16 @@ pub mod pallet {
         Deregistered {
             id: EndpointId,
         },
+        /// `reporter` is the principal (stash or SN0 hotkey) whose stake the report carries.
         Reported {
             day: Day,
             reporter: T::AccountId,
             endpoints: u32,
+        },
+        /// A principal set (or, with `None`, removed) the key that reports for it.
+        ReporterSet {
+            principal: T::AccountId,
+            reporter: Option<T::AccountId>,
         },
         /// A day was settled: `paid` to endpoints, `to_fund` back to the development fund.
         Settled {
@@ -326,6 +343,8 @@ pub mod pallet {
         BadScore,
         TooManyReports,
         BadParams,
+        /// The key already reports for another principal, or is itself a principal with a key.
+        ReporterInUse,
     }
 
     #[pallet::hooks]
@@ -450,15 +469,18 @@ pub mod pallet {
 
         /// A block producer or SN0 validator reports yesterday's probe results: for each
         /// endpoint it probed, the share of probes that passed, in percent. One report per
-        /// reporter per day.
+        /// principal per day, sent by the principal itself or by its reporter key
+        /// (`set_reporter`). A report that is accepted pays no fee, so a reporter key needs only
+        /// a little ICT up front for the fee check.
         #[pallet::call_index(3)]
         #[pallet::weight(T::WeightInfo::report(scores.len() as u32))]
         pub fn report(
             origin: OriginFor<T>,
             day: Day,
             scores: Vec<(EndpointId, u8)>,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+        ) -> DispatchResultWithPostInfo {
+            let sender = ensure_signed(origin)?;
+            let who = PrincipalOf::<T>::get(&sender).unwrap_or(sender);
             let stake = T::Reporters::stake_of(&who);
             ensure!(stake > 0, Error::<T>::NotReporter);
             ensure!(
@@ -492,6 +514,37 @@ pub mod pallet {
                 day,
                 reporter: who,
                 endpoints: scores.len() as u32,
+            });
+            Ok(Pays::No.into())
+        }
+
+        /// Name the key that reports for the caller (a block producer's stash, signed in its own
+        /// wallet, or an SN0 hotkey); `None` removes it. The key then reports with the caller's
+        /// stake; the caller can still report itself. One key per principal, one principal per key.
+        #[pallet::call_index(5)]
+        #[pallet::weight(T::WeightInfo::set_reporter())]
+        pub fn set_reporter(origin: OriginFor<T>, reporter: Option<T::AccountId>) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            // A reporter key cannot name a reporter of its own.
+            ensure!(!PrincipalOf::<T>::contains_key(&who), Error::<T>::ReporterInUse);
+            if let Some(r) = &reporter {
+                ensure!(
+                    r != &who
+                        && PrincipalOf::<T>::get(r).is_none_or(|p| p == who)
+                        && !ReporterKey::<T>::contains_key(r),
+                    Error::<T>::ReporterInUse
+                );
+            }
+            if let Some(old) = ReporterKey::<T>::take(&who) {
+                PrincipalOf::<T>::remove(old);
+            }
+            if let Some(r) = &reporter {
+                ReporterKey::<T>::insert(&who, r);
+                PrincipalOf::<T>::insert(r, &who);
+            }
+            Self::deposit_event(Event::ReporterSet {
+                principal: who,
+                reporter,
             });
             Ok(())
         }

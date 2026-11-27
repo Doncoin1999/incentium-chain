@@ -271,7 +271,13 @@ def main():
         kp = Keypair.create_from_uri(read_key(a, ap), ss58_format=SS58_FORMAT)
     chain = attach(SubstrateChain(a.url, kp))
     if not has_register(chain):
-        raise SystemExit("this chain has no endpoint register (Endpoints pallet) yet")
+        if a.once or a.dry_run:
+            raise SystemExit("this chain has no endpoint register (Endpoints pallet) yet")
+        # Installed ahead of the runtime upgrade that brings the register: wait for it.
+        print("no endpoint register on this chain yet; checking again every hour", flush=True)
+        while not has_register(chain):
+            time.sleep(3600)
+            chain = attach(SubstrateChain(a.url, kp))
     p = Prober(chain, ProbeState.load(a.state_file), dry_run=a.dry_run,
                log=lambda m: print(m, flush=True))
     if a.once:
