@@ -395,6 +395,15 @@ pub mod pallet {
 
     /// Bounds the protocol puts on subnet settings.
     pub const MAX_NEURON_FEE: u128 = 1_000 * ict_economics::UNIT;
+    /// Registration fees adjust once per interval (2 hours).
+    pub const REG_INTERVAL: u32 = 600;
+    /// Registrations per interval the fee aims for: more doubles it, fewer lowers it by 10 %.
+    pub const REG_TARGET: u32 = 3;
+    /// A newly registered neuron cannot be replaced for 7 days.
+    pub const NEURON_IMMUNITY: u32 = 7 * DAY;
+    /// Epochs a neuron's earnings score halves over... per epoch it keeps 7/8.
+    pub const SCORE_KEEP_NUM: u128 = 7;
+    pub const SCORE_KEEP_DEN: u128 = 8;
     pub const MIN_NEURON_SLOTS: u16 = 16;
     pub const MAX_FAILURES_LIMIT: u8 = 10;
     /// Failure window between 1 and 90 days, in epochs of the runtime (20 per day).
@@ -674,6 +683,28 @@ pub mod pallet {
     #[pallet::storage]
     pub type NeuronCount<T> = StorageMap<_, Twox64Concat, NetUid, u16, ValueQuery>;
 
+    /// Block a uid was (re)registered at; neurons from before replacement existed have none (0).
+    #[pallet::storage]
+    pub type RegisteredAt<T> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Twox64Concat, Uid, u32, ValueQuery>;
+
+    /// Block a uid last changed hands by replacement. Weights set before it were for the
+    /// neuron that left, so consensus pays nobody for that uid in that epoch.
+    #[pallet::storage]
+    pub type ReplacedAt<T> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Twox64Concat, Uid, u32, ValueQuery>;
+
+    /// Earnings score per uid: (score, epoch it was last updated). Each epoch it keeps 7/8, and
+    /// every payout is added. When a subnet is full, a new registration replaces the neuron with
+    /// the lowest score that is past its immunity and is not a staked validator.
+    #[pallet::storage]
+    pub type NeuronScore<T> =
+        StorageDoubleMap<_, Twox64Concat, NetUid, Twox64Concat, Uid, (u128, u64), ValueQuery>;
+
+    /// Registration fee state per subnet: (fee, start block of the interval, registrations in it).
+    #[pallet::storage]
+    pub type RegFee<T> = StorageMap<_, Twox64Concat, NetUid, (u128, u32, u32), OptionQuery>;
+
     /// Public endpoint a neuron serves on (e.g. `https://1.2.3.4:8091`), so validators can
     /// find miners without an off-chain directory.
     #[pallet::storage]
@@ -837,6 +868,14 @@ pub mod pallet {
             netuid: NetUid,
             uid: Uid,
             hotkey: T::AccountId,
+        },
+        /// The subnet was full: a new neuron took the uid of the one with the lowest score.
+        NeuronReplaced {
+            netuid: NetUid,
+            uid: Uid,
+            old: T::AccountId,
+            new: T::AccountId,
+            fee: u128,
         },
         /// All unlock criteria held; the SN1 auction starts at `auction_start`.
         RegistrationUnlocked {
@@ -1139,7 +1178,13 @@ pub mod pallet {
             Self::do_deregister(netuid)
         }
 
-        /// Register a hotkey as a neuron; the fee is burned.
+        /// Register a hotkey as a neuron (anyone, for any hotkey); the fee is burned. The fee
+        /// follows demand: it doubles after an interval with more than `REG_TARGET`
+        /// registrations and falls 10 % after one with fewer, never below the subnet's base fee.
+        /// When the subnet is full, the new neuron takes the uid of the neuron with the lowest
+        /// earnings score that is past its 7-day immunity and is not a staked validator.
+        /// During the launch period the launch operator registers without a fee (the free
+        /// registration service for new miners); everyone else pays.
         #[pallet::call_index(2)]
         #[pallet::weight(<T as Config>::WeightInfo::register_neuron())]
         pub fn register_neuron(
@@ -1153,35 +1198,57 @@ pub mod pallet {
                 !NeuronUid::<T>::contains_key(netuid, &hotkey),
                 Error::<T>::AlreadyRegistered
             );
-            let uid = NeuronCount::<T>::get(netuid);
             let params = Self::params(netuid);
-            ensure!(
-                uid < params.max_neurons.min(T::MaxNeurons::get()),
-                Error::<T>::SubnetFull
-            );
-            if Self::in_bootstrap() {
-                // Bootstrap: the operator registers its own hotkeys, without a fee.
-                ensure!(
-                    BootstrapOperator::<T>::get().as_ref() == Some(&who),
-                    Error::<T>::BootstrapRestricted
-                );
+            let count = NeuronCount::<T>::get(netuid);
+            let full = count >= params.max_neurons.min(T::MaxNeurons::get());
+            let replace = if full {
+                Some(Self::prune_candidate(netuid).ok_or(Error::<T>::SubnetFull)?)
             } else {
+                None
+            };
+            let free = Self::in_bootstrap() && BootstrapOperator::<T>::get().as_ref() == Some(&who);
+            let fee = Self::reg_fee(netuid);
+            if !free {
                 T::Currency::burn_from(
                     &who,
-                    params.neuron_fee,
+                    fee,
                     Preservation::Preserve,
                     Precision::Exact,
                     Fortitude::Polite,
                 )?;
             }
-            Neurons::<T>::insert(netuid, uid, hotkey.clone());
-            NeuronUid::<T>::insert(netuid, hotkey.clone(), uid);
-            NeuronCount::<T>::insert(netuid, uid + 1);
-            Self::deposit_event(Event::NeuronRegistered {
-                netuid,
-                uid,
-                hotkey,
-            });
+            Self::note_registration(netuid);
+            let now = Self::now();
+            match replace {
+                Some(uid) => {
+                    let old = Neurons::<T>::get(netuid, uid).ok_or(Error::<T>::NotRegistered)?;
+                    Self::clear_neuron(netuid, &old);
+                    Neurons::<T>::insert(netuid, uid, hotkey.clone());
+                    NeuronUid::<T>::insert(netuid, hotkey.clone(), uid);
+                    RegisteredAt::<T>::insert(netuid, uid, now);
+                    ReplacedAt::<T>::insert(netuid, uid, now);
+                    NeuronScore::<T>::remove(netuid, uid);
+                    Self::deposit_event(Event::NeuronReplaced {
+                        netuid,
+                        uid,
+                        old,
+                        new: hotkey,
+                        fee: if free { 0 } else { fee },
+                    });
+                }
+                None => {
+                    let uid = count;
+                    Neurons::<T>::insert(netuid, uid, hotkey.clone());
+                    NeuronUid::<T>::insert(netuid, hotkey.clone(), uid);
+                    NeuronCount::<T>::insert(netuid, uid + 1);
+                    RegisteredAt::<T>::insert(netuid, uid, now);
+                    Self::deposit_event(Event::NeuronRegistered {
+                        netuid,
+                        uid,
+                        hotkey,
+                    });
+                }
+            }
             Ok(())
         }
 
@@ -1817,6 +1884,107 @@ pub mod pallet {
                 Error::<T>::BadModelParams
             );
             Ok(())
+        }
+
+        fn now() -> u32 {
+            polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into()
+        }
+
+        /// The fee state brought up to now: (fee, interval start, registrations in it).
+        fn fee_state(netuid: NetUid) -> (u128, u32, u32) {
+            let base = Self::params(netuid).neuron_fee;
+            let now = Self::now();
+            let start_now = now - now % REG_INTERVAL;
+            let (mut fee, start, regs) = RegFee::<T>::get(netuid).unwrap_or((base, start_now, 0));
+            if start < start_now {
+                // The interval that ended, then empty intervals after it.
+                fee = if regs > REG_TARGET {
+                    fee.saturating_mul(2)
+                } else if regs < REG_TARGET {
+                    fee.saturating_mul(9) / 10
+                } else {
+                    fee
+                };
+                let empty = ((start_now - start) / REG_INTERVAL).saturating_sub(1).min(64);
+                for _ in 0..empty {
+                    fee = fee.saturating_mul(9) / 10;
+                    if fee <= base {
+                        break;
+                    }
+                }
+                return (fee.clamp(base, MAX_NEURON_FEE.max(base)), start_now, 0);
+            }
+            (fee.clamp(base, MAX_NEURON_FEE.max(base)), start, regs)
+        }
+
+        /// What registering on `netuid` costs right now.
+        pub fn reg_fee(netuid: NetUid) -> u128 {
+            Self::fee_state(netuid).0
+        }
+
+        fn note_registration(netuid: NetUid) {
+            let (fee, start, regs) = Self::fee_state(netuid);
+            RegFee::<T>::insert(netuid, (fee, start, regs.saturating_add(1)));
+        }
+
+        /// A neuron's earnings score now (7/8 kept per epoch since its last payout).
+        pub fn neuron_score(netuid: NetUid, uid: Uid) -> u128 {
+            let (score, at) = NeuronScore::<T>::get(netuid, uid);
+            let now = Self::current_epoch();
+            let mut s = score;
+            for _ in 0..now.saturating_sub(at).min(64) {
+                s = s * SCORE_KEEP_NUM / SCORE_KEEP_DEN;
+            }
+            s
+        }
+
+        /// Called by consensus for every payout to a neuron.
+        pub fn note_neuron_paid(netuid: NetUid, uid: Uid, amount: u128) {
+            let s = Self::neuron_score(netuid, uid).saturating_add(amount);
+            NeuronScore::<T>::insert(netuid, uid, (s, Self::current_epoch()));
+        }
+
+        fn current_epoch() -> u64 {
+            (Self::now() / (DAY / 20).max(1)) as u64
+        }
+
+        /// The uid a new registration replaces when the subnet is full: the lowest score among
+        /// neurons past their immunity that are not validators with stake (`ModelDeclarerStake`
+        /// on SN0, any stake on other subnets); the oldest registration on a tie.
+        pub fn prune_candidate(netuid: NetUid) -> Option<Uid> {
+            let now = Self::now();
+            let mut best: Option<(u128, u32, Uid)> = None;
+            for uid in 0..NeuronCount::<T>::get(netuid) {
+                let at = RegisteredAt::<T>::get(netuid, uid);
+                if now < at.saturating_add(NEURON_IMMUNITY) {
+                    continue;
+                }
+                let Some(hk) = Neurons::<T>::get(netuid, uid) else { continue };
+                let stake = T::StakeInfo::stake_of(netuid, &hk);
+                let protected = if netuid == SN0 {
+                    stake >= T::ModelDeclarerStake::get()
+                } else {
+                    stake > 0
+                };
+                if protected {
+                    continue;
+                }
+                let key = (Self::neuron_score(netuid, uid), at, uid);
+                if best.is_none_or(|b| (key.0, key.1) < (b.0, b.1)) {
+                    best = Some(key);
+                }
+            }
+            best.map(|b| b.2)
+        }
+
+        /// Remove everything the registry keeps for a hotkey that leaves `netuid`.
+        fn clear_neuron(netuid: NetUid, hotkey: &T::AccountId) {
+            NeuronUid::<T>::remove(netuid, hotkey);
+            Endpoints::<T>::remove(netuid, hotkey);
+            NeuronModel::<T>::remove(netuid, hotkey);
+            if netuid == SN0 {
+                ValidatorModels::<T>::remove(hotkey);
+            }
         }
 
         /// Registered on SN0 with at least `ModelDeclarerStake` of SN0 stake.

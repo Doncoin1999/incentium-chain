@@ -113,6 +113,12 @@ impl<T: frame_system::Config> pallet_subnet_registry::WeightInfo for WeightInfo<
 			.saturating_add(Weight::from_parts(0, 3593))
 			.saturating_add(T::DbWeight::get().reads(5))
 			.saturating_add(T::DbWeight::get().writes(4))
+			// Estimate until benchmarked: a full subnet is scanned for the neuron to replace
+			// (registration block, hotkey, stake and score per slot, 1,024 slots), plus the fee
+			// state and clearing the old neuron.
+			.saturating_add(Weight::from_parts(10_000_000, 400).saturating_mul(1024))
+			.saturating_add(T::DbWeight::get().reads(4 * 1024 + 2))
+			.saturating_add(T::DbWeight::get().writes(8))
 	}
 	/// Storage: `Registry::NeuronUid` (r:1 w:0)
 	/// Proof: `Registry::NeuronUid` (`max_values`: None, `max_size`: Some(60), added: 2535, mode: `MaxEncodedLen`)
@@ -152,8 +158,8 @@ impl<T: frame_system::Config> pallet_subnet_registry::WeightInfo for WeightInfo<
 	/// and stake (256 slots).
 	fn set_model() -> Weight {
 		Weight::from_parts(60_000_000, 0)
-			.saturating_add(Weight::from_parts(25_000_000, 600).saturating_mul(256))
-			.saturating_add(T::DbWeight::get().reads(3 + 2 * 256))
+			.saturating_add(Weight::from_parts(25_000_000, 600).saturating_mul(1024))
+			.saturating_add(T::DbWeight::get().reads(3 + 2 * 1024))
 			.saturating_add(T::DbWeight::get().writes(3))
 	}
 	/// Estimate until benchmarked.

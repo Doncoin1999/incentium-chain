@@ -166,7 +166,8 @@ parameter_types! {
     pub InsuranceFund: AccountId = InsurancePalletId::get().into_account_truncating();
 
     pub const NeuronFee: Balance = UNIT;
-    pub const MaxNeurons: u16 = 256;
+    /// Neuron slots per subnet; when full, a new registration replaces the lowest earner.
+    pub const MaxNeurons: u16 = 1024;
     /// Deposit to propose a model for SN0's open list (spec Section 5).
     pub const ModelDeposit: Balance = 100 * UNIT;
 
