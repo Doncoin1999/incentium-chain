@@ -6897,6 +6897,7 @@ version = "0.1.0"
 dependencies = [
  "ict-economics",
  "pallet-block-producers",
+ "pallet-endpoints",
  "pallet-ict-consensus",
  "pallet-ict-emission",
  "pallet-ict-swap",
@@ -10163,6 +10164,15 @@ dependencies = [
  "sp-npos-elections",
  "sp-runtime 49.0.0",
  "sp-staking 46.0.0",
+]
+
+[[package]]
+name = "pallet-endpoints"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "polkadot-sdk",
+ "scale-info",
 ]
 
 [[package]]

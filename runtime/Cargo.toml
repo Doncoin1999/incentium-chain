@@ -63,6 +63,7 @@ pallet-weights = { path = "../pallets/weights", default-features = false }
 pallet-work-verify = { path = "../pallets/work-verify", default-features = false }
 pallet-ict-consensus = { path = "../pallets/ict-consensus", default-features = false }
 pallet-ict-swap = { path = "../pallets/ict-swap", default-features = false }
+pallet-endpoints = { path = "../pallets/endpoints", default-features = false }
 pallet-block-producers = { path = "../pallets/block-producers", default-features = false }
 pallet-subnet-pools = { path = "../pallets/subnet-pools", default-features = false }
 
@@ -83,6 +84,7 @@ std = [
     "pallet-work-verify/std",
     "pallet-ict-consensus/std",
     "pallet-ict-swap/std",
+    "pallet-endpoints/std",
     "pallet-block-producers/std",
     "pallet-subnet-pools/std",
     "substrate-wasm-builder",
@@ -99,5 +101,6 @@ runtime-benchmarks = [
     "pallet-work-verify/runtime-benchmarks",
     "pallet-ict-consensus/runtime-benchmarks",
     "pallet-ict-swap/runtime-benchmarks",
+    "pallet-endpoints/runtime-benchmarks",
     "pallet-subnet-pools/runtime-benchmarks",
 ]

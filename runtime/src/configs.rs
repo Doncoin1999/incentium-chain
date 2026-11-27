@@ -156,11 +156,13 @@ parameter_types! {
     pub const WorkPalletId: PalletId = PalletId(*b"ict/work");
     pub const StakePalletId: PalletId = PalletId(*b"ict/stak");
     pub const LaunchPalletId: PalletId = PalletId(*b"ict/lnch");
+    pub const EndpointPotId: PalletId = PalletId(*b"ict/epot");
 
     /// On-chain development fund (treasury), spent only by governance.
     pub FundAccount: AccountId = FundPalletId::get().into_account_truncating();
     /// Subnet issuance waiting for consensus payout.
     pub SubnetPot: AccountId = PotPalletId::get().into_account_truncating();
+    pub EndpointPot: AccountId = EndpointPotId::get().into_account_truncating();
     pub InsuranceFund: AccountId = InsurancePalletId::get().into_account_truncating();
 
     pub const NeuronFee: Balance = UNIT;
@@ -208,6 +210,7 @@ impl pallet_ict_emission::Config for Runtime {
     type FundAccount = FundAccount;
     type SubnetPot = SubnetPot;
     type ValidatorPot = crate::block_production::ValidatorPot;
+    type EndpointPot = EndpointPot;
 }
 
 impl pallet_subnet_registry::Config for Runtime {
@@ -435,4 +438,55 @@ impl pallet_subnet_pools::Config for Runtime {
     type FeePpm = PoolFeePpm;
     type FeeBurnPpm = PoolFeeBurnPpm;
     type MinTrade = PoolMinTrade;
+}
+
+// ---------------------------------------------------------------- endpoint register (spec 19.2)
+
+parameter_types! {
+    pub const EndpointBlocksPerDay: u32 = 7_200;
+    pub const EndpointMaxUrlLen: u32 = 128;
+    pub const EndpointMaxPerOwner: u32 = 4;
+    pub const EndpointMaxEntries: u32 = 512;
+    pub const EndpointMaxReporters: u32 = 128;
+    pub const EndpointInactiveAfterDays: u8 = 7;
+}
+
+/// Probe reports count from block producers in the current session (their own bonded stake)
+/// and SN0 validators (their SN0 stake).
+pub struct EndpointReporters;
+impl pallet_endpoints::ReporterStake<AccountId> for EndpointReporters {
+    fn stake_of(who: &AccountId) -> u128 {
+        use pallet_work_verify::StakeOracle;
+        let producer = if pallet_session::Validators::<Runtime>::get().contains(who) {
+            pallet_staking::Pallet::<Runtime>::slashable_balance_of(who)
+        } else {
+            0
+        };
+        producer.saturating_add(<pallet_ict_consensus::Pallet<Runtime> as StakeOracle<AccountId>>::stake_of(who))
+    }
+    fn total() -> u128 {
+        use pallet_work_verify::StakeOracle;
+        let producers: u128 = pallet_session::Validators::<Runtime>::get()
+            .iter()
+            .map(pallet_staking::Pallet::<Runtime>::slashable_balance_of)
+            .sum();
+        producers.saturating_add(<pallet_ict_consensus::Pallet<Runtime> as StakeOracle<AccountId>>::active_stake())
+    }
+}
+
+impl pallet_endpoints::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = ();
+    type RuntimeHoldReason = RuntimeHoldReason;
+    type Currency = Balances;
+    type Reporters = EndpointReporters;
+    type Pot = EndpointPot;
+    type FundAccount = FundAccount;
+    type ParamsOrigin = frame_system::EnsureRoot<AccountId>;
+    type BlocksPerDay = EndpointBlocksPerDay;
+    type MaxUrlLen = EndpointMaxUrlLen;
+    type MaxPerOwner = EndpointMaxPerOwner;
+    type MaxEndpoints = EndpointMaxEntries;
+    type MaxReporters = EndpointMaxReporters;
+    type InactiveAfterDays = EndpointInactiveAfterDays;
 }

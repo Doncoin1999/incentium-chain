@@ -177,6 +177,8 @@ mod runtime {
     /// ICT <-> USDC atomic swaps with Base (Incentium Swap spec v0.1).
     #[runtime::pallet_index(15)]
     pub type Swap = pallet_ict_swap;
+    #[runtime::pallet_index(16)]
+    pub type Endpoints = pallet_endpoints;
 
     // Governance and the development fund (governance.rs).
     #[runtime::pallet_index(20)]
