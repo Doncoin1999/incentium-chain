@@ -169,8 +169,46 @@ def test_validator_uses_chain_tiers_and_skips_other_tiers():
         stats = v.measure(0)
         assert [s.uid for s in stats] == [1]  # the tier-1 miner is left to tier-1 validators
         assert stats[0].g == 0.5 and stats[0].tier == 0
-        assert any("uid 2: tier 1" in line for line in v.log)
+        assert any("uid 2: model 1" in line for line in v.log)
         assert stats[0].work_units() == stats[0].tokens * 0.5
+    finally:
+        srv.shutdown()
+
+
+def test_models_that_are_not_paid_or_lack_holders_get_no_tasks():
+    from incentium_neuron.validator import TierInfo
+
+    chain = FakeChain([(0, "validator", "", 0), (1, "four-b", "", 5)])
+    chain.holders = 2
+    chain.model_holders = lambda m: chain.holders
+    chain.tiers = lambda: {5: TierInfo(0.2, 0.35, "Qwen3.5-4B", "ab" * 32, False, "Proposed")}
+    v, srv, _ = make_validator(chain, [("four-b", MockBackend(noise=0.05))], tier=5)
+    try:
+        assert v.measure(0) == []
+        assert any("is Proposed; no tasks" in line for line in v.log)
+        # Open, but only two validators hold it.
+        chain.tiers = lambda: {5: TierInfo(0.2, 0.35, "Qwen3.5-4B", "ab" * 32, True, "Open")}
+        assert v.measure(1) == []
+        assert any("2 declaring validators" in line for line in v.log)
+        # A third validator declares it: tasked and paid. Retiring is still paid.
+        chain.holders = 3
+        assert [s.uid for s in v.measure(2)] == [1]
+        chain.tiers = lambda: {5: TierInfo(0.2, 0.35, "Qwen3.5-4B", "ab" * 32, False, "Retiring")}
+        stats = v.measure(3)
+        assert [s.uid for s in stats] == [1] and stats[0].g == 0.2
+    finally:
+        srv.shutdown()
+
+
+def test_the_launch_model_needs_no_three_holders():
+    from incentium_neuron.validator import TierInfo
+
+    chain = FakeChain([(0, "validator", "", 0), (1, "two-b", "", 0)])
+    chain.model_holders = lambda m: 1
+    chain.tiers = lambda: {0: TierInfo(0.1, 0.35, "Qwen3.5-2B", "ab" * 32, True, "Open")}
+    v, srv, _ = make_validator(chain, [("two-b", MockBackend(noise=0.05))])
+    try:
+        assert [s.uid for s in v.measure(0)] == [1]
     finally:
         srv.shutdown()
 

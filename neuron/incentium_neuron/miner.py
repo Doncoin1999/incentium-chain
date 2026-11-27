@@ -84,7 +84,8 @@ def main():
     ap.add_argument("--url", default="ws://127.0.0.1:9944", help="chain RPC, to find validators")
     ap.add_argument("--validator", action="append", default=[],
                     help="validator task-server URL (repeatable); default: found on chain")
-    ap.add_argument("--tier", type=int, help="declare this SN0 tier on chain (retried until it holds)")
+    ap.add_argument("--tier", "--model-id", dest="tier", type=int,
+                    help="declare this model (id in the SN0 model list) on chain (retried until it holds)")
     a = ap.parse_args()
     from .validator import read_key
 
@@ -103,7 +104,7 @@ def main():
                 from .validator import SN0, SubstrateChain
 
                 tchain = SubstrateChain(a.url, kp)
-                have = tchain.s.query("Registry", "NeuronTier", [SN0, kp.ss58_address]).value
+                have = tchain.neuron_model(SN0, kp.ss58_address)
                 if have != a.tier:
                     tchain.declare_tier(SN0, a.tier)
                 print(f"tier {a.tier} declared", flush=True)

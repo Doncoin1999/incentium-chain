@@ -2,9 +2,11 @@
 
 Each epoch:
  1. Reveal the weights committed in the previous epoch.
- 2. Read miners, their declared tiers and the tier table from chain. A validator checks the
-    tier its reference model serves (`--tier`); miners of other tiers are left to validators
-    that run those references.
+ 2. Read miners, their declared models and the open model list from chain (`Registry.Models`;
+    older runtimes: the tier table). A validator checks the model its reference serves
+    (`--tier`, the model id); miners of other models are left to validators that hold those.
+    A model that is not open or retiring gets no tasks, nor does a model other than the
+    launch model (id 0) that fewer than three validators declare on chain.
  3. Publish tasks (prompts) for each miner on its task server; miners fetch them, answer and
     post signed results before the deadline (pull mode: miners need no open port).
  4. Count tokens and answered tasks, spot-check a random share of answers by re-running them
@@ -31,14 +33,26 @@ from .tasks import Task, TaskBoard
 
 SN0 = 0
 PPM = 1_000_000
+# A model other than the launch model gets tasks only while this many validators declare it.
+MIN_MODEL_HOLDERS = 3
+LAUNCH_MODEL = 0
 
 
 class TierInfo(NamedTuple):
-    g: float  # tier weight G
+    """One entry of the model list (the id is the former tier number)."""
+    g: float  # value factor G
     tolerance: float  # max spot-check distance
     model: str
-    model_hash: str  # hex, all zero until locked
-    open: bool
+    model_hash: str  # hex, all zero until pinned
+    open: bool  # miners may declare it now
+    status: str = "Open"  # Proposed | Open | Retiring | Closed
+    mem_mb: int = 0
+    engine: str = ""
+
+    @property
+    def paid(self) -> bool:
+        """Miners that declared it are tasked and paid (open, or retiring in its transition)."""
+        return self.status in ("Open", "Retiring")
 
 
 class Chain(Protocol):
@@ -109,14 +123,25 @@ class Validator:
         tiers = self.chain.tiers() if hasattr(self.chain, "tiers") else {}
         info = tiers.get(self.tier)
         miners, tasks = [], []
+        if info is not None and not info.paid:
+            self.log.append(f"epoch {epoch}: model {self.tier} ({info.model}) is {info.status}; no tasks")
+            self.board.publish(epoch, time.time() + self.collect_seconds, [])
+            return [], None, None
+        if self.tier != LAUNCH_MODEL and hasattr(self.chain, "model_holders"):
+            holders = self.chain.model_holders(self.tier)
+            if holders < MIN_MODEL_HOLDERS:
+                self.log.append(f"epoch {epoch}: model {self.tier} has {holders} declaring validators "
+                                f"(needs {MIN_MODEL_HOLDERS}); no tasks")
+                self.board.publish(epoch, time.time() + self.collect_seconds, [])
+                return [], None, None
         for m in self.chain.miners(SN0):
             uid, hotkey = m[0], m[1]
             miner_tier = m[3] if len(m) > 3 else 0
             if uid == self.own_uid or hotkey in getattr(self.chain, "validator_hotkeys", lambda: set())():
                 continue
             if miner_tier != self.tier:
-                self.log.append(f"epoch {epoch} uid {uid}: tier {miner_tier}, this validator checks "
-                                f"tier {self.tier}; skipped")
+                self.log.append(f"epoch {epoch} uid {uid}: model {miner_tier}, this validator checks "
+                                f"model {self.tier}; skipped")
                 continue
             miners.append((uid, hotkey))
             for i in range(self.prompts_per_miner):
@@ -231,6 +256,22 @@ class SubstrateChain:
     def current_epoch(self) -> int:
         return self._retry(lambda: self.s.get_block_number(None)) // self.epoch_length
 
+    def has_storage(self, module: str, name: str) -> bool:
+        return self._retry(lambda: self.s.get_metadata_storage_function(module, name)) is not None
+
+    def has_call(self, module: str, name: str) -> bool:
+        return self._retry(lambda: self.s.get_metadata_call_function(module, name)) is not None
+
+    def model_list(self) -> bool:
+        """True on runtimes with the open model list (Registry.Models)."""
+        if not hasattr(self, "_model_list"):
+            self._model_list = self.has_storage("Registry", "Models")
+        return self._model_list
+
+    def neuron_model(self, netuid: int, hotkey: str) -> int:
+        item = "NeuronModel" if self.model_list() else "NeuronTier"
+        return int(self._retry(lambda: self.s.query("Registry", item, [netuid, hotkey]).value) or 0)
+
     def miners(self, netuid: int):
         return self._retry(lambda: self._miners(netuid))
 
@@ -240,7 +281,8 @@ class SubstrateChain:
             uid = key.value
             ep = self.s.query("Registry", "Endpoints", [netuid, hotkey.value])
             endpoint = decode_bytes(ep.value)
-            tier = self.s.query("Registry", "NeuronTier", [netuid, hotkey.value]).value or 0
+            item = "NeuronModel" if self.model_list() else "NeuronTier"
+            tier = self.s.query("Registry", item, [netuid, hotkey.value]).value or 0
             out.append((uid, hotkey.value, endpoint, int(tier)))
         return sorted(out)
 
@@ -271,17 +313,61 @@ class SubstrateChain:
         return self._retry(self._tiers)
 
     def _tiers(self) -> dict[int, TierInfo]:
+        if self.model_list():
+            return self._models()
         out = {}
         for key, v in self.s.query_map("Registry", "Tiers"):
             t = v.value
             h = t["model_hash"]
             h = h[2:] if isinstance(h, str) and h.startswith("0x") else bytes(h).hex() if not isinstance(h, str) else h
             out[int(key.value)] = TierInfo(t["weight_ppm"] / PPM, t["tolerance_ppm"] / PPM,
-                                           decode_bytes(t["model"]), h, bool(t["open"]))
+                                           decode_bytes(t["model"]), h, bool(t["open"]),
+                                           "Open" if t["open"] else "Closed")
+        return out
+
+    def _models(self) -> dict[int, TierInfo]:
+        out = {}
+        for key, v in self.s.query_map("Registry", "Models"):
+            m = v.value
+            status = m["status"] if isinstance(m["status"], str) else next(iter(m["status"]))
+            out[int(key.value)] = TierInfo(m["g_ppm"] / PPM, m["tolerance_ppm"] / PPM, decode_bytes(m["name"]),
+                                           hex_of(m["weights_hash"]), status == "Open", status,
+                                           int(m["mem_mb"]), decode_bytes(m["engine"]))
         return out
 
     def declare_tier(self, netuid: int, tier: int):
-        self._submit("Registry", "declare_tier", {"netuid": netuid, "tier": tier})
+        """Declare the model (former tier) this neuron runs."""
+        if self.model_list():
+            self._submit("Registry", "declare_model", {"netuid": netuid, "model": tier})
+        else:
+            self._submit("Registry", "declare_tier", {"netuid": netuid, "tier": tier})
+
+    declare_model = declare_tier
+
+    def validator_models(self, hotkey: str) -> list[int]:
+        if not self.model_list():
+            return []
+        return [int(x) for x in self._retry(lambda: self.s.query("Registry", "ValidatorModels", [hotkey]).value) or []]
+
+    def declare_validator_models(self, models: list[int]):
+        self._submit("Registry", "declare_validator_models", {"models": list(models)})
+
+    def model_holders(self, model: int) -> int:
+        """Validators that declare `model` and are registered on SN0 with stake. The chain also
+        requires `ModelDeclarerStake` when a model opens; this count is what the validators use
+        for tasking."""
+        if not self.model_list():
+            return MIN_MODEL_HOLDERS
+
+        def go():
+            n = 0
+            for key, ms in self.s.query_map("Registry", "ValidatorModels"):
+                if model in [int(x) for x in ms.value or []] \
+                        and self.s.query("Registry", "NeuronUid", [SN0, key.value]).value is not None \
+                        and self.s.query("Consensus", "Stake", [key.value]).value:
+                    n += 1
+            return n
+        return self._retry(go)
 
     def commit_weights(self, netuid, h):
         self._submit("Weights", "commit_weights", {"netuid": netuid, "hash": "0x" + h.hex()})
@@ -306,6 +392,13 @@ def read_key(a, ap) -> str:
     if a.key:
         return a.key
     ap.error("give --key or --key-file")
+
+
+def hex_of(h) -> str:
+    """A [u8; 32] from substrate-interface (0x-str or list of ints) as plain hex."""
+    if isinstance(h, str):
+        return h[2:] if h.startswith("0x") else h
+    return bytes(h).hex()
 
 
 def decode_bytes(v) -> str:
@@ -339,7 +432,8 @@ def main():
     ap.add_argument("--uid", type=int, required=True)
     ap.add_argument("--reference", required=True, help="OpenAI-compatible base URL of the reference model")
     ap.add_argument("--model", required=True)
-    ap.add_argument("--tier", type=int, default=0, help="tier the reference model serves (0 = 2B)")
+    ap.add_argument("--tier", "--model-id", dest="tier", type=int, default=0,
+                    help="id in the model list of the reference model (0 = Qwen3.5-2B)")
     ap.add_argument("--epoch-length", type=int, default=360)
     ap.add_argument("--prompts", type=int, default=8, help="prompts per miner per epoch")
     ap.add_argument("--max-tokens", type=int, default=32)
@@ -353,7 +447,16 @@ def main():
     chain = SubstrateChain(a.url, Keypair.create_from_uri(read_key(a, ap)), a.epoch_length)
     info = chain.tiers().get(a.tier)
     if info:
-        print(f"checking tier {a.tier}: {info.model}, G {info.g}, tolerance {info.tolerance}", flush=True)
+        print(f"checking model {a.tier}: {info.model} ({info.status}), G {info.g}, tolerance {info.tolerance}",
+              flush=True)
+    # Declare on chain that this validator holds the model, so it counts towards the three
+    # validators a model needs (needs SN0 registration and validator stake; retried next start).
+    if chain.model_list() and a.tier not in chain.validator_models(chain.kp.ss58_address):
+        try:
+            chain.declare_validator_models(sorted(set(chain.validator_models(chain.kp.ss58_address)) | {a.tier}))
+            print(f"declared model {a.tier} on chain", flush=True)
+        except Exception as e:
+            print(f"could not declare model {a.tier} yet: {e!r}", flush=True)
     from .tasks import serve_tasks
 
     host, port = a.listen.rsplit(":", 1)
