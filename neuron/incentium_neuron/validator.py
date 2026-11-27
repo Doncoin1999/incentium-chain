@@ -347,7 +347,7 @@ class SubstrateChain:
     def validator_models(self, hotkey: str) -> list[int]:
         if not self.model_list():
             return []
-        return [int(x) for x in self._retry(lambda: self.s.query("Registry", "ValidatorModels", [hotkey]).value) or []]
+        return u8_list(self._retry(lambda: self.s.query("Registry", "ValidatorModels", [hotkey]).value))
 
     def declare_validator_models(self, models: list[int]):
         self._submit("Registry", "declare_validator_models", {"models": list(models)})
@@ -362,7 +362,7 @@ class SubstrateChain:
         def go():
             n = 0
             for key, ms in self.s.query_map("Registry", "ValidatorModels"):
-                if model in [int(x) for x in ms.value or []] \
+                if model in u8_list(ms.value) \
                         and self.s.query("Registry", "NeuronUid", [SN0, key.value]).value is not None \
                         and self.s.query("Consensus", "Stake", [key.value]).value:
                     n += 1
@@ -392,6 +392,15 @@ def read_key(a, ap) -> str:
     if a.key:
         return a.key
     ap.error("give --key or --key-file")
+
+
+def u8_list(v) -> list[int]:
+    """A Vec<u8> / BoundedVec<u8> as substrate-interface returns it (a 0x-hex string, or a list)."""
+    if not v:
+        return []
+    if isinstance(v, str):
+        return list(bytes.fromhex(v[2:] if v.startswith("0x") else v))
+    return [int(x) for x in v]
 
 
 def hex_of(h) -> str:

@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "neuron"))
 
 import sn1_rehearsal as base  # noqa: E402
+from incentium_neuron.validator import u8_list  # noqa: E402
 
 UNIT = base.UNIT
 SN0 = 0
@@ -76,7 +77,7 @@ def cmd_status(c, a):
         return print("model list: NO - needs runtime 13")
     print("model list:")
     for i, m in sorted(c.models().items()):
-        holders = sum(1 for k, v in c.s.query_map("Registry", "ValidatorModels") if i in (v.value or []))
+        holders = sum(1 for k, v in c.s.query_map("Registry", "ValidatorModels") if i in u8_list(v.value))
         print(f"  {i}: {base_name(m):22} {status_of(m):9} G {m['g_ppm'] / 1e6:<5} "
               f"memory {m['mem_mb']} MB  hash {'pinned' if str(m['weights_hash']).strip('0x') else 'not pinned'}  "
               f"declared by {holders}  deposit {base.ict(m['deposit'])}")
@@ -85,7 +86,7 @@ def cmd_status(c, a):
         stake = c.q("Consensus", "Stake", [kp.ss58_address]) or 0
         print(f"  {n:<5} {kp.ss58_address}  uid {uid}  stake {base.ict(stake)}  "
               f"model {c.q('Registry', 'NeuronModel', [SN0, kp.ss58_address])}  "
-              f"declares {c.q('Registry', 'ValidatorModels', [kp.ss58_address])}")
+              f"declares {u8_list(c.q('Registry', 'ValidatorModels', [kp.ss58_address]))}")
     if c.has("Endpoints"):
         print(f"endpoint share: {c.q('Emission', 'EndpointShare') / 1e4:.1f} %; "
               f"last settled day {c.q('Endpoints', 'LastSettled')}; today {c.head() // 7200}")
@@ -154,7 +155,7 @@ def cmd_models(c, a):
                      for e in r.triggered_events)
         print(f"opening with fewer than three declarations refused: {failed}")
         for n, kp in c.vals.items():
-            have = c.q("Registry", "ValidatorModels", [kp.ss58_address]) or []
+            have = u8_list(c.q("Registry", "ValidatorModels", [kp.ss58_address]))
             if mid not in have:
                 c.submit(kp, "Registry", "declare_validator_models", {"models": sorted(set(have) | {0, mid})})
         before = c.free(c.operator.ss58_address)
