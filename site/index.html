@@ -116,6 +116,7 @@
     @keyframes pulse { 50% { opacity: .35; } }
   }
 </style>
+<script src="/assets/rpc.js"></script>
 </head>
 <body data-site="home">
 <!-- ic:topbar -->
@@ -550,7 +551,8 @@
   let rpcAt = 0;
   function connect() {
     let ws;
-    const RPCS = ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+    const RPCS = window.IctRpc ? IctRpc.list(false) : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  if (window.IctRpc) IctRpc.refresh(false, RPCS);  // reads the on-chain endpoint register (spec 19.2)
     let opened = false;
     try { ws = new WebSocket(RPCS[rpcAt % RPCS.length]); } catch (e) { return fail(); }
     ws.addEventListener("open", () => { opened = true; });

@@ -110,6 +110,7 @@ class State:
         self.today = {"tasks": 0, "earned": 0}
         self.chat = {"state": "off", "message": "", "answered": 0}
         self.validators = 0
+        self.rpc = ""                # the endpoint in use (from the endpoint register)
         self.last_task = None
         self.log = deque(maxlen=200)
 
@@ -213,15 +214,30 @@ class Node:
 
         self.st.set(address=keygen(self.key_file))
 
+    def rpc_urls(self) -> list[str]:
+        """The endpoint the user set, if any; otherwise the endpoint register's best (spec 19.2)."""
+        if self.cfg.data.get("overrides", {}).get("rpc"):
+            return [self.cfg.net()["rpc"]]
+        from . import endpoints
+
+        try:
+            return endpoints.pick(self.cfg.data["network"], home=self.cfg.home)
+        except Exception:
+            return [self.cfg.net()["rpc"]]
+
     def connect(self):
         while not self.stop.is_set():
-            try:
-                self.chain = self.chain_factory(self.cfg.net()["rpc"])
-                return
-            except Exception as e:
-                self.st.set(phase="connecting", message=f"Cannot reach the Incentium network yet ({e.__class__.__name__}). Retrying.")
-                self.wake.wait(20)
-                self.wake.clear()
+            err = None
+            for url in self.rpc_urls():
+                try:
+                    self.chain = self.chain_factory(url)
+                    self.st.set(rpc=url)
+                    return
+                except Exception as e:
+                    err = e
+            self.st.set(phase="connecting", message=f"Cannot reach the Incentium network yet ({err.__class__.__name__}). Retrying.")
+            self.wake.wait(20)
+            self.wake.clear()
 
     def tiers(self) -> dict:
         try:

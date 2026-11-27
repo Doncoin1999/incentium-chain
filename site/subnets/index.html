@@ -51,6 +51,7 @@
   .tag.dead { color: var(--bad); border-color: var(--bad); }
   ol.how { padding-left: 22px; color: var(--muted); } ol.how li { margin: 6px 0; }
 </style>
+<script src="/assets/rpc.js"></script>
 </head>
 <body data-site="subnets">
 <!-- ic:topbar -->
@@ -483,7 +484,8 @@ const IC = (() => {
   if (typeof document === "undefined") return;
   // Every public RPC, tried in turn: a page keeps working when one server is down.
   const testnet = new URLSearchParams(location.search).get("net") === "testnet";
-  const RPCS = testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  const RPCS = window.IctRpc ? IctRpc.list(testnet) : testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  if (window.IctRpc) IctRpc.refresh(testnet, RPCS);  // reads the on-chain endpoint register (spec 19.2)
   let rpcAt = 0, RPC = RPCS[0];
   if (document.getElementById("rpc-name")) document.getElementById("rpc-name").textContent = RPC;
   const BLOCK_S = 12, DAY = 7200;

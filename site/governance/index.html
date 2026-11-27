@@ -80,6 +80,7 @@
   .phase { display: inline-block; font-size: 13px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); margin-right: 6px; }
   code.h { word-break: break-all; }
 </style>
+<script src="/assets/rpc.js"></script>
 </head>
 <body data-site="governance">
 <!-- ic:topbar -->
@@ -677,7 +678,8 @@ const IC = (() => {
   if (typeof document === "undefined") return;
   const testnet = new URLSearchParams(location.search).get("net") === "testnet";
   // Every public RPC, tried in turn: a page keeps working when one server is down.
-  const RPCS = testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  const RPCS = window.IctRpc ? IctRpc.list(testnet) : testnet ? ["wss://testnet-rpc.incentium.org"] : ["wss://rpc.incentium.org", "wss://rpc2.incentium.org"];
+  if (window.IctRpc) IctRpc.refresh(testnet, RPCS);  // reads the on-chain endpoint register (spec 19.2)
   let rpcAt = 0, RPC = RPCS[0];
   const $ = (id) => document.getElementById(id);
   $("rpc-name").textContent = RPC;
