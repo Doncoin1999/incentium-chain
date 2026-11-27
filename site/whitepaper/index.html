@@ -279,7 +279,9 @@
       <li><a href="#9-security-and-attack-vectors">9. Security and attack vectors</a>
       </li>
       <li><a href="#10-governance">10. Governance</a>
-      </li>
+      <ol>
+        <li><a href="#updating-models-and-software">Updating models and software</a></li>
+      </ol></li>
       <li><a href="#11-implementation-and-roadmap">11. Implementation and roadmap</a>
       </li>
       <li><a href="#12-implementation-status">12. Implementation status</a>
@@ -335,7 +337,9 @@
       <li><a href="#9-security-and-attack-vectors">9. Security and attack vectors</a>
       </li>
       <li><a href="#10-governance">10. Governance</a>
-      </li>
+      <ol>
+        <li><a href="#updating-models-and-software">Updating models and software</a></li>
+      </ol></li>
       <li><a href="#11-implementation-and-roadmap">11. Implementation and roadmap</a>
       </li>
       <li><a href="#12-implementation-status">12. Implementation status</a>
@@ -526,7 +530,7 @@
 </tbody>
 </table></div>
 <p><strong>The model never takes more than a quarter of a miner's memory</strong> (decided 25 November 2026), so the computer stays fully usable while it mines: the miner software lists the open models whose memory need, with context, fits in 25% of the system or Apple unified memory, or entirely in a separate graphics card, and suggests the best of them. Without a graphics card, models above 4B are too slow to meet the validators' deadlines. G is set from each model's quality and measured cost per token, so a larger, better model pays somewhat more per unit of cost; the Parameters track recalibrates it every quarter within a limited step. Tasks are assigned at random in proportion to each miner's measured capacity, so a faster machine earns more with the same model, and two machines with equal capacity earn the same.</p>
-<p><strong>New models without new software.</strong> The protocol is model-neutral: anyone can propose an open-weight model, for example a small open Qwen4 model once it is released. It opens when at least three validators have declared that they hold it and a Parameters-track vote has approved its G and tolerance; miners then download it and check its hash. A model being replaced is paid alongside its successor for a transition window (proposed: 14 days), and the miner software switches by itself. Each miner declares its model, and validators spot-check it against that model, so a miner cannot claim a better model than it runs. During the launch period only Qwen3.5-2B is open; 4B and 9B open a few weeks before day 90, after a test on the testnet.</p>
+<p><strong>New models through governance.</strong> The protocol is model-neutral: anyone can propose an open-weight model, for example a small open Qwen4 model once it is released, and governance decides (Section 10, Updating models and software). A model opens when a Parameters-track vote has approved it and at least three validators have declared that they hold it; miners then download it and check its hash. A newer size or version of a model family the software already runs needs no new software; a new generation with a new architecture first needs a software release that supports it. A model being replaced is paid alongside its successor for a transition window (proposed: 14 days), and the miner software switches by itself. Each miner declares its model, and validators spot-check it against that model, so a miner cannot claim a better model than it runs. During the launch period only Qwen3.5-2B is open; 4B and 9B open a few weeks before day 90, after a test on the testnet.</p>
 <p><strong>Pool mining:</strong> The protocol supports pools natively, so that anyone can mine without running a validator-facing node of their own:</p>
 <ul>
 <li>A pool registers one key in SN0 and accepts any number of sub-workers.</li>
@@ -852,6 +856,17 @@
 <p><strong>Runtime upgrades by referendum.</strong> A referendum approves only the hash of the new runtime, so the proposal is small and needs no large deposit. Once it passes, anyone can upload the code; the chain accepts it only if the hash matches, the name is unchanged and the version is higher, and charges no fee. The tool for this is part of the open-source code.</p>
 <p><strong>Who can still act alone.</strong> Before day 90 the sudo key can do anything, and the launch operator's genesis keys produce the blocks. The plan for the remaining weeks is to hold sudo in a 2-of-3 multisig, and to have runtime 12, which opens block production, on mainnet well before sudo ends. After day 90 nothing is left that one person can do alone: no key can change the runtime, move the treasury, pause the swap or move funds out of a subnet's pool.</p>
 <p><strong>Sudo in the launch period.</strong> During the launch period a sudo key held by the launch operator can make urgent fixes and runtime upgrades without a vote. This is disclosed, every use is visible on chain, and the key is removed automatically by the runtime at the end of the launch period. Apart from the two bounties described in Section 5.1, which the runtime creates at that moment, every payment from the development fund needs an on-chain vote.</p>
+<h3 id="updating-models-and-software">Updating models and software<a class="anchor" href="#updating-models-and-software" aria-label="Link to this section">#</a></h3>
+<p>Incentium is built as a fully decentralized network: no person or company decides which AI models it runs or which software its participants use. Open models improve quickly, so the models the network runs will need to be reviewed and updated continually. New models can be taken into use whenever governance decides it, and anyone can prepare that decision.</p>
+<p>Any validator, miner or independent developer can test a new model on its own, with the open source code, and propose it for a vote. In practice:</p>
+<ol>
+<li><strong>Develop.</strong> If the model needs it, someone updates the miner and validator software, for example to a newer version of the inference engine (llama.cpp) that supports a new architecture. The code is open, so anyone can do this. A standing treasury bounty for "new model integrated and tested" pays whoever does the work once the proposal passes.</li>
+<li><strong>Test.</strong> The developer, and preferably two or three other validators, run the new software and model on their own machines, against the public testnet or a local test network that anyone can start in minutes. They publish a test report with three things: that the build is reproducible, so the same source code gives the same file hash and anyone can confirm the program was built from the open code; the measured differences between machines (Intel, AMD, Apple, NVIDIA), from which the spot-check tolerance is set; and speed and memory use, from which the value factor G is set.</li>
+<li><strong>Propose.</strong> One proposal on the Parameters track holds both the model and the software: the model file's hash, its value factor and tolerance, the hash of the software release that runs it, and a link to the test report. It needs a deposit of 50 ICT, and ICT holders vote for 7 days.</li>
+<li><strong>Update.</strong> Once the proposal passes, the miner software and the validators update themselves to the approved release and check its hash against the one recorded on chain. No one has to trust a particular server or a person who "publishes" the software: the vote decides what is valid. The model opens as soon as three validators have declared that they hold it.</li>
+</ol>
+<p>This is the same principle as for runtime upgrades after day 90, where a referendum also approves only a hash and anyone can build the code and check it. The difference is that the runtime lives on chain and is replaced automatically, while miner and validator software runs on each participant's machine and therefore checks itself against a register on chain.</p>
+<p><strong>Still to be built for this to work without the launch operator:</strong> a register of approved software releases on chain (component, version and hash, set by the Parameters track); reproducible builds of the miner and validator software; a testnet run by several operators, or a ready recipe for local test networks; the standing bounty for model integration; and a code repository with several maintainers and mirrors outside the launch operator's control (Codeberg, Radicle), so that no single person can stop an update.</p>
 <p><strong>Protected parameters:</strong> Maximum supply and the halving rule, for ICT and for every Alpha token, can only be changed by a supermajority (at least 75%) and a 30-day time-lock.</p>
 <h2 id="11-implementation-and-roadmap">11. Implementation and roadmap<a class="anchor" href="#11-implementation-and-roadmap" aria-label="Link to this section">#</a></h2>
 <p>Incentium moves through a preparation period and three phases, and each transition is gated by criteria rather than dates. Phase durations after Phase 1 depend on when the gates are met.</p>
@@ -905,6 +920,11 @@
 <td>Work units</td>
 <td>W = T × Q × A × G; every miner gets the same number of tasks per epoch</td>
 <td>Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G per model from quality and measured cost per token, recalibrated quarterly</td>
+</tr>
+<tr>
+<td>Model and software updates</td>
+<td>Code open on git.incentium.org with a mirror on GitHub; releases built and published by the launch operator; the testnet runs on the launch operator's server</td>
+<td>Register of approved software releases on chain, set by the Parameters track; reproducible builds; a testnet run by several operators; a standing bounty for model integration; several maintainers and mirrors (Section 10)</td>
 </tr>
 <tr>
 <td>Verification</td>
