@@ -98,6 +98,9 @@ if ! command -v cargo >/dev/null; then
 fi
 # shellcheck disable=SC1091
 source "$HOME/.cargo/env"
+# the runtime is compiled to WASM: the target and rust-src are needed even when cargo was already installed
+rustup target add wasm32-unknown-unknown >/dev/null
+rustup component add rust-src >/dev/null
 command -v jq >/dev/null || sudo apt-get install -y jq
 
 say "2/7 build the node from source ($REPO @ $REF)"
