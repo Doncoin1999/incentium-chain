@@ -6,6 +6,7 @@ with probes and the daily payout, and swap v2's runtime side.
   python scripts/g_rehearsal.py validators         # three SN0 validators with 1,000 ICT stake each
   python scripts/g_rehearsal.py models             # propose, declare x3, open, miner declares, retire, close
   python scripts/g_rehearsal.py endpoints          # register the testnet RPC, switch on the 5 % share
+  python scripts/g_rehearsal.py reporter --stash-key F   # a producer's stash names a reporter key (runtime 14)
   python scripts/g_rehearsal.py probe              # runs until stopped: probes every 30 min, reports daily
   python scripts/g_rehearsal.py check              # yesterday's reports, scores and payouts
   python scripts/g_rehearsal.py cleanup            # unstake the three validators
@@ -190,10 +191,32 @@ def cmd_endpoints(c, a):
     cmd_status(c, a)
 
 
+def cmd_reporter(c, a):
+    """The stash (a block producer) names a reporter key kept in <secrets>/g/, which then reports
+    with the stash's stake; `probe` picks it up."""
+    from substrateinterface import Keypair
+
+    if not a.stash_key:
+        sys.exit("give --stash-key: a JSON file with the producer stash's secretPhrase")
+    stash = Keypair.create_from_mnemonic(json.load(open(os.path.expanduser(a.stash_key)))["secretPhrase"])
+    rep = base.load_or_create(f"{c.d}/g/reporter-{stash.ss58_address[:8]}.json")
+    if c.q("Endpoints", "PrincipalOf", [rep.ss58_address]) != stash.ss58_address:
+        c.submit(stash, "Endpoints", "set_reporter", {"reporter": rep.ss58_address})
+    if c.free(rep.ss58_address) < UNIT:
+        c.fund(rep.ss58_address, UNIT)
+    validators = c.q("Session", "Validators") or []
+    print(f"reporter {rep.ss58_address} reports for {stash.ss58_address} "
+          f"({'a block producer now' if stash.ss58_address in validators else 'not a block producer this session'})")
+
+
 def reporters(c, a):
+    import glob
+
     from substrateinterface import Keypair
 
     keys = list(c.vals.values())
+    for f in sorted(glob.glob(f"{c.d}/g/reporter-*.json")):
+        keys.append(base.load_or_create(f))
     for f in a.reporter_key or []:
         d = json.load(open(os.path.expanduser(f)))
         keys.append(Keypair.create_from_mnemonic(d["secretPhrase"]))
@@ -259,7 +282,9 @@ def cmd_cleanup(c, a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["status", "upgrade", "validators", "models", "endpoints", "probe", "check", "cleanup"])
+    ap.add_argument("cmd", choices=["status", "upgrade", "validators", "models", "endpoints", "reporter", "probe",
+                                    "check", "cleanup"])
+    ap.add_argument("--stash-key", help="reporter: JSON file with a block producer stash's secretPhrase")
     ap.add_argument("--wasm")
     ap.add_argument("--url", default="ws://127.0.0.1:9960")
     ap.add_argument("--secrets", default="~/incentium-testnet/secrets")
