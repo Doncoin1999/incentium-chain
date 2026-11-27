@@ -5,7 +5,7 @@ use super::*;
 use alloc::vec;
 use polkadot_sdk::frame_benchmarking::v2::*;
 use polkadot_sdk::frame_support::{
-    pallet_prelude::{BoundedVec, Get},
+    pallet_prelude::{BoundedVec, ConstU32, Get},
     traits::fungible::Mutate,
 };
 use polkadot_sdk::frame_system::RawOrigin;
@@ -70,7 +70,7 @@ mod benchmarks {
         assert_eq!(SubnetCount::<T>::get(), max);
     }
 
-    /// `n` neurons, each with an endpoint and a declared tier, all removed.
+    /// `n` neurons, each with an endpoint and a declared model, all removed.
     #[benchmark]
     fn deregister_subnet(n: Linear<0, { T::MaxNeurons::get() as u32 }>) {
         let owner = funded::<T>("owner", 0);
@@ -80,7 +80,7 @@ mod benchmarks {
             let who: T::AccountId = account("neuron", i, SEED);
             add_neuron::<T>(1, &who);
             Endpoints::<T>::insert(1, &who, BoundedVec::truncate_from(vec![b'x'; 128]));
-            NeuronTier::<T>::insert(1, &who, 1);
+            NeuronModel::<T>::insert(1, &who, 1);
         }
         polkadot_sdk::frame_system::Pallet::<T>::set_block_number(
             polkadot_sdk::sp_runtime::SaturatedConversion::saturated_into(
@@ -132,33 +132,95 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn declare_tier() {
+    fn declare_model() {
         let caller = funded::<T>("caller", 0);
         add_neuron::<T>(SN0, &caller);
-        let mut info = default_tiers()[1].1.clone();
-        info.open = true;
-        Tiers::<T>::insert(1, info);
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(caller.clone()), SN0, 1);
+        _(RawOrigin::Signed(caller.clone()), SN0, 0);
 
-        assert_eq!(NeuronTier::<T>::get(SN0, &caller), 1);
+        assert!(NeuronModel::<T>::contains_key(SN0, &caller));
+    }
+
+    /// Opening a proposed model with every SN0 slot holding a declaration (worst case for
+    /// counting holders); the deposit goes back to the proposer.
+    #[benchmark]
+    fn set_model() {
+        let proposer = funded::<T>("proposer", 0);
+        Pallet::<T>::propose_model(
+            RawOrigin::Signed(proposer).into(),
+            vec![b'm'; 64],
+            [7u8; 32],
+            vec![b'e'; 64],
+            1_000,
+            1_000_000,
+            350_000,
+        )
+        .unwrap();
+        let id = NextModelId::<T>::get() - 1;
+        for i in 0..T::MaxNeurons::get() as u32 {
+            let who: T::AccountId = account("validator", i, SEED);
+            add_neuron::<T>(SN0, &who);
+            T::StakeInfo::set_sn0_stake(&who, T::ModelDeclarerStake::get());
+            let models: BoundedVec<ModelId, ConstU32<MAX_MODELS>> =
+                BoundedVec::truncate_from(vec![id]);
+            ValidatorModels::<T>::insert(&who, models);
+        }
+
+        #[extrinsic_call]
+        _(RawOrigin::Root, id, 1_000_000u32, 350_000u32, ModelStatus::Open, None);
+
+        assert_eq!(Models::<T>::get(id).map(|m| m.status), Some(ModelStatus::Open));
     }
 
     #[benchmark]
-    fn set_tier() {
+    fn propose_model() {
+        let caller = funded::<T>("caller", 0);
+
         #[extrinsic_call]
         _(
-            RawOrigin::Root,
-            3,
-            5_000_000u32,
-            400_000u32,
+            RawOrigin::Signed(caller),
             vec![b'm'; 64],
             [7u8; 32],
-            true,
+            vec![b'e'; 64],
+            1_000u32,
+            1_000_000u32,
+            350_000u32,
         );
 
-        assert!(Tiers::<T>::get(3).map(|t| t.open).unwrap_or(false));
+        assert!(Models::<T>::contains_key(NextModelId::<T>::get() - 1));
+    }
+
+    #[benchmark]
+    fn withdraw_model() {
+        let caller = funded::<T>("caller", 0);
+        Pallet::<T>::propose_model(
+            RawOrigin::Signed(caller.clone()).into(),
+            vec![b'm'; 64],
+            [7u8; 32],
+            vec![b'e'; 64],
+            1_000,
+            1_000_000,
+            350_000,
+        )
+        .unwrap();
+        let id = NextModelId::<T>::get() - 1;
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller), id);
+
+        assert_eq!(Models::<T>::get(id).map(|m| m.status), Some(ModelStatus::Closed));
+    }
+
+    #[benchmark]
+    fn declare_validator_models(n: Linear<1, 6>) {
+        let caller = funded::<T>("caller", 0);
+        add_neuron::<T>(SN0, &caller);
+        T::StakeInfo::set_sn0_stake(&caller, T::ModelDeclarerStake::get());
+        let models: Vec<ModelId> = (0..n as ModelId).filter(|m| *m != 3).collect();
+
+        #[extrinsic_call]
+        _(RawOrigin::Signed(caller.clone()), models);
     }
 
     impl_benchmark_test_suite!(Pallet, crate::mock::new_test_ext(false), crate::mock::Test);

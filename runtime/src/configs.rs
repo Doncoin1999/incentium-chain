@@ -165,6 +165,8 @@ parameter_types! {
 
     pub const NeuronFee: Balance = UNIT;
     pub const MaxNeurons: u16 = 256;
+    /// Deposit to propose a model for SN0's open list (spec Section 5).
+    pub const ModelDeposit: Balance = 100 * UNIT;
 
     pub const EpochLength: u32 = EPOCH_LENGTH;
     pub const MaxWeights: u32 = 256;
@@ -223,6 +225,9 @@ impl pallet_subnet_registry::Config for Runtime {
     type Sale = AlphaPools;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
+    type ModelDeposit = ModelDeposit;
+    /// The same SN0 stake a validator needs to set weights.
+    type ModelDeclarerStake = MinValidatorStake;
 }
 
 impl pallet_weights::Config for Runtime {

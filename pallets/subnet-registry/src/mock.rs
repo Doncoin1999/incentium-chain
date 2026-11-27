@@ -38,6 +38,8 @@ parameter_types! {
     pub static ApprovedReferenda: u32 = 0;
     pub static AlphaInstalled: bool = true;
     pub static PoolsOn: bool = false;
+    pub const ModelDeposit: u128 = 100 * UNIT;
+    pub const ModelDeclarerStake: u128 = 1_000 * UNIT;
 }
 
 /// Stands in for the Alpha module: takes the pool half of a sale to POOLS.
@@ -71,6 +73,10 @@ impl pallet_subnet_registry::SubnetStakeInfo<u64> for MockStake {
     }
     fn active(netuid: u16) -> u128 {
         Self::total(netuid)
+    }
+    #[cfg(feature = "runtime-benchmarks")]
+    fn set_sn0_stake(who: &u64, amount: u128) {
+        set_stake(0, *who, amount);
     }
     fn total(netuid: u16) -> u128 {
         STAKES.with(|s| {
@@ -108,6 +114,8 @@ impl pallet_subnet_registry::Config for Test {
     type Sale = MockSale;
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
+    type ModelDeposit = ModelDeposit;
+    type ModelDeclarerStake = ModelDeclarerStake;
 }
 
 pub const ALICE: u64 = 1;

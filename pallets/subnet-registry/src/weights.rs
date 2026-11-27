@@ -10,8 +10,11 @@ pub trait WeightInfo {
     fn register_neuron() -> Weight;
     fn set_endpoint() -> Weight;
     fn end_bootstrap() -> Weight;
-    fn declare_tier() -> Weight;
-    fn set_tier() -> Weight;
+    fn declare_model() -> Weight;
+    fn set_model() -> Weight;
+    fn propose_model() -> Weight;
+    fn withdraw_model() -> Weight;
+    fn declare_validator_models(n: u32) -> Weight;
     fn enable_phase2() -> Weight;
 }
 
@@ -31,11 +34,21 @@ impl WeightInfo for () {
     fn end_bootstrap() -> Weight {
         RocksDbWeight::get().reads_writes(2, 1)
     }
-    fn declare_tier() -> Weight {
+    fn declare_model() -> Weight {
         RocksDbWeight::get().reads_writes(2, 1)
     }
-    fn set_tier() -> Weight {
-        RocksDbWeight::get().writes(1)
+    /// Counting holders reads every SN0 neuron's declaration and stake.
+    fn set_model() -> Weight {
+        RocksDbWeight::get().reads_writes(3 + 2 * 1024, 3)
+    }
+    fn propose_model() -> Weight {
+        RocksDbWeight::get().reads_writes(3, 4)
+    }
+    fn withdraw_model() -> Weight {
+        RocksDbWeight::get().reads_writes(2, 3)
+    }
+    fn declare_validator_models(n: u32) -> Weight {
+        RocksDbWeight::get().reads_writes(3 + n as u64, 1)
     }
     fn enable_phase2() -> Weight {
         RocksDbWeight::get().writes(1)

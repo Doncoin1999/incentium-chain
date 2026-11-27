@@ -482,97 +482,288 @@ fn bootstrap_can_end_early_but_not_restart() {
     });
 }
 
+// ---------------------------------------------------------------- open model list
+
+use crate::{
+    LegacyTierInfo, ModelStatus, Models, NeuronModel, NextModelId, Tiers, ValidatorModels,
+};
+
+const HASH: [u8; 32] = [7; 32];
+
+/// Register `who` on SN0 (ALICE pays) with `stake` SN0 stake.
+fn sn0_neuron(who: u64, stake: u128) {
+    assert_ok!(Registry::register_neuron(
+        RuntimeOrigin::signed(ALICE),
+        SN0,
+        who
+    ));
+    set_stake(SN0, who, stake);
+}
+
+fn propose(who: u64) -> u8 {
+    let id = NextModelId::<Test>::get();
+    assert_ok!(Registry::propose_model(
+        RuntimeOrigin::signed(who),
+        b"Qwen3.5-4B-Instruct".to_vec(),
+        HASH,
+        b"llama.cpp b6000".to_vec(),
+        3_300,
+        200_000,
+        350_000
+    ));
+    id
+}
+
+fn set(model: u8, status: ModelStatus) -> polkadot_sdk::sp_runtime::DispatchResult {
+    Registry::set_model(RuntimeOrigin::root(), model, 200_000, 350_000, status, None)
+}
+
 #[test]
-fn genesis_has_default_tiers_with_only_tier_0_open() {
+fn genesis_has_the_starting_list_with_only_2b_open() {
     new_test_ext(false).execute_with(|| {
-        let t0 = crate::Tiers::<Test>::get(0).unwrap();
-        assert!(t0.open);
-        assert_eq!(t0.weight_ppm, 150_000);
-        assert_eq!(t0.model.to_vec(), b"Qwen3.5-2B".to_vec());
-        for tier in 1..=3u8 {
-            assert!(!crate::Tiers::<Test>::get(tier).unwrap().open);
+        let m0 = Models::<Test>::get(0).unwrap();
+        assert_eq!(m0.name.to_vec(), b"Qwen3.5-2B".to_vec());
+        assert_eq!(m0.status, ModelStatus::Open);
+        assert_eq!(m0.g_ppm, 100_000);
+        for id in 1..6u8 {
+            assert_ne!(Models::<Test>::get(id).unwrap().status, ModelStatus::Open);
         }
-        assert_eq!(crate::Tiers::<Test>::get(1).unwrap().weight_ppm, 1_000_000);
-        assert!(crate::Tiers::<Test>::get(4).is_none());
+        assert_eq!(Models::<Test>::get(3).unwrap().status, ModelStatus::Closed);
+        assert_eq!(Models::<Test>::get(5).unwrap().name.to_vec(), b"Qwen3.5-4B".to_vec());
+        assert!(Models::<Test>::get(6).is_none());
+        assert_eq!(NextModelId::<Test>::get(), 6);
     });
 }
 
 #[test]
-fn neurons_declare_open_tiers_only() {
+fn neurons_declare_open_models_only() {
     new_test_ext(false).execute_with(|| {
-        assert_ok!(Registry::register_neuron(
-            RuntimeOrigin::signed(ALICE),
-            SN0,
-            BOB
-        ));
-        // Undeclared neurons count as tier 0.
-        assert_eq!(crate::NeuronTier::<Test>::get(SN0, BOB), 0);
+        sn0_neuron(BOB, 0);
+        // Undeclared neurons run model 0.
+        assert_eq!(NeuronModel::<Test>::get(SN0, BOB), 0);
         assert_noop!(
-            Registry::declare_tier(RuntimeOrigin::signed(ALICE), SN0, 0),
+            Registry::declare_model(RuntimeOrigin::signed(ALICE), SN0, 0),
             Error::<Test>::NotRegistered
         );
         assert_noop!(
-            Registry::declare_tier(RuntimeOrigin::signed(BOB), SN0, 1),
-            Error::<Test>::TierClosed
+            Registry::declare_model(RuntimeOrigin::signed(BOB), SN0, 1),
+            Error::<Test>::ModelNotOpen
         );
         assert_noop!(
-            Registry::declare_tier(RuntimeOrigin::signed(BOB), SN0, 9),
-            Error::<Test>::UnknownTier
+            Registry::declare_model(RuntimeOrigin::signed(BOB), SN0, 9),
+            Error::<Test>::UnknownModel
         );
-        // Governance opens tier 1 (day 90) and locks its model hash.
-        assert_noop!(
-            Registry::set_tier(
-                RuntimeOrigin::signed(ALICE),
-                1,
-                1_000_000,
-                350_000,
-                b"Qwen3.5-9B".to_vec(),
-                [7; 32],
-                true
-            ),
-            polkadot_sdk::sp_runtime::DispatchError::BadOrigin
-        );
-        assert_noop!(
-            Registry::set_tier(RuntimeOrigin::root(), 1, 0, 350_000, vec![], [0; 32], true),
-            Error::<Test>::BadTierParams
-        );
-        assert_ok!(Registry::set_tier(
-            RuntimeOrigin::root(),
-            1,
-            1_000_000,
-            350_000,
-            b"Qwen3.5-9B".to_vec(),
-            [7; 32],
-            true
-        ));
-        assert_eq!(crate::Tiers::<Test>::get(1).unwrap().model_hash, [7; 32]);
-        assert_ok!(Registry::declare_tier(RuntimeOrigin::signed(BOB), SN0, 1));
-        assert_eq!(crate::NeuronTier::<Test>::get(SN0, BOB), 1);
+        assert_ok!(Registry::declare_model(RuntimeOrigin::signed(BOB), SN0, 0));
     });
 }
 
 #[test]
-fn upgrade_writes_default_tiers_once() {
-    use polkadot_sdk::frame_support::traits::{GetStorageVersion, Hooks, StorageVersion};
+fn a_model_opens_with_three_holders_a_pinned_hash_and_governance() {
     new_test_ext(false).execute_with(|| {
-        // Simulate a chain started before tiers existed.
-        let _ = crate::Tiers::<Test>::clear(u32::MAX, None);
-        StorageVersion::new(0).put::<Registry>();
-        Registry::on_runtime_upgrade();
-        assert_eq!(Registry::on_chain_storage_version(), 2);
-        assert!(crate::Tiers::<Test>::get(0).unwrap().open);
-        // A later governance change survives a second upgrade.
-        assert_ok!(Registry::set_tier(
+        let id = propose(ALICE);
+        assert_eq!(Balances::free_balance(Registry::account_id()), ModelDeposit::get());
+        assert_eq!(Models::<Test>::get(id).unwrap().status, ModelStatus::Proposed);
+        // Validators 3, 4, 5 with enough SN0 stake; 6 with too little.
+        for v in [3, 4] {
+            sn0_neuron(v, 1_000 * UNIT);
+            assert_ok!(Registry::declare_validator_models(
+                RuntimeOrigin::signed(v),
+                vec![0, id]
+            ));
+        }
+        assert_noop!(
+            Registry::declare_validator_models(RuntimeOrigin::signed(9), vec![id]),
+            Error::<Test>::StakeTooLow
+        );
+        sn0_neuron(6, 999 * UNIT);
+        assert_noop!(
+            Registry::declare_validator_models(RuntimeOrigin::signed(6), vec![id]),
+            Error::<Test>::StakeTooLow
+        );
+        assert_noop!(set(id, ModelStatus::Open), Error::<Test>::TooFewHolders);
+        assert_noop!(
+            Registry::set_model(
+                RuntimeOrigin::signed(ALICE),
+                id,
+                200_000,
+                350_000,
+                ModelStatus::Open,
+                None
+            ),
+            DispatchError::BadOrigin
+        );
+        // Third holder: 6 gets enough stake.
+        set_stake(SN0, 6, 1_000 * UNIT);
+        assert_noop!(
+            Registry::declare_validator_models(RuntimeOrigin::signed(6), vec![id, id]),
+            Error::<Test>::DuplicateModel
+        );
+        assert_ok!(Registry::declare_validator_models(
+            RuntimeOrigin::signed(6),
+            vec![id]
+        ));
+        assert_eq!(Registry::model_holders(id), 3);
+        assert_eq!(Registry::model_holders(0), 2);
+        // Stake that leaves no longer counts.
+        set_stake(SN0, 6, 0);
+        assert_noop!(set(id, ModelStatus::Open), Error::<Test>::TooFewHolders);
+        set_stake(SN0, 6, 1_000 * UNIT);
+        let before = Balances::free_balance(ALICE);
+        assert_ok!(set(id, ModelStatus::Open));
+        assert_eq!(Balances::free_balance(ALICE), before + ModelDeposit::get());
+        assert_eq!(Models::<Test>::get(id).unwrap().deposit, 0);
+        // A miner may now declare it.
+        sn0_neuron(BOB, 0);
+        assert_ok!(Registry::declare_model(RuntimeOrigin::signed(BOB), SN0, id));
+        assert_eq!(NeuronModel::<Test>::get(SN0, BOB), id);
+        // Retiring: still declared by BOB, but no new declarations.
+        assert_ok!(set(id, ModelStatus::Retiring));
+        assert_noop!(
+            Registry::declare_model(RuntimeOrigin::signed(BOB), SN0, id),
+            Error::<Test>::ModelNotOpen
+        );
+        assert_noop!(set(id, ModelStatus::Proposed), Error::<Test>::BadStatusChange);
+        assert_ok!(set(id, ModelStatus::Closed));
+        assert_noop!(set(id, ModelStatus::Retiring), Error::<Test>::BadStatusChange);
+    });
+}
+
+#[test]
+fn starting_list_entries_open_only_with_a_pinned_hash() {
+    new_test_ext(false).execute_with(|| {
+        for v in [3, 4, 5] {
+            sn0_neuron(v, 1_000 * UNIT);
+            assert_ok!(Registry::declare_validator_models(
+                RuntimeOrigin::signed(v),
+                vec![5]
+            ));
+        }
+        assert_noop!(set(5, ModelStatus::Open), Error::<Test>::NoWeightsHash);
+        assert_ok!(Registry::set_model(
             RuntimeOrigin::root(),
-            0,
+            5,
             200_000,
             350_000,
-            b"Qwen3.5-2B".to_vec(),
-            [1; 32],
-            true
+            ModelStatus::Open,
+            Some(HASH)
         ));
+        assert_eq!(Models::<Test>::get(5).unwrap().weights_hash, HASH);
+        assert_noop!(
+            Registry::set_model(
+                RuntimeOrigin::root(),
+                5,
+                200_000,
+                350_000,
+                ModelStatus::Open,
+                Some([8; 32])
+            ),
+            Error::<Test>::HashAlreadySet
+        );
+        assert_noop!(
+            Registry::set_model(RuntimeOrigin::root(), 5, 0, 350_000, ModelStatus::Open, None),
+            Error::<Test>::BadModelParams
+        );
+    });
+}
+
+#[test]
+fn proposals_withdraw_or_burn_their_deposit() {
+    new_test_ext(false).execute_with(|| {
+        let a = propose(ALICE);
+        let b = propose(ALICE);
+        assert_noop!(
+            Registry::withdraw_model(RuntimeOrigin::signed(BOB), a),
+            Error::<Test>::NotProposer
+        );
+        let before = Balances::free_balance(ALICE);
+        assert_ok!(Registry::withdraw_model(RuntimeOrigin::signed(ALICE), a));
+        assert_eq!(Balances::free_balance(ALICE), before + ModelDeposit::get());
+        assert_eq!(Models::<Test>::get(a).unwrap().status, ModelStatus::Closed);
+        assert_noop!(
+            Registry::withdraw_model(RuntimeOrigin::signed(ALICE), a),
+            Error::<Test>::NotProposer
+        );
+        // Governance rejects b: its deposit is burned.
+        let issuance = Balances::total_issuance();
+        assert_ok!(set(b, ModelStatus::Closed));
+        assert_eq!(Balances::total_issuance(), issuance - ModelDeposit::get());
+        assert_noop!(
+            Registry::propose_model(
+                RuntimeOrigin::signed(ALICE),
+                b"x".to_vec(),
+                [0; 32],
+                b"e".to_vec(),
+                1,
+                1,
+                0
+            ),
+            Error::<Test>::NoWeightsHash
+        );
+        // The list is bounded.
+        NextModelId::<Test>::put(crate::MAX_MODELS as u8);
+        assert_noop!(
+            Registry::propose_model(
+                RuntimeOrigin::signed(ALICE),
+                b"x".to_vec(),
+                HASH,
+                b"e".to_vec(),
+                1,
+                1,
+                0
+            ),
+            Error::<Test>::TooManyModels
+        );
+    });
+}
+
+#[test]
+fn upgrade_turns_tiers_into_models_and_keeps_declarations() {
+    use polkadot_sdk::frame_support::storage::migration::put_storage_value;
+    use polkadot_sdk::frame_support::traits::{GetStorageVersion, StorageVersion};
+    new_test_ext(false).execute_with(|| {
+        // A v2 chain: tier table with a pinned hash on tier 0 and G 0.15, tier 1 closed,
+        // and BOB declared tier 0, 5 declared tier 1.
+        let _ = Models::<Test>::clear(u32::MAX, None);
+        NextModelId::<Test>::kill();
+        let tier = |g: u32, name: &[u8], hash, open| LegacyTierInfo {
+            weight_ppm: g,
+            tolerance_ppm: 350_000,
+            model: BoundedVec::truncate_from(name.to_vec()),
+            model_hash: hash,
+            open,
+        };
+        Tiers::<Test>::insert(0, tier(150_000, b"Qwen3.5-2B", [1; 32], true));
+        Tiers::<Test>::insert(1, tier(1_000_000, b"Qwen3.5-9B", [0; 32], false));
+        Tiers::<Test>::insert(3, tier(5_000_000, b"Qwen3.5-122B", [0; 32], false));
+        use codec::Encode;
+        let key = |who: u64| {
+            let mut k = SN0.using_encoded(polkadot_sdk::sp_io::hashing::twox_64).to_vec();
+            k.extend(SN0.encode());
+            k.extend(who.using_encoded(polkadot_sdk::sp_io::hashing::blake2_128));
+            k.extend(who.encode());
+            k
+        };
+        put_storage_value(b"Registry", b"NeuronTier", &key(BOB), 0u8);
+        put_storage_value(b"Registry", b"NeuronTier", &key(5), 1u8);
+        StorageVersion::new(2).put::<Registry>();
         Registry::on_runtime_upgrade();
-        assert_eq!(crate::Tiers::<Test>::get(0).unwrap().weight_ppm, 200_000);
+        assert_eq!(Registry::on_chain_storage_version(), 3);
+        assert_eq!(Tiers::<Test>::iter().count(), 0);
+        let m0 = Models::<Test>::get(0).unwrap();
+        assert_eq!((m0.status, m0.g_ppm, m0.weights_hash), (ModelStatus::Open, 150_000, [1; 32]));
+        assert_eq!(Models::<Test>::get(1).unwrap().status, ModelStatus::Proposed);
+        assert_eq!(Models::<Test>::get(3).unwrap().status, ModelStatus::Closed);
+        // Entries the tier table did not have come from the starting list.
+        assert_eq!(Models::<Test>::get(2).unwrap().name.to_vec(), b"Qwen3.5-27B".to_vec());
+        assert_eq!(Models::<Test>::get(4).unwrap().name.to_vec(), b"Qwen3.5-0.8B".to_vec());
+        assert_eq!(NextModelId::<Test>::get(), 6);
+        assert_eq!(NeuronModel::<Test>::get(SN0, 5), 1);
+        assert!(NeuronModel::<Test>::contains_key(SN0, BOB));
+        // Runs once.
+        assert_ok!(set(1, ModelStatus::Closed));
+        Registry::on_runtime_upgrade();
+        assert_eq!(Models::<Test>::get(1).unwrap().status, ModelStatus::Closed);
+        let _ = ValidatorModels::<Test>::iter().count();
     });
 }
 
@@ -585,7 +776,7 @@ fn upgrade_to_v2_drops_the_doubling_price_storage() {
         put_storage_value(b"Registry", b"LastRegPrice", b"", 1_000u128);
         put_storage_value(b"Registry", b"LastRegBlock", b"", 5u32);
         Registry::on_runtime_upgrade();
-        assert_eq!(Registry::on_chain_storage_version(), 2);
+        assert_eq!(Registry::on_chain_storage_version(), 3);
         assert!(get_storage_value::<u128>(b"Registry", b"LastRegPrice", b"").is_none());
         assert!(get_storage_value::<u32>(b"Registry", b"LastRegBlock", b"").is_none());
         // Defaults of the new storage apply without any write.

@@ -142,31 +142,37 @@ impl<T: frame_system::Config> pallet_subnet_registry::WeightInfo for WeightInfo<
 			.saturating_add(T::DbWeight::get().reads(2))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
-	/// Storage: `Registry::NeuronUid` (r:1 w:0)
-	/// Proof: `Registry::NeuronUid` (`max_values`: None, `max_size`: Some(60), added: 2535, mode: `MaxEncodedLen`)
-	/// Storage: `Registry::Tiers` (r:1 w:0)
-	/// Proof: `Registry::Tiers` (`max_values`: None, `max_size`: Some(116), added: 2591, mode: `MaxEncodedLen`)
-	/// Storage: `Registry::NeuronTier` (r:0 w:1)
-	/// Proof: `Registry::NeuronTier` (`max_values`: None, `max_size`: Some(59), added: 2534, mode: `MaxEncodedLen`)
-	fn declare_tier() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `438`
-		//  Estimated: `3581`
-		// Minimum execution time: 26_379_000 picoseconds.
-		Weight::from_parts(38_763_000, 0)
-			.saturating_add(Weight::from_parts(0, 3581))
+	/// Estimate until benchmarked (same storage as the former `declare_tier`).
+	fn declare_model() -> Weight {
+		Weight::from_parts(40_000_000, 3581)
 			.saturating_add(T::DbWeight::get().reads(2))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
-	/// Storage: `Registry::Tiers` (r:0 w:1)
-	/// Proof: `Registry::Tiers` (`max_values`: None, `max_size`: Some(116), added: 2591, mode: `MaxEncodedLen`)
-	fn set_tier() -> Weight {
-		// Proof Size summary in bytes:
-		//  Measured:  `0`
-		//  Estimated: `0`
-		// Minimum execution time: 8_245_000 picoseconds.
-		Weight::from_parts(12_023_000, 0)
-			.saturating_add(Weight::from_parts(0, 0))
+	/// Estimate until benchmarked: counting holders reads every SN0 neuron's declaration
+	/// and stake (256 slots).
+	fn set_model() -> Weight {
+		Weight::from_parts(60_000_000, 0)
+			.saturating_add(Weight::from_parts(25_000_000, 600).saturating_mul(256))
+			.saturating_add(T::DbWeight::get().reads(3 + 2 * 256))
+			.saturating_add(T::DbWeight::get().writes(3))
+	}
+	/// Estimate until benchmarked.
+	fn propose_model() -> Weight {
+		Weight::from_parts(60_000_000, 6000)
+			.saturating_add(T::DbWeight::get().reads(3))
+			.saturating_add(T::DbWeight::get().writes(4))
+	}
+	/// Estimate until benchmarked.
+	fn withdraw_model() -> Weight {
+		Weight::from_parts(60_000_000, 6000)
+			.saturating_add(T::DbWeight::get().reads(2))
+			.saturating_add(T::DbWeight::get().writes(3))
+	}
+	/// Estimate until benchmarked.
+	fn declare_validator_models(n: u32) -> Weight {
+		Weight::from_parts(40_000_000, 6000)
+			.saturating_add(Weight::from_parts(5_000_000, 300).saturating_mul(n.into()))
+			.saturating_add(T::DbWeight::get().reads(3 + n as u64))
 			.saturating_add(T::DbWeight::get().writes(1))
 	}
 	/// Storage: `Registry::Phase2Enabled` (r:0 w:1)
