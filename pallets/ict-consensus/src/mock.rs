@@ -81,6 +81,8 @@ impl pallet_subnet_registry::Config for Test {
     type Sale = ();
     type NeuronFee = NeuronFee;
     type MaxNeurons = MaxNeurons;
+    type ModelDeposit = polkadot_sdk::frame_support::traits::ConstU128<100>;
+    type ModelDeclarerStake = polkadot_sdk::frame_support::traits::ConstU128<1>;
 }
 
 impl pallet_weights::Config for Test {
