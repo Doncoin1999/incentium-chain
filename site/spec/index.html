@@ -308,6 +308,12 @@
       </li>
       <li><a href="#18-ictusdc-atomic-swap-version-2">18. ICT⇄USDC atomic swap, version 2</a>
       </li>
+      <li><a href="#19-network-operators-proposed-27-nov-2026">19. Network operators (proposed 27 Nov 2026)</a>
+      <ol>
+        <li><a href="#191-installer">19.1 Installer</a></li>
+        <li><a href="#192-endpoint-register">19.2 Endpoint register</a></li>
+        <li><a href="#193-work-items">19.3 Work items</a></li>
+      </ol></li>
     </ol>
   </nav>
   <article>
@@ -382,6 +388,12 @@
       </li>
       <li><a href="#18-ictusdc-atomic-swap-version-2">18. ICT⇄USDC atomic swap, version 2</a>
       </li>
+      <li><a href="#19-network-operators-proposed-27-nov-2026">19. Network operators (proposed 27 Nov 2026)</a>
+      <ol>
+        <li><a href="#191-installer">19.1 Installer</a></li>
+        <li><a href="#192-endpoint-register">19.2 Endpoint register</a></li>
+        <li><a href="#193-work-items">19.3 Work items</a></li>
+      </ol></li>
     </ol>
       </details>
     </header>
@@ -1980,6 +1992,128 @@
 <p><strong>Base contract.</strong> Constructor <code>(usdc, genesisTime)</code> only. A burned half stays in the contract for good (<code>burnedDeposits</code>); no call can move it, and it is not sent to a dead address, so a USDC blacklist of that address cannot block an expiry. A deposit refund that USDC refuses, for example to a blacklisted address, is recorded in <code>owed</code> and paid later by <code>claimOwed(address)</code>, which anyone may call; it never blocks a claim or an expiry. Removed from version 1: <code>withdrawFees</code>, <code>setPaused</code>, <code>returnDeposit</code>, <code>payDepositToMaker</code>.</p>
 <p><strong>Incentium pallet.</strong> On <code>expire_reservation</code> (unsigned, callable by anyone after the deadline) half the held deposit is released and half burned with <code>burn_held</code>, reducing total issuance; event <code>DepositHalfBurned</code>. Removed: <code>DepositArbiter</code>, <code>set_deposit_arbiter</code>, <code>return_deposit</code>, <code>pay_deposit_to_maker</code>, <code>DepositDisputeWindow</code>.</p>
 <p><strong>Rollout.</strong> A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then attests the contract (<code>attest_swap</code>), unlock criterion 4.</p>
+<h2 id="19-network-operators-proposed-27-nov-2026">19. Network operators (<em>proposed</em> 27 Nov 2026)<a class="anchor" href="#19-network-operators-proposed-27-nov-2026" aria-label="Link to this section">#</a></h2>
+<p>Incentium has two layers of participants: miners (Section 5) and network operators. A network operator runs a full node and takes one or more of four roles. The roles stay separate on chain because their stakes, rewards and penalties differ; one installer sets up a server for any combination.</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Role</th>
+<th>On chain</th>
+<th>Stake</th>
+<th>Reward</th>
+<th>Hardware, on top of the node</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Block producer</td>
+<td><code>staking.validate</code> with session keys (Section 17)</td>
+<td>Bond ≥ 100 ICT</td>
+<td>2 % of issuance and all fees, by era points</td>
+<td>–</td>
+</tr>
+<tr>
+<td>SN0 validator</td>
+<td>Registered in SN0 with a validator permit; declares the models it checks</td>
+<td>≥ 1,000 ICT from day 90</td>
+<td>Validators' share of SN0 issuance</td>
+<td>The declared models (2B: ~2 GB of memory; 9B: an 8 GB graphics card)</td>
+</tr>
+<tr>
+<td>Public RPC</td>
+<td>Entry in <code>Endpoints</code> (kind <code>Rpc</code>)</td>
+<td>Deposit 10 ICT (<em>proposed</em>)</td>
+<td>Standing treasury bounty on measured availability</td>
+<td>Open port 443 with TLS; 2 cores and 4 GB of memory more for traffic</td>
+</tr>
+<tr>
+<td>Archive</td>
+<td>Entry in <code>Endpoints</code> (kind <code>Archive</code>)</td>
+<td>Deposit 10 ICT (<em>proposed</em>)</td>
+<td>Standing treasury bounty on measured availability</td>
+<td>Archive pruning; disk grows with the chain (about 200 GB the first year, <em>estimate</em>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Node baseline: Ubuntu or Debian, 4 cores, 8 GB of memory, 200 GB SSD, a public IP with port 30333 open.</p>
+<h3 id="191-installer">19.1 Installer<a class="anchor" href="#191-installer" aria-label="Link to this section">#</a></h3>
+<p><code>install-operator.sh &lt;mainnet|testnet&gt; [--producer &lt;stash&gt;] [--sn0-validator &lt;hotkey&gt;] [--rpc &lt;domain&gt;] [--archive] [--name &lt;name&gt;]</code> replaces <code>install-validator.sh</code>:</p>
+<ol>
+<li>Builds the node from source at a commit pinned in the script (no binaries), checking the result against the release hash approved on chain once the software register exists (whitepaper, Section 10).</li>
+<li>Writes one systemd service for the node, with <code>--validator</code> for a producer, <code>--state-pruning archive --blocks-pruning archive</code> for an archive node, and public RPC flags (<code>--rpc-external --rpc-methods safe --rpc-cors all</code>, behind Caddy with an automatic TLS certificate) for an RPC endpoint.</li>
+<li>Waits for sync, then per role: creates session keys with an ownership proof (producer); installs the validator software and the models the operator picks, within its memory (SN0 validator); prints the calls the operator signs in its own wallet: <code>bond</code>, <code>session.set_keys</code>, <code>validate</code>, the SN0 registration, <code>endpoints.register</code>. No stash or coldkey ever touches the server.</li>
+<li>Installs the watchdog (<code>node_watchdog.py</code>) with an optional Healthchecks URL.</li>
+</ol>
+<h3 id="192-endpoint-register">19.2 Endpoint register<a class="anchor" href="#192-endpoint-register" aria-label="Link to this section">#</a></h3>
+<p>A new pallet, <code>endpoints</code>, holds <code>Endpoints: map EndpointId → { owner, kind: Rpc | Archive | Bootnode, url, region, deposit, registered_at, last_seen_ok }</code>.</p>
+<ul>
+<li><code>register(kind, url, region)</code>: anyone, with the deposit held; at most 4 entries per account.</li>
+<li><code>update(id, url, region)</code> and <code>deregister(id)</code> by the owner; the deposit is released on deregistration.</li>
+<li><code>report_down(id, evidence)</code>: SN0 validators and block producers probe registered endpoints as part of their regular work and report failures; an entry that fails in more than half of the probes for 7 days in a row is marked inactive and drops out of what clients use, with no slashing.</li>
+<li>Clients (web pages, the miner app, wallets) ship with a few seed endpoints, read the register through them, measure latency, and use the fastest healthy endpoints, falling back to others on failure. The light client (smoldot) can later replace the seeds.</li>
+</ul>
+<p><strong>Rewards.</strong> A standing treasury bounty pays RPC and archive operators monthly in proportion to measured availability, from the probe results above, with a cap per operator. Until the probes run on chain, a curator group of three pays it from published probe logs.</p>
+<h3 id="193-work-items">19.3 Work items<a class="anchor" href="#193-work-items" aria-label="Link to this section">#</a></h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Item</th>
+<th>Where</th>
+<th>Depends on</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>install-operator.sh</code> with the four roles; testnet first</td>
+<td><code>scripts/</code></td>
+<td>–</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Signing on the Validators page: <code>bond</code>, <code>nominate</code>, <code>set_keys</code> with proof, <code>validate</code>, <code>chill</code>, <code>unbond</code></td>
+<td><code>site/validators/</code></td>
+<td>Runtime 12</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>endpoints</code> pallet with tests and benchmarks</td>
+<td><code>pallets/endpoints</code>, runtime</td>
+<td>–</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Clients read the register: shared RPC picker in the web pages, the miner app and the explorer</td>
+<td><code>site/</code>, <code>neuron/</code>, <code>explorer/</code></td>
+<td>3</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Validator model declarations and the three-validator rule</td>
+<td><code>work-verify</code>, <code>neuron/validator.py</code></td>
+<td>Open model list</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Endpoint probes in the validator software; <code>report_down</code></td>
+<td><code>neuron/</code></td>
+<td>3</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Standing bounties for RPC and archive, created by referendum</td>
+<td>governance</td>
+<td>3, 6</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Explorer that can index from any registered archive node</td>
+<td><code>explorer/</code></td>
+<td>3, 4</td>
+</tr>
+</tbody>
+</table></div>
   </article>
 </div>
 <!-- ic:footer -->

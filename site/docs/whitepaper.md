@@ -50,6 +50,17 @@ Requests flow down from users to subnets; results, scores and proofs flow down t
 - **Block producers** write and finalize the chain's blocks. Anyone can stand with a bond of ICT, and ICT holders back them by nominating; the chain elects the set every day (Section 8).
 - **Subnet owners** buy a subnet slot at auction and define its task and scoring; they can hand control to a multisig or to the subnet's stakers.
 
+**Two layers of participants.** The network rests on two layers. **Miners** run the miner software with an AI model on anything from a small PC or Mac to a large server, and the model they choose fits the machine (Section 5). **Network operators** run servers that keep the chain itself running and decentralized; each runs a full node and takes one or more of these roles:
+
+| Role | What it does | Stake | Reward |
+| --- | --- | --- | --- |
+| Block producer | Writes and finalizes blocks (Section 8) | Bond of at least 100 ICT, plus nominations | 2% of issuance and all transaction fees, shared by blocks written |
+| SN0 validator | Checks the miners' AI work and sets weights; holds the models it checks | At least 1,000 ICT from day 90 | The validators' share of SN0 issuance |
+| Public RPC endpoint (optional) | Lets wallets, websites and miners read the chain and send transactions | Small deposit for its entry in the register | Standing treasury bounty, paid on measured availability |
+| Archive node (optional) | Keeps the full history for explorers and audits | Small deposit for its entry in the register | Standing treasury bounty, paid on measured availability |
+
+The roles are separate on chain, because they have different stakes, rewards and penalties, and an operator can take any of them. One installer sets up a server for the roles its owner chooses. Public RPC endpoints and archive nodes register on chain, so websites, wallets and miners find many independent operators instead of a fixed list.
+
 **Networking:** Nodes communicate over libp2p and QUIC. Every message is signed with the sender's hot key, request limits scale with stake, and miners can sit behind relay nodes for DDoS protection.
 
 **Developer tools:** Python and Rust SDKs, a CLI, a wallet with hardware-wallet support, a subnet template with a standard evaluation harness, a block explorer and an indexer. The chain is EVM-compatible (Frontier) from day one, with a bridge to other ecosystems.
@@ -408,6 +419,7 @@ Mainnet runs the Phase 1 core today; most of what this paper adds for SN0 lives 
 | SN0 tasks | The reference validator sends synthetic prompts (random text); the checks are sound but the answers have no use | Paid jobs, an open public-goods queue and hidden control tasks (Section 5) |
 | Models | Four fixed tiers on chain; Qwen3.5-2B is the only open model; the miner software keeps the model within a quarter of memory and picks it on Mac, Windows and Linux | The open model list replacing the tiers (decided 27 Nov 2026): model storage, `set_model` on the Parameters track, miners declaring and changing their model, a model picker in the miner software; 4B and 9B opened before day 90; tolerance tested on Intel, AMD and Apple processors |
 | Work units | W = T × Q × A × G; every miner gets the same number of tasks per epoch | Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G per model from quality and measured cost per token, recalibrated quarterly |
+| Network operators | Block-producer installer (`install-validator.sh`); SN0 validator software set up by hand; two public RPC endpoints, both the launch operator's, written into the web pages; the testnet's RPC node keeps the archive | One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; standing bounties for RPC and archive operators; the explorer able to use any registered archive node (specification, Section 19) |
 | Model and software updates | Code open on git.incentium.org with a mirror on GitHub; releases built and published by the launch operator; the testnet runs on the launch operator's server | Register of approved software releases on chain, set by the Parameters track; reproducible builds; a testnet run by several operators; a standing bounty for model integration; several maintainers and mirrors (Section 10) |
 | Verification | Spot checks regenerate the answer; quorum slashing and a three-strike ban | Prefill scoring; validators declare the models they hold; a model opens when three validators can check it |
 | Weights and consensus | Hash-based commit-reveal; Yuma computed on chain for SN0 | drand time-lock and proof-based Yuma remain planned (Section 8) |

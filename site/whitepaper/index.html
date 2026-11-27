@@ -390,6 +390,44 @@
 <li><strong>Block producers</strong> write and finalize the chain's blocks. Anyone can stand with a bond of ICT, and ICT holders back them by nominating; the chain elects the set every day (Section 8).</li>
 <li><strong>Subnet owners</strong> buy a subnet slot at auction and define its task and scoring; they can hand control to a multisig or to the subnet's stakers.</li>
 </ul>
+<p><strong>Two layers of participants.</strong> The network rests on two layers. <strong>Miners</strong> run the miner software with an AI model on anything from a small PC or Mac to a large server, and the model they choose fits the machine (Section 5). <strong>Network operators</strong> run servers that keep the chain itself running and decentralized; each runs a full node and takes one or more of these roles:</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>Role</th>
+<th>What it does</th>
+<th>Stake</th>
+<th>Reward</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Block producer</td>
+<td>Writes and finalizes blocks (Section 8)</td>
+<td>Bond of at least 100 ICT, plus nominations</td>
+<td>2% of issuance and all transaction fees, shared by blocks written</td>
+</tr>
+<tr>
+<td>SN0 validator</td>
+<td>Checks the miners' AI work and sets weights; holds the models it checks</td>
+<td>At least 1,000 ICT from day 90</td>
+<td>The validators' share of SN0 issuance</td>
+</tr>
+<tr>
+<td>Public RPC endpoint (optional)</td>
+<td>Lets wallets, websites and miners read the chain and send transactions</td>
+<td>Small deposit for its entry in the register</td>
+<td>Standing treasury bounty, paid on measured availability</td>
+</tr>
+<tr>
+<td>Archive node (optional)</td>
+<td>Keeps the full history for explorers and audits</td>
+<td>Small deposit for its entry in the register</td>
+<td>Standing treasury bounty, paid on measured availability</td>
+</tr>
+</tbody>
+</table></div>
+<p>The roles are separate on chain, because they have different stakes, rewards and penalties, and an operator can take any of them. One installer sets up a server for the roles its owner chooses. Public RPC endpoints and archive nodes register on chain, so websites, wallets and miners find many independent operators instead of a fixed list.</p>
 <p><strong>Networking:</strong> Nodes communicate over libp2p and QUIC. Every message is signed with the sender's hot key, request limits scale with stake, and miners can sit behind relay nodes for DDoS protection.</p>
 <p><strong>Developer tools:</strong> Python and Rust SDKs, a CLI, a wallet with hardware-wallet support, a subnet template with a standard evaluation harness, a block explorer and an indexer. The chain is EVM-compatible (Frontier) from day one, with a bridge to other ecosystems.</p>
 <h2 id="4-tokenomics-the-ict-coin">4. Tokenomics: the ICT coin<a class="anchor" href="#4-tokenomics-the-ict-coin" aria-label="Link to this section">#</a></h2>
@@ -920,6 +958,11 @@
 <td>Work units</td>
 <td>W = T × Q × A × G; every miner gets the same number of tasks per epoch</td>
 <td>Tasks assigned by the protocol at random in proportion to capacity, paid and unpaid alike; payments pooled per epoch and paid pro rata to W; G per model from quality and measured cost per token, recalibrated quarterly</td>
+</tr>
+<tr>
+<td>Network operators</td>
+<td>Block-producer installer (<code>install-validator.sh</code>); SN0 validator software set up by hand; two public RPC endpoints, both the launch operator's, written into the web pages; the testnet's RPC node keeps the archive</td>
+<td>One installer for all operator roles; an on-chain register of RPC and archive endpoints that web pages, wallets and miners read; validator model declarations; standing bounties for RPC and archive operators; the explorer able to use any registered archive node (specification, Section 19)</td>
 </tr>
 <tr>
 <td>Model and software updates</td>

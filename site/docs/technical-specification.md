@@ -750,3 +750,49 @@ None of the proposed changes touches protected parameters (maximum supply and ha
 **Incentium pallet.** On `expire_reservation` (unsigned, callable by anyone after the deadline) half the held deposit is released and half burned with `burn_held`, reducing total issuance; event `DepositHalfBurned`. Removed: `DepositArbiter`, `set_deposit_arbiter`, `return_deposit`, `pay_deposit_to_maker`, `DepositDisputeWindow`.
 
 **Rollout.** A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then attests the contract (`attest_swap`), unlock criterion 4.
+
+## 19. Network operators (*proposed* 27 Nov 2026)
+
+Incentium has two layers of participants: miners (Section 5) and network operators. A network operator runs a full node and takes one or more of four roles. The roles stay separate on chain because their stakes, rewards and penalties differ; one installer sets up a server for any combination.
+
+| Role | On chain | Stake | Reward | Hardware, on top of the node |
+| --- | --- | --- | --- | --- |
+| Block producer | `staking.validate` with session keys (Section 17) | Bond ≥ 100 ICT | 2 % of issuance and all fees, by era points | – |
+| SN0 validator | Registered in SN0 with a validator permit; declares the models it checks | ≥ 1,000 ICT from day 90 | Validators' share of SN0 issuance | The declared models (2B: ~2 GB of memory; 9B: an 8 GB graphics card) |
+| Public RPC | Entry in `Endpoints` (kind `Rpc`) | Deposit 10 ICT (*proposed*) | Standing treasury bounty on measured availability | Open port 443 with TLS; 2 cores and 4 GB of memory more for traffic |
+| Archive | Entry in `Endpoints` (kind `Archive`) | Deposit 10 ICT (*proposed*) | Standing treasury bounty on measured availability | Archive pruning; disk grows with the chain (about 200 GB the first year, *estimate*) |
+
+Node baseline: Ubuntu or Debian, 4 cores, 8 GB of memory, 200 GB SSD, a public IP with port 30333 open.
+
+### 19.1 Installer
+
+`install-operator.sh <mainnet|testnet> [--producer <stash>] [--sn0-validator <hotkey>] [--rpc <domain>] [--archive] [--name <name>]` replaces `install-validator.sh`:
+
+1. Builds the node from source at a commit pinned in the script (no binaries), checking the result against the release hash approved on chain once the software register exists (whitepaper, Section 10).
+2. Writes one systemd service for the node, with `--validator` for a producer, `--state-pruning archive --blocks-pruning archive` for an archive node, and public RPC flags (`--rpc-external --rpc-methods safe --rpc-cors all`, behind Caddy with an automatic TLS certificate) for an RPC endpoint.
+3. Waits for sync, then per role: creates session keys with an ownership proof (producer); installs the validator software and the models the operator picks, within its memory (SN0 validator); prints the calls the operator signs in its own wallet: `bond`, `session.set_keys`, `validate`, the SN0 registration, `endpoints.register`. No stash or coldkey ever touches the server.
+4. Installs the watchdog (`node_watchdog.py`) with an optional Healthchecks URL.
+
+### 19.2 Endpoint register
+
+A new pallet, `endpoints`, holds `Endpoints: map EndpointId → { owner, kind: Rpc | Archive | Bootnode, url, region, deposit, registered_at, last_seen_ok }`.
+
+- `register(kind, url, region)`: anyone, with the deposit held; at most 4 entries per account.
+- `update(id, url, region)` and `deregister(id)` by the owner; the deposit is released on deregistration.
+- `report_down(id, evidence)`: SN0 validators and block producers probe registered endpoints as part of their regular work and report failures; an entry that fails in more than half of the probes for 7 days in a row is marked inactive and drops out of what clients use, with no slashing.
+- Clients (web pages, the miner app, wallets) ship with a few seed endpoints, read the register through them, measure latency, and use the fastest healthy endpoints, falling back to others on failure. The light client (smoldot) can later replace the seeds.
+
+**Rewards.** A standing treasury bounty pays RPC and archive operators monthly in proportion to measured availability, from the probe results above, with a cap per operator. Until the probes run on chain, a curator group of three pays it from published probe logs.
+
+### 19.3 Work items
+
+| # | Item | Where | Depends on |
+| --- | --- | --- | --- |
+| 1 | `install-operator.sh` with the four roles; testnet first | `scripts/` | – |
+| 2 | Signing on the Validators page: `bond`, `nominate`, `set_keys` with proof, `validate`, `chill`, `unbond` | `site/validators/` | Runtime 12 |
+| 3 | `endpoints` pallet with tests and benchmarks | `pallets/endpoints`, runtime | – |
+| 4 | Clients read the register: shared RPC picker in the web pages, the miner app and the explorer | `site/`, `neuron/`, `explorer/` | 3 |
+| 5 | Validator model declarations and the three-validator rule | `work-verify`, `neuron/validator.py` | Open model list |
+| 6 | Endpoint probes in the validator software; `report_down` | `neuron/` | 3 |
+| 7 | Standing bounties for RPC and archive, created by referendum | governance | 3, 6 |
+| 8 | Explorer that can index from any registered archive node | `explorer/` | 3, 4 |
