@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS locks (
   hash TEXT NOT NULL, expiry INTEGER NOT NULL, state TEXT NOT NULL, secret TEXT,
   PRIMARY KEY (chain, id));
 CREATE INDEX IF NOT EXISTS locks_by_order ON locks (order_id, fill);
+CREATE TABLE IF NOT EXISTS deposits (       -- reservation deposits (review fix H2)
+  chain TEXT NOT NULL, order_id TEXT NOT NULL, fill INTEGER NOT NULL,
+  depositor TEXT NOT NULL, amount INTEGER NOT NULL,
+  state TEXT NOT NULL,               -- held, returned, half_burned
+  dispute_until INTEGER,             -- unused since swap v2 (no arbiter)
+  PRIMARY KEY (chain, order_id, fill));
 CREATE INDEX IF NOT EXISTS orders_by_maker ON orders (maker);
 """
 
@@ -157,3 +163,24 @@ def matching_lock(con, chain, oid, fill):
     return [dict(r) for r in con.execute(
         "SELECT * FROM locks WHERE chain = ? AND order_id = ? AND fill = ? AND state = 'active'",
         (OTHER[chain], oid, int(fill)))]
+
+
+# ------------------------------------------------------------------ reservation deposits (review fix H2)
+
+
+
+def deposit_held(con, chain, oid, fill, depositor, amount):
+    con.execute("INSERT OR REPLACE INTO deposits VALUES (?,?,?,?,?, 'held', NULL)",
+                (chain, oid, int(fill), depositor, int(amount)))
+
+
+def deposit_settled(con, chain, oid, fill, state):
+    con.execute("UPDATE deposits SET state = ? WHERE chain = ? AND order_id = ? AND fill = ?",
+                (state, chain, oid, int(fill)))
+
+
+def keeper_fronted_open(con, payer):
+    """Open reservations whose deposit the keeper paid for this taker (`payer` noted at reserve time)."""
+    return con.execute("""SELECT COUNT(*) FROM meta m JOIN reservations r
+        ON m.key = 'front:' || r.chain || ':' || r.order_id || ':' || r.fill
+        WHERE r.state = 'active' AND json_extract(m.value, '$') = ?""", (payer,)).fetchone()[0]

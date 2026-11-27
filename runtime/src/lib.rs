@@ -64,7 +64,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     authoring_version: 1,
     // 9: pallet-revive (EVM). 10: subnet registration, issuance sharing, subnet control.
     // 11: Emergency track (authorize a runtime upgrade by hash).
-    spec_version: 12,
+    spec_version: 13,
     impl_version: 1,
     apis: apis::RUNTIME_API_VERSIONS,
     // 2: the transaction extensions changed (EthSetOrigin added).

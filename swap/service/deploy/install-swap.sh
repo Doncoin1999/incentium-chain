@@ -10,19 +10,34 @@
 #   3. Put the keeper keys in ~/incentium-swap/incentium-keeper.seed and base-keeper.key (chmod 600).
 #      They only pay fees; keep a small balance (a few ICT, a little ETH on Base).
 #
-# Optional environment: DOMAIN=trade.incentium.org
-# Sets up: ~/incentium-swap/{venv,swap.db,config.json}, systemd incentium-swap (127.0.0.1:8095),
-#          Caddy https://$DOMAIN -> page from /var/www/incentium-swap, /api/* -> 127.0.0.1:8095
+# Optional environment:
+#   DOMAIN=trade.incentium.org   the public name of the trading page
+#   NAME=incentium-swap          instance name: folder ~/$NAME, service $NAME, page /var/www/$NAME.
+#                                Use a second name to run mainnet and testnet on one server, e.g.
+#                                NAME=incentium-swap-mainnet DOMAIN=trade.incentium.org (and "port": 8096 in its config.json)
+# Sets up: ~/$NAME/{venv,swap.db,config.json}, systemd $NAME (127.0.0.1:<port from config.json>),
+#          Caddy https://$DOMAIN -> page from /var/www/$NAME, /api/* -> the keeper
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"          # .../incentium-chain/swap/service
 WEBSRC="$(cd "$HERE/../web" && pwd)"
-D="$HOME/incentium-swap"
+NAME="${NAME:-incentium-swap}"
+D="$HOME/$NAME"
 DOMAIN="${DOMAIN:-trade.incentium.org}"
-WEB=/var/www/incentium-swap
+WEB="/var/www/$NAME"
+CADDYFILE=/etc/caddy/sites/swap.caddy
+[ "$NAME" = incentium-swap ] || CADDYFILE="/etc/caddy/sites/$NAME.caddy"
 
 mkdir -p "$D" && chmod 700 "$D"
 if [ ! -s "$D/config.json" ]; then
-  sed "s#/home/administrator#$HOME#g" "$HERE/deploy/config.example.json" > "$D/config.json"
+  TEMPLATE="$HERE/deploy/config.example.json"                      # testnet: Base Sepolia
+  case "$NAME" in *mainnet*) TEMPLATE="$HERE/deploy/config.mainnet.example.json" ;; esac   # Base mainnet, port 8096
+  # the templates name their folder /home/administrator/incentium-swap[-mainnet]: point it at $D, once
+  python3 - "$TEMPLATE" "$D" "$HOME" > "$D/config.json" <<'PY'
+import re, sys
+t, d, home = sys.argv[1:]
+s = re.sub(r"/home/administrator/incentium-swap(-mainnet)?(?=/)", d, open(t).read())
+print(s.replace("/home/administrator", home), end="")
+PY
   echo "Created $D/config.json. Fill in contract, base_start and genesis_time, add the key files, then run this again."
   exit 0
 fi
@@ -34,6 +49,7 @@ bad += [f for f in (c.get("incentium_keeper_seed_file"), c.get("base_keeper_key_
 if bad: sys.exit("config.json is not complete yet: " + ", ".join(map(str, bad)))
 PY
 chmod 600 "$D"/*.seed "$D"/*.key 2>/dev/null || true
+PORT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("port", 8095))' "$D/config.json")"
 
 echo "== python environment"
 sudo apt-get install -y -qq python3-venv rsync >/dev/null
@@ -47,9 +63,9 @@ sudo rsync -a --delete "$WEBSRC/" "$WEB/"
 sudo chmod -R a+rX "$WEB"
 
 echo "== service"
-sudo tee /etc/systemd/system/incentium-swap.service >/dev/null <<UNIT
+sudo tee "/etc/systemd/system/$NAME.service" >/dev/null <<UNIT
 [Unit]
-Description=Incentium Swap keeper and API
+Description=Incentium Swap keeper and API ($NAME, $DOMAIN)
 After=network-online.target
 Wants=network-online.target
 
@@ -64,17 +80,17 @@ RestartSec=10
 WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
-sudo systemctl enable --now incentium-swap >/dev/null
-sudo systemctl restart incentium-swap
+sudo systemctl enable --now "$NAME" >/dev/null
+sudo systemctl restart "$NAME"
 
 echo "== caddy"
 sudo mkdir -p /etc/caddy/sites
 sudo grep -q "import sites/\*.caddy" /etc/caddy/Caddyfile || echo "import sites/*.caddy" | sudo tee -a /etc/caddy/Caddyfile >/dev/null
-sudo tee /etc/caddy/sites/swap.caddy >/dev/null <<CADDY
+sudo tee "$CADDYFILE" >/dev/null <<CADDY
 $DOMAIN {
 	encode gzip
 	handle /api/* {
-		reverse_proxy 127.0.0.1:8095
+		reverse_proxy 127.0.0.1:$PORT
 	}
 	handle {
 		root * $WEB
@@ -89,10 +105,10 @@ $DOMAIN {
 CADDY
 # keep the page behind Incentium sign-in when the sign-in service is installed (auth/deploy/install-auth.sh)
 if [ -f /etc/caddy/sites/00-auth.caddy ]; then
-  sudo python3 "$HERE/../../auth/deploy/protect-caddy.py" /etc/caddy/sites/swap.caddy --all --no-snippet >/dev/null
+  sudo python3 "$HERE/../../auth/deploy/protect-caddy.py" "$CADDYFILE" --all --no-snippet >/dev/null
 fi
 sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 sudo systemctl reload caddy
 
 sleep 3
-curl -fsS http://127.0.0.1:8095/api/status && echo && echo "OK: https://$DOMAIN (DNS for $DOMAIN must point to this server)"
+curl -fsS "http://127.0.0.1:$PORT/api/status" && echo && echo "OK: https://$DOMAIN (DNS for $DOMAIN must point to this server)"

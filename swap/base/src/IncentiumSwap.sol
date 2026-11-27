@@ -11,7 +11,20 @@ pragma solidity 0.8.28;
 /// order's hash. Every payout goes to an address fixed when the order, reservation or lock was
 /// made, and needs either the secret (before the deadline) or the deadline to have passed.
 ///
-/// No owner, no upgrade. A pause guardian can stop new orders, reservations and locks only.
+/// No owner, no upgrade, no pause, no fee and no privileged address of any kind: after deployment
+/// nobody has rights over this contract that any other address does not have.
+///
+/// Version 2 (26 Nov 2026), replacing the first mainnet deployment:
+/// - No fee (was 0.1 % to a fixed address) and no pause guardian.
+/// - Reservation deposit (review fix H2): whoever reserves a fill pays 2 % of it in USDC, at least
+///   0.5 USDC. It is returned when the reservation is claimed. If the reservation expires unclaimed,
+///   half goes back to whoever paid it and half is burned: the burned half stays in this contract
+///   for good, counted in `burnedDeposits`, and no call can move it. Nobody gains from a trade that
+///   did not complete, so no arbiter is needed; an honest taker whose maker never confirmed loses
+///   1 %, and so does a taker who blocks an order. (Kept here rather than sent to a dead address,
+///   so a USDC blacklist of that address cannot block expiry.) A deposit refund that USDC refuses,
+///   e.g. to a blacklisted address, is recorded in `owed` instead of blocking the claim or expiry.
+///   One open reservation per payee per order.
 contract IncentiumSwap {
     // ------------------------------------------------------------------ constants
 
@@ -23,7 +36,8 @@ contract IncentiumSwap {
     uint256 public constant ORDER_TTL_MAX = 24 hours;
     uint256 public constant RESERVATION_TTL = 19 hours; // 1 h to lock + 12 h to confirm + 6 h margin
     uint256 public constant LOCK_TTL_MAX = 12 hours;
-    uint256 public constant FEE_BPS = 10; // 0.1 %
+    uint256 public constant DEPOSIT_BPS = 200; // reservation deposit: 2 % of the fill
+    uint256 public constant MIN_DEPOSIT = 5e5; // at least 0.5 USDC
 
     // ------------------------------------------------------------------ types
 
@@ -47,12 +61,22 @@ contract IncentiumSwap {
         uint128 freeUsdc; // USDC held for the remaining quantity
     }
 
+    enum DepositState {
+        None,
+        Held,
+        Returned, // in full: the reservation was claimed
+        HalfBurned // the reservation expired: half returned, half burned
+    }
+
     struct Reservation {
         State state;
         uint64 expiry;
         address payee; // the seller's Base address
         uint128 qty;
         uint128 amount; // USDC
+        address depositor; // paid the deposit (the seller or a keeper)
+        DepositState depositState;
+        uint128 deposit; // USDC
     }
 
     struct Lock {
@@ -71,25 +95,32 @@ contract IncentiumSwap {
 
     IERC20 public immutable usdc;
     uint256 public immutable genesisTime; // Incentium mainnet genesis (block 1), for the size caps
-    address public immutable feeRecipient;
-    address public immutable pauseGuardian;
-    bool public paused;
+    uint256 public burnedDeposits; // burned halves of unclaimed reservations' deposits, locked here for good
+    mapping(address => uint256) public owed; // deposit refunds USDC refused to deliver; claimOwed retries
 
     mapping(bytes32 => BuyOrder) public buyOrders;
     mapping(bytes32 => bytes32[MAX_FILLS]) internal _hashes;
     mapping(bytes32 => mapping(uint8 => Reservation)) public reservations;
     mapping(bytes32 => Lock) public locks;
+    mapping(bytes32 => mapping(address => bool)) public openByPayee; // one open reservation per payee per order
 
     uint256 private _entered = 1;
 
     // ------------------------------------------------------------------ events
 
     event BuyPlaced(
-        bytes32 indexed orderId, address indexed maker, bytes32 ictRecipient, uint128 maxQty, uint128 price, uint64 expiry
+        bytes32 indexed orderId,
+        address indexed maker,
+        bytes32 ictRecipient,
+        uint128 maxQty,
+        uint128 price,
+        uint64 expiry
     );
     event BuyClosed(bytes32 indexed orderId, uint128 refunded);
-    event Reserved(bytes32 indexed orderId, uint8 indexed fill, address payee, uint128 qty, uint128 amount, uint64 expiry);
-    event ReservationClaimed(bytes32 indexed orderId, uint8 indexed fill, bytes32 secret, uint128 paid, uint128 fee);
+    event Reserved(
+        bytes32 indexed orderId, uint8 indexed fill, address payee, uint128 qty, uint128 amount, uint64 expiry
+    );
+    event ReservationClaimed(bytes32 indexed orderId, uint8 indexed fill, bytes32 secret, uint128 paid);
     event ReservationExpired(bytes32 indexed orderId, uint8 indexed fill);
     event Locked(
         bytes32 indexed lockId,
@@ -102,14 +133,16 @@ contract IncentiumSwap {
         uint128 amount,
         uint64 expiry
     );
-    event LockClaimed(bytes32 indexed lockId, bytes32 secret, uint128 paid, uint128 fee);
+    event LockClaimed(bytes32 indexed lockId, bytes32 secret, uint128 paid);
     event LockRefunded(bytes32 indexed lockId);
-    event Paused(bool paused);
+    event DepositHeld(bytes32 indexed orderId, uint8 indexed fill, address depositor, uint128 deposit);
+    event DepositReturned(bytes32 indexed orderId, uint8 indexed fill, uint128 amount);
+    event DepositHalfBurned(bytes32 indexed orderId, uint8 indexed fill, uint128 returned, uint128 burned);
+    event RefundOwed(address indexed to, uint256 amount);
+    event OwedPaid(address indexed to, uint256 amount);
 
     // ------------------------------------------------------------------ errors
 
-    error IsPaused();
-    error NotGuardian();
     error BadQuantity();
     error BadPrice();
     error BadExpiry();
@@ -129,13 +162,12 @@ contract IncentiumSwap {
     error LockExists();
     error TransferFailed();
     error Reentrancy();
+    error PayeeHasOpenReservation();
 
-    constructor(IERC20 usdc_, uint256 genesisTime_, address feeRecipient_, address pauseGuardian_) {
-        if (address(usdc_) == address(0) || feeRecipient_ == address(0)) revert BadRecipient();
+    constructor(IERC20 usdc_, uint256 genesisTime_) {
+        if (address(usdc_) == address(0)) revert BadRecipient();
         usdc = usdc_;
         genesisTime = genesisTime_;
-        feeRecipient = feeRecipient_;
-        pauseGuardian = pauseGuardian_;
     }
 
     modifier nonReentrant() {
@@ -143,11 +175,6 @@ contract IncentiumSwap {
         _entered = 2;
         _;
         _entered = 1;
-    }
-
-    modifier whenNotPaused() {
-        if (paused) revert IsPaused();
-        _;
     }
 
     // ------------------------------------------------------------------ views
@@ -163,6 +190,12 @@ contract IncentiumSwap {
 
     function usdcFor(uint256 qty, uint256 price) public pure returns (uint256) {
         return qty * price / ICT_UNIT;
+    }
+
+    /// Deposit for reserving a fill worth `amount` USDC: 2 %, at least 0.5 USDC.
+    function depositFor(uint256 amount) public pure returns (uint256) {
+        uint256 d = amount * DEPOSIT_BPS / 10_000;
+        return d < MIN_DEPOSIT ? MIN_DEPOSIT : d;
     }
 
     function orderId(address maker, uint256 nonce) public pure returns (bytes32) {
@@ -191,7 +224,7 @@ contract IncentiumSwap {
         bytes32 ictRecipient,
         uint64 expiry,
         bytes32[MAX_FILLS] calldata fillHashes
-    ) external nonReentrant whenNotPaused returns (bytes32 id) {
+    ) external nonReentrant returns (bytes32 id) {
         if (maxQty == 0 || maxQty % QTY_STEP != 0) revert BadQuantity();
         if (maxQty > maxOrderQty()) revert OverCap();
         if (price == 0) revert BadPrice();
@@ -247,8 +280,8 @@ contract IncentiumSwap {
     // ------------------------------------------------------------------ reservations (seller fills a buy order)
 
     /// Reserve `qty` of buy order `id` as fill `fill`, payable to `payee` (the seller) against hash `fill`.
-    /// Anyone may call: the seller's page or a keeper.
-    function reserve(bytes32 id, uint8 fill, uint128 qty, address payee) external nonReentrant whenNotPaused {
+    /// Anyone may call: the seller's page or a keeper. The caller pays the deposit (approve first).
+    function reserve(bytes32 id, uint8 fill, uint128 qty, address payee) external nonReentrant {
         BuyOrder storage o = buyOrders[id];
         if (!o.open) revert OrderNotOpen();
         if (block.timestamp >= o.expiry) revert OrderExpired();
@@ -259,15 +292,28 @@ contract IncentiumSwap {
         if (qty == 0 || qty % QTY_STEP != 0 || qty > o.remainingQty) revert BadQuantity();
         uint256 amount = usdcFor(qty, o.price);
         if (amount < MIN_FILL_USDC) revert TooSmall();
+        if (openByPayee[id][payee]) revert PayeeHasOpenReservation();
+        uint256 deposit = depositFor(amount);
 
         o.usedFills |= uint16(1) << fill;
         o.openReservations += 1;
         o.remainingQty -= qty;
         o.freeUsdc -= uint128(amount);
+        openByPayee[id][payee] = true;
         uint64 expiry = uint64(block.timestamp + RESERVATION_TTL);
-        reservations[id][fill] =
-            Reservation({state: State.Active, expiry: expiry, payee: payee, qty: qty, amount: uint128(amount)});
+        reservations[id][fill] = Reservation({
+            state: State.Active,
+            expiry: expiry,
+            payee: payee,
+            qty: qty,
+            amount: uint128(amount),
+            depositor: msg.sender,
+            depositState: DepositState.Held,
+            deposit: uint128(deposit)
+        });
         emit Reserved(id, fill, payee, qty, uint128(amount), expiry);
+        emit DepositHeld(id, fill, msg.sender, uint128(deposit));
+        _pull(msg.sender, deposit);
     }
 
     /// Pay a reservation to its seller with the secret the buyer revealed on Incentium.
@@ -278,13 +324,18 @@ contract IncentiumSwap {
         if (hashOf(secret) != _hashes[id][fill]) revert WrongSecret();
         r.state = State.Claimed;
         buyOrders[id].openReservations -= 1;
-        (uint128 paid, uint128 fee) = _split(r.amount);
-        emit ReservationClaimed(id, fill, secret, paid, fee);
-        _push(r.payee, paid);
-        if (fee > 0) _push(feeRecipient, fee);
+        openByPayee[id][r.payee] = false;
+        emit ReservationClaimed(id, fill, secret, r.amount);
+        _push(r.payee, r.amount);
+        if (r.depositState == DepositState.Held) {
+            r.depositState = DepositState.Returned;
+            emit DepositReturned(id, fill, r.deposit);
+            _refund(r.depositor, r.deposit);
+        }
     }
 
-    /// After the deadline: quantity back to the order, or USDC back to the maker if the order is closed or expired.
+    /// After the deadline: quantity back to the order, or USDC back to the maker if the order is closed or
+    /// expired. Anyone may call. Half the reservation deposit goes back to its payer, half is burned.
     function expireReservation(bytes32 id, uint8 fill) external nonReentrant {
         Reservation storage r = reservations[id][fill];
         if (r.state != State.Active) revert NotActive();
@@ -292,12 +343,21 @@ contract IncentiumSwap {
         r.state = State.Expired;
         BuyOrder storage o = buyOrders[id];
         o.openReservations -= 1;
+        openByPayee[id][r.payee] = false;
         emit ReservationExpired(id, fill);
         if (o.open && block.timestamp < o.expiry) {
             o.remainingQty += r.qty;
             o.freeUsdc += r.amount;
         } else {
             _push(o.maker, r.amount);
+        }
+        if (r.depositState == DepositState.Held) {
+            r.depositState = DepositState.HalfBurned;
+            uint128 back = r.deposit / 2;
+            uint128 burned = r.deposit - back;
+            burnedDeposits += burned;
+            emit DepositHalfBurned(id, fill, back, burned);
+            _refund(r.depositor, back);
         }
     }
 
@@ -313,7 +373,7 @@ contract IncentiumSwap {
         uint128 qty,
         uint128 price,
         uint64 expiry
-    ) external nonReentrant whenNotPaused returns (bytes32 id) {
+    ) external nonReentrant returns (bytes32 id) {
         if (payee == address(0) || hash == bytes32(0)) revert BadRecipient();
         if (qty == 0 || qty % QTY_STEP != 0) revert BadQuantity();
         if (qty > maxOrderQty()) revert OverCap();
@@ -346,10 +406,8 @@ contract IncentiumSwap {
         if (block.timestamp >= l.expiry) revert TooLate();
         if (hashOf(secret) != l.hash) revert WrongSecret();
         l.state = State.Claimed;
-        (uint128 paid, uint128 fee) = _split(l.amount);
-        emit LockClaimed(id, secret, paid, fee);
-        _push(l.payee, paid);
-        if (fee > 0) _push(feeRecipient, fee);
+        emit LockClaimed(id, secret, l.amount);
+        _push(l.payee, l.amount);
     }
 
     /// After the deadline the USDC goes back to the buyer.
@@ -362,20 +420,26 @@ contract IncentiumSwap {
         _push(l.taker, l.amount);
     }
 
-    // ------------------------------------------------------------------ pause
+    // ------------------------------------------------------------------ owed refunds
 
-    /// Stops new orders, reservations and locks. Claims, refunds and cancellations always work.
-    function setPaused(bool p) external {
-        if (msg.sender != pauseGuardian) revert NotGuardian();
-        paused = p;
-        emit Paused(p);
+    /// Pay `to` the deposit refunds USDC refused earlier (e.g. while `to` was blacklisted). Anyone may call.
+    function claimOwed(address to) external nonReentrant {
+        uint256 a = owed[to];
+        owed[to] = 0;
+        emit OwedPaid(to, a);
+        if (a > 0) _push(to, a);
     }
 
     // ------------------------------------------------------------------ internals
 
-    function _split(uint128 amount) private pure returns (uint128 paid, uint128 fee) {
-        fee = uint128(uint256(amount) * FEE_BPS / 10_000);
-        paid = amount - fee;
+    /// A deposit refund never blocks a claim or an expiry: if USDC refuses it, it is owed instead.
+    function _refund(address to, uint256 amount) private {
+        if (amount == 0) return;
+        (bool ok, bytes memory ret) = address(usdc).call(abi.encodeCall(IERC20.transfer, (to, amount)));
+        if (!ok || (ret.length > 0 && !abi.decode(ret, (bool)))) {
+            owed[to] += amount;
+            emit RefundOwed(to, amount);
+        }
     }
 
     function _pull(address from, uint256 amount) private {

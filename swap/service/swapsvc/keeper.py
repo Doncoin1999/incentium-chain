@@ -100,8 +100,16 @@ class Keeper:
     def expire_things(self):
         t_inc, t_base = self.inc.now(), self.base.now()
         for chain, now, client in (("inc", t_inc, self.inc), ("base", t_base, self.base)):
-            for r in self.con.execute("SELECT order_id, fill FROM reservations WHERE chain = ? AND state = 'active' AND expiry <= ?",
+            for r in self.con.execute("SELECT order_id, fill, expiry FROM reservations WHERE chain = ? AND state = 'active' AND expiry <= ?",
                                       (chain, now)).fetchall():
+                if chain == "inc":
+                    # review fix H1: the pallet extends reservation deadlines by chain downtime
+                    try:
+                        if now < self.inc.reservation_deadline(r["order_id"], r["fill"], r["expiry"]):
+                            continue
+                    except Exception as e:
+                        log.warning("deadline check failed: %r", e)
+                        continue
                 if self._once_per(f"{chain}-exp-{r['order_id']}-{r['fill']}"):
                     if chain == "inc":
                         self._try(lambda: client.send("expire_reservation", {"order": r["order_id"], "fill": r["fill"]}), "expire")
@@ -151,6 +159,25 @@ class Keeper:
                 raise ValueError("quantity too large for the order, or under 5 USDC")
             if sum(1 for f in o["fills"] if f["state"] == "active") >= MAX_OPEN_RES:
                 raise ValueError("this order has 3 open reservations; try again later")
+            # Review fix H2: the keeper pays the reservation deposit for the taker, but only for a
+            # taker who can pay right now on the other chain, and one open fill at a time.
+            payer = str(body.get("payer", ""))
+            usdc_amount = qty * o["price"] // ICT
+            if chain == "inc":
+                from web3 import Web3
+                if not Web3.is_address(payer):
+                    raise ValueError("payer must be your Base address (0x...)")
+                payer = payer.lower()
+                if not self.base.usdc_ok(self.cfg["usdc"], payer, usdc_amount):
+                    raise ValueError("your Base wallet must hold and approve the USDC for this fill first")
+            else:
+                payer = normalize_ss58(payer) or ""
+                if not payer:
+                    raise ValueError("payer must be your Incentium address (5...)")
+                if self.inc.free_balance(payer) < qty + ICT // 100:
+                    raise ValueError("your Incentium account must hold the ICT for this fill first")
+            if store.keeper_fronted_open(self.con, payer) >= 1:
+                raise ValueError("you already have an open fill; finish it or let it expire first")
             # The store follows the chain with a delay (Base: 10 confirmations), so a fill reserved
             # moments ago may not be in it yet: also skip every fill already used on chain.
             oc = (self.inc if chain == "inc" else self.base).order(oid) or {}
@@ -168,7 +195,10 @@ class Keeper:
                 rec = str(body.get("recipient", ""))
                 if not Web3.is_address(rec):
                     raise ValueError("recipient must be a Base address (0x...)")
+                self.base.ensure_keeper_allowance(self.cfg["usdc"], max(usdc_amount * 2 // 100, 500_000))
                 tx = self.base.send("reserve", bytes.fromhex(oid[2:]), fill, qty, Web3.to_checksum_address(rec))
+            store.set_meta(self.con, f"front:{chain}:{oid}:{fill}", payer)
+            self.con.commit()
             self.once_sync_quiet()
         return {"fill": fill, "tx": tx}
 

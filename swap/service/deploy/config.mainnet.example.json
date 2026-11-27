@@ -1,0 +1,22 @@
+{
+  "db": "/home/administrator/incentium-swap-mainnet/swap.db",
+  "host": "127.0.0.1",
+  "port": 8096,
+  "interval": 6,
+
+  "incentium_rpc": "ws://127.0.0.1:9944",
+  "incentium_rpc_public": "wss://rpc.incentium.org",
+  "incentium_start": 0,
+  "incentium_keeper_seed_file": "/home/administrator/incentium-swap-mainnet/incentium-keeper.seed",
+
+  "base_rpc": "https://base-rpc.publicnode.com",
+  "base_rpc_public": "https://mainnet.base.org",
+  "base_chain_id": 8453,
+  "base_start": 0,
+  "base_keeper_key_file": "/home/administrator/incentium-swap-mainnet/base-keeper.key",
+
+  "contract": "0x0000000000000000000000000000000000000000",
+  "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+  "genesis_time": 0,
+  "explorer": "https://explorer.incentium.org"
+}

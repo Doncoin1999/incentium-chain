@@ -303,6 +303,12 @@ parameter_types! {
     /// 1 h for the taker to lock + 12 h for the maker to confirm + 6 h claim margin.
     pub const SwapReservationTtl: u64 = 19 * 3600;
     pub const SwapLockTtlMax: u64 = 12 * 3600;
+    /// Reservation deposit: 2 % of the quantity, at least 2 ICT (review fix H2); half returned,
+    /// half burned if the reservation expires unclaimed.
+    pub const SwapReservationDepositPpm: u32 = 20_000;
+    pub const SwapMinReservationDeposit: Balance = 2 * UNIT;
+    /// Gaps between blocks above 2 minutes count as downtime (review fix H1).
+    pub const SwapMaxBlockGap: u64 = 120;
 }
 
 /// ICT <-> USDC atomic swaps with Base (Incentium Swap Technical Specification v0.1).
@@ -319,6 +325,9 @@ impl pallet_ict_swap::Config for Runtime {
     type OrderTtlMax = SwapOrderTtlMax;
     type ReservationTtl = SwapReservationTtl;
     type LockTtlMax = SwapLockTtlMax;
+    type ReservationDepositPpm = SwapReservationDepositPpm;
+    type MinReservationDeposit = SwapMinReservationDeposit;
+    type MaxBlockGap = SwapMaxBlockGap;
 }
 
 // ---------------------------------------------------------------------------------------------

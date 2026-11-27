@@ -67,8 +67,11 @@ class FakeIncentium:
             r = dict(state="Active", recipient=p["recipient"], qty=p["qty"], usdc=p["qty"] * o["price"] // ICT,
                      expiry=self.t + 19 * 3600)
             self.res[(p["order"], p["fill"])] = r
+            r["deposit"] = max(p["qty"] * 2 // 100, 2 * ICT)
+            r["deposit_state"] = "Held"
             self.emit("Reserved", order=p["order"], fill=p["fill"], recipient=p["recipient"], qty=p["qty"],
                       usdc=r["usdc"], expiry=r["expiry"])
+            self.emit("DepositHeld", order=p["order"], fill=p["fill"], depositor="KEEPER", deposit=r["deposit"])
         elif fn == "claim_reservation":
             r = self.res[(p["order"], p["fill"])]
             assert r["state"] == "Active" and self.t < r["expiry"]
@@ -89,7 +92,14 @@ class FakeIncentium:
             assert l["state"] == "Active" and self.t >= l["expiry"]
             l["state"] = "Expired"
             self.emit("LockRefunded", lock=p["lock"])
-        elif fn in ("expire_reservation", "refund_expired"):
+        elif fn == "expire_reservation":
+            r = self.res[(p["order"], p["fill"])]
+            assert r["state"] == "Active" and self.t >= r["expiry"]
+            r["state"], r["deposit_state"] = "Expired", "HalfBurned"
+            self.emit("ReservationExpired", order=p["order"], fill=p["fill"])
+            back = r["deposit"] // 2
+            self.emit("DepositHalfBurned", order=p["order"], fill=p["fill"], returned=back, burned=r["deposit"] - back)
+        elif fn == "refund_expired":
             pass
         else:
             raise AssertionError(fn)
@@ -104,8 +114,21 @@ class FakeIncentium:
     def lock(self, lid):
         return self.locks.get(lid)
 
+    def reservation_deadline(self, oid, fill, expiry):
+        return expiry
+
+    def free_balance(self, addr):
+        return self.balances.get(addr, 1_000 * ICT)
+
     def reservation(self, oid, fill):
         return self.res.get((oid, fill))
+
+    def order(self, oid):
+        """Like the SellOrders storage item: the fills already used on chain as a bit mask."""
+        if oid not in self.orders:
+            return None
+        used = sum(1 << f for (o, f) in self.res if o == oid)
+        return {**self.orders[oid], "used_fills": used}
 
     def sync(self, con, start, max_blocks=500):
         evs, self.events = self.events, []
@@ -124,6 +147,14 @@ class FakeIncentium:
                 store.lock_claimed(con, "inc", a["lock"], a["secret"])
             elif name == "LockRefunded":
                 store.lock_refunded(con, "inc", a["lock"])
+            elif name == "ReservationExpired":
+                store.reservation_expired(con, "inc", a["order"], a["fill"], self.t)
+            elif name == "DepositHeld":
+                store.deposit_held(con, "inc", a["order"], a["fill"], a["depositor"], a["deposit"])
+            elif name == "DepositReturned":
+                store.deposit_settled(con, "inc", a["order"], a["fill"], "returned")
+            elif name == "DepositHalfBurned":
+                store.deposit_settled(con, "inc", a["order"], a["fill"], "half_burned")
         con.commit()
         return len(evs)
 
@@ -161,10 +192,10 @@ def env(tmp_path):
         return w3.eth.contract(address=r["contractAddress"], abi=j["abi"])
 
     accts = [w3.eth.account.from_key(k) for k in KEYS]
-    keeper_a, seller, buyer, fees = accts
+    keeper_a, seller, buyer, other = accts
     genesis = w3.eth.get_block("latest")["timestamp"] - 2 * 86_400
     usdc = deploy("IncentiumSwap.t.sol", "MockUSDC")
-    swap = deploy("IncentiumSwap.sol", "IncentiumSwap", usdc.address, genesis, fees.address, keeper_a.address)
+    swap = deploy("IncentiumSwap.sol", "IncentiumSwap", usdc.address, genesis)
 
     def tx(fn, key):
         a = w3.eth.account.from_key(key)
@@ -174,15 +205,16 @@ def env(tmp_path):
         return r
 
     tx(usdc.functions.mint(buyer.address, 1_000 * 10**6), KEYS[0])
+    tx(usdc.functions.mint(keeper_a.address, 100 * 10**6), KEYS[0])     # the keeper pays deposits
     tx(usdc.functions.approve(swap.address, 2**255), KEYS[2])
     cfg = {"db": str(tmp_path / "swap.db"), "incentium_rpc": "fake", "base_rpc": f"http://127.0.0.1:{port}",
-           "contract": swap.address, "base_keeper_key": KEYS[0], "incentium_keeper_seed": None}
+           "contract": swap.address, "base_keeper_key": KEYS[0], "incentium_keeper_seed": None, "usdc": usdc.address}
     k = Keeper(cfg)
     k.inc = FakeIncentium()
     k.inc.t = w3.eth.get_block("latest")["timestamp"]
     k.base.confirmations = 0
     k.base.safe_block = lambda: w3.eth.block_number
-    yield dict(w3=w3, swap=swap, usdc=usdc, k=k, tx=tx, seller=seller, buyer=buyer, fees=fees)
+    yield dict(w3=w3, swap=swap, usdc=usdc, k=k, tx=tx, seller=seller, buyer=buyer, other=other, keeper=keeper_a)
     proc.terminate()
 
 
@@ -201,7 +233,7 @@ def test_sell_order_on_incentium_filled_by_buyer_on_base(env):
     assert store.book(k.con, k.inc.t)["sells"][0]["id"] == oid
 
     # 1. the buyer's page asks the keeper to reserve fill 0 for the buyer's Incentium account
-    res = k.reserve({"chain": "inc", "order": oid, "qty": 40 * ICT, "recipient": BUYER_INC})
+    res = k.reserve({"chain": "inc", "order": oid, "qty": 40 * ICT, "recipient": BUYER_INC, "payer": buyer.address})
     assert res["fill"] == 0
     # 2. the buyer locks 10 USDC on Base under hash 0, payable to the seller
     expiry = w3.eth.get_block("latest")["timestamp"] + 12 * 3600
@@ -215,10 +247,10 @@ def test_sell_order_on_incentium_filled_by_buyer_on_base(env):
     # a wrong secret is refused before anything is published
     with pytest.raises(ValueError):
         k.confirm({"chain": "base", "lock": lid, "secret": secret(1)})
-    # 3. the seller confirms: the keeper claims the lock, the seller is paid minus 0.1 %
+    # 3. the seller confirms: the keeper claims the lock, the seller is paid in full (no fee)
     k.confirm({"chain": "base", "lock": lid, "secret": secret(0)})
-    assert usdc.functions.balanceOf(seller.address).call() == 10 * 10**6 - 10_000
-    assert usdc.functions.balanceOf(env["fees"].address).call() == 10_000
+    assert usdc.functions.balanceOf(seller.address).call() == 10 * 10**6
+    assert usdc.functions.balanceOf(swap.address).call() == 0
     # 4. the keeper relays the revealed secret: the buyer receives the ICT on Incentium
     k.once()
     assert k.inc.balances[BUYER_INC] == 40 * ICT
@@ -238,7 +270,7 @@ def test_buy_order_on_base_filled_by_seller_on_incentium(env):
     assert o["id"] == oid and o["recipient"] == BUYER_INC
 
     # 1. the seller's page has the keeper reserve fill 0 on Base for the seller's Base address
-    res = k.reserve({"chain": "base", "order": oid, "qty": 60 * ICT, "recipient": seller.address})
+    res = k.reserve({"chain": "base", "order": oid, "qty": 60 * ICT, "recipient": seller.address, "payer": SELLER_INC})
     assert res["fill"] == 0
     k.once()
     # 2. the seller locks 60 ICT on Incentium under hash 0, payable to the buyer's account
@@ -248,9 +280,9 @@ def test_buy_order_on_base_filled_by_seller_on_incentium(env):
     # 3. the buyer confirms on Incentium (the keeper sends the unsigned claim)
     k.confirm({"chain": "inc", "lock": lid, "secret": secret(20)})
     assert k.inc.balances[BUYER_INC] == 60 * ICT
-    # 4. the keeper relays the secret to Base: the seller receives 15 USDC minus the fee
+    # 4. the keeper relays the secret to Base: the seller receives 15 USDC (no fee)
     k.once()
-    assert usdc.functions.balanceOf(seller.address).call() == 15 * 10**6 - 15_000
+    assert usdc.functions.balanceOf(seller.address).call() == 15 * 10**6
 
 
 def test_keeper_refunds_after_deadlines(env):
@@ -275,11 +307,58 @@ def test_reserve_rules(env):
     hashes = [sha(bytes([i])) for i in range(16)]
     k.inc.place_sell(SELLER_INC, oid, 100 * ICT, PRICE, env["seller"].address.lower(), hashes)
     k.once()
+    buyer = env["buyer"].address
     with pytest.raises(ValueError):
-        k.reserve({"chain": "inc", "order": oid, "qty": 10 * ICT, "recipient": BUYER_INC})   # 2.5 USDC < 5
+        k.reserve({"chain": "inc", "order": oid, "qty": 10 * ICT, "recipient": BUYER_INC, "payer": buyer})  # 2.5 USDC < 5
     with pytest.raises(ValueError):
-        k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": "0x1234"})
-    for f in range(3):
-        assert k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": BUYER_INC})["fill"] == f
-    with pytest.raises(ValueError, match="3 open reservations"):
-        k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": BUYER_INC})
+        k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": "0x1234", "payer": buyer})
+    with pytest.raises(ValueError, match="hold and approve"):   # review fix H2: the taker must be able to pay
+        k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": BUYER_INC,
+                   "payer": env["other"].address})
+    assert k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": BUYER_INC, "payer": buyer})["fill"] == 0
+    with pytest.raises(ValueError, match="already have an open fill"):
+        k.reserve({"chain": "inc", "order": oid, "qty": 20 * ICT, "recipient": BUYER_INC, "payer": buyer})
+
+
+# ---------------------------------------------------------------- reservation deposits (review fix H2)
+
+def _buy_order(env, nonce, first_secret):
+    w3, swap, tx = env["w3"], env["swap"], env["tx"]
+    from swapsvc.chains import bytes32_from_ss58
+    hashes = [bytes.fromhex(sha(bytes.fromhex(secret(i + first_secret)[2:]))[2:]) for i in range(16)]
+    expiry = w3.eth.get_block("latest")["timestamp"] + 86_400
+    r = tx(swap.functions.placeBuy(nonce, 100 * ICT, PRICE, bytes32_from_ss58(BUYER_INC), expiry, hashes), KEYS[2])
+    return "0x" + swap.events.BuyPlaced().process_receipt(r)[0]["args"]["orderId"].hex().removeprefix("0x"), hashes
+
+
+def test_unclaimed_base_deposit_is_half_burned_at_expiry(env):
+    w3, swap, usdc, k, seller, buyer = env["w3"], env["swap"], env["usdc"], env["k"], env["seller"], env["buyer"]
+    oid, _ = _buy_order(env, 9, 60)
+    k.once()
+    keeper_before = usdc.functions.balanceOf(env["keeper"].address).call()
+    buyer_before = usdc.functions.balanceOf(buyer.address).call()
+    k.reserve({"chain": "base", "order": oid, "qty": 60 * ICT, "recipient": seller.address, "payer": SELLER_INC})
+    assert usdc.functions.balanceOf(env["keeper"].address).call() == keeper_before - 500_000   # 0.5 USDC deposit
+    mine(w3, 19 * 3600 + 1)
+    k.inc.t += 19 * 3600 + 1
+    for _ in range(2):
+        k.once()
+    # the keeper expired the reservation: half the deposit back, half burned, the maker gains nothing
+    assert swap.functions.burnedDeposits().call() == 250_000
+    assert usdc.functions.balanceOf(env["keeper"].address).call() == keeper_before - 250_000
+    assert usdc.functions.balanceOf(buyer.address).call() == buyer_before
+    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'base'").fetchone()[0] == "half_burned"
+
+
+def test_unclaimed_incentium_deposit_is_half_burned_at_expiry(env):
+    k, seller = env["k"], env["seller"]
+    oid = "0x" + "66" * 32
+    hashes = [sha(bytes.fromhex(secret(i)[2:])) for i in range(16)]
+    k.inc.place_sell(SELLER_INC, oid, 100 * ICT, PRICE, seller.address.lower(), hashes)
+    k.once()
+    k.reserve({"chain": "inc", "order": oid, "qty": 40 * ICT, "recipient": BUYER_INC, "payer": env["buyer"].address})
+    k.inc.t += 19 * 3600 + 1
+    for _ in range(2):
+        k.once()
+    assert k.inc.res[(oid, 0)]["deposit_state"] == "HalfBurned"
+    assert k.con.execute("SELECT state FROM deposits WHERE chain = 'inc'").fetchone()[0] == "half_burned"

@@ -20,6 +20,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .pos { color: var(--good); } .neg { color: var(--text); } .bad { color: var(--bad); }
 
 header.top { border-bottom: 1px solid var(--line); }
+.testnet-note { background: var(--lamp-dim); border-bottom: 1px solid var(--lamp); font-size: 14px; }
+.testnet-note .wrap { padding-top: 10px; padding-bottom: 10px; }
 header.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 32px; padding-top: 16px; padding-bottom: 16px; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .brand b { font: 600 21px/1 var(--serif); }

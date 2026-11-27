@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Incentium Node</title>
+<link rel="icon" type="image/svg+xml" href="https://incentium.org/brand/incentium-logo-white-on-black.svg">
+<style>
+:root{--bg:#1c2230;--panel:#242b3a;--line:#39425a;--ink:#e9ecf2;--muted:#97a1b4;--lamp:#e8a33d;--ok:#8fd19e;--bad:#ef9a8f;--serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 -apple-system,"Segoe UI",Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:18px 28px;border-bottom:1px solid var(--line)}
+header b{font:600 21px var(--serif);letter-spacing:.01em}
+.chip{font-size:13px;padding:2px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.chip.main{border-color:var(--lamp);color:var(--lamp)}
+main{max-width:980px;margin:0 auto;padding:28px}
+.hero{padding:6px 0 26px}
+.hero h1{font:500 42px/1.1 var(--serif);letter-spacing:-.01em;margin:0 0 6px}
+.hero p{color:var(--muted);margin:0;max-width:640px}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:12px;vertical-align:middle;background:var(--muted)}
+.dot.on{background:var(--ok);box-shadow:0 0 0 5px rgba(143,209,158,.15)}
+.dot.wait{background:var(--lamp)}
+.dot.err{background:var(--bad)}
+.bar{height:8px;background:var(--line);border-radius:4px;margin-top:16px;max-width:520px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--lamp);width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px}
+section.focus{border-color:var(--lamp)}
+section h2{font-size:15px;margin:0 0 12px;font-weight:600}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0}
+dt{color:var(--muted)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.big{font:500 32px/1.1 var(--serif)}
+label{display:block;font-size:14px;margin:10px 0 4px;color:var(--muted)}
+input,textarea{width:100%;padding:9px 10px;border-radius:7px;border:1px solid var(--line);background:#1a1f2b;color:var(--ink);font:inherit}
+.check{display:flex;gap:8px;align-items:flex-start;color:var(--ink);margin-top:12px}
+.check input{width:auto;margin-top:5px}
+button{font:inherit;font-weight:600;padding:9px 16px;border-radius:7px;border:0;background:var(--lamp);color:#1b1b1b;cursor:pointer;margin-top:14px}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
+.phrase{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:14px}
+.phrase span{background:#1a1f2b;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.phrase em{color:var(--muted);font-style:normal;margin-right:6px}
+.note{font-size:14px;color:var(--muted)}
+.err{color:var(--bad)}
+a{color:var(--lamp)}
+pre{white-space:pre-wrap;font:12px/1.5 ui-monospace,Menlo,monospace;color:var(--muted);max-height:260px;overflow:auto;margin:8px 0 0}
+details summary{cursor:pointer;color:var(--muted)}
+.hide{display:none}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .6s}}
+</style>
+</head>
+<body>
+<header><a href="https://incentium.org/" target="_blank" rel="noopener" title="incentium.org" style="display:inline-flex;align-items:center;gap:8px;color:inherit;text-decoration:none"><img src="https://incentium.org/brand/incentium-mark.svg" alt="" width="26" height="24"><b>Incentium Node</b></a><span id="net" class="chip"></span></header>
+<main>
+  <div class="hero">
+    <h1><span id="dot" class="dot"></span><span id="title">Starting…</span></h1>
+    <p id="msg"></p>
+    <div id="barwrap" class="bar hide"><i id="bar"></i></div>
+  </div>
+
+  <div class="grid">
+    <section id="request" class="focus hide">
+      <h2>Ask to join the network</h2>
+      <p class="note">Each new miner is approved by hand while the network starts up. You will start mining automatically once you are approved.</p>
+      <form id="reqform">
+        <label for="name">Your name</label><input id="name" required maxlength="100" autocomplete="name">
+        <label for="email">Email</label><input id="email" type="email" required maxlength="200" autocomplete="email">
+        <label for="note">Anything we should know (optional)</label><textarea id="note" rows="2" maxlength="500"></textarea>
+        <label class="check"><input type="checkbox" id="understood" required>
+          <span>I understand that during the first 90 days a quarter of each reward is paid at once and three quarters are locked and released from day 150 to day 690.</span></label>
+        <button>Send request</button>
+        <p id="reqerr" class="err"></p>
+      </form>
+    </section>
+
+    <section id="backup" class="focus hide">
+      <h2>Back up your miner key</h2>
+      <p class="note">Your rewards belong to the key on this computer. If the computer breaks or is lost, the backup is the only way to get them back. Do this once.</p>
+      <button id="showphrase" class="ghost">Show the 12 words</button>
+      <a id="dlkey" href="/api/backup/file"><button type="button" class="ghost">Download the key file</button></a>
+      <div id="phrase" class="phrase hide"></div>
+      <label class="check"><input type="checkbox" id="stored"><span>I have written down the words or saved the file somewhere safe, not only on this computer.</span></label>
+      <button id="backupdone" disabled>Done</button>
+    </section>
+
+    <section>
+      <h2>Earnings</h2>
+      <div class="big" id="total">–</div>
+      <p class="note" style="margin:2px 0 12px">ICT in total</p>
+      <dl>
+        <dt>Available now</dt><dd id="free">–</dd>
+        <dt>Locked (launch period)</dt><dd id="locked">–</dd>
+        <dt>Earned today</dt><dd id="today">–</dd>
+        <dt>Tasks answered today</dt><dd id="tasks">–</dd>
+        <dt>Chat answers today</dt><dd id="chats">–</dd>
+      </dl>
+      <label class="check" style="margin-top:12px"><input type="checkbox" id="chaton"><span>Also answer visitors on <a href="https://chat.incentium.org" target="_blank" rel="noopener">chat.incentium.org</a> with this computer's model <span class="note" id="chatstate"></span></span></label>
+      <p class="note" style="margin-top:12px"><a id="explorer" target="_blank" rel="noopener">See your account on the network</a></p>
+    </section>
+
+    <section>
+      <h2>This computer</h2>
+      <dl>
+        <dt>Processor</dt><dd id="cpu">–</dd>
+        <dt>Memory</dt><dd id="ram">–</dd>
+        <dt>Graphics</dt><dd id="gpu">–</dd>
+        <dt>Model running</dt><dd id="running">–</dd>
+        <dt>Speed</dt><dd id="speed">–</dd>
+        <dt>Can run up to</dt><dd id="canrun">–</dd>
+      </dl>
+      <p id="tiernote" class="note" style="margin-top:12px"></p>
+    </section>
+
+    <section>
+      <h2>Running</h2>
+      <p class="note">Keep the computer switched on, plugged in and online. On a laptop, keep the lid open. Incentium starts by itself when you log in.</p>
+      <button id="pause" class="ghost">Pause</button>
+      <details style="margin-top:16px"><summary>Your miner address</summary><pre id="addr"></pre></details>
+      <details style="margin-top:8px"><summary>Activity</summary><pre id="log"></pre></details>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let S = null;
+const ict = (v) => v == null ? "–" : (Number(BigInt(v) * 1000n / BigInt(S.unit)) / 1000).toLocaleString("en-US", {maximumFractionDigits: 3});
+const post = (path, body) => fetch(path, {method: "POST", headers: {"Content-Type": "application/json", "X-Incentium": "1"}, body: JSON.stringify(body || {})});
+const TITLES = {starting: "Starting…", connecting: "Connecting to the network", downloading: "Downloading the model",
+  verifying: "Checking the model", loading: "Loading the model", request: "Ready to join",
+  approval: "Waiting for approval", mining: "Mining", paused: "Paused", error: "Something went wrong"};
+
+function render(s) {
+  S = s;
+  $("net").textContent = s.network === "mainnet" ? "Mainnet" : "Testnet";
+  $("net").className = "chip" + (s.network === "mainnet" ? " main" : "");
+  $("title").textContent = TITLES[s.phase] || s.phase;
+  $("dot").className = "dot " + ({mining: "on", error: "err", paused: ""}[s.phase] ?? "wait");
+  $("msg").textContent = s.message || "";
+  const showBar = ["downloading", "verifying"].includes(s.phase) && s.download.total;
+  $("barwrap").classList.toggle("hide", !showBar);
+  if (showBar) {
+    const pct = Math.min(100, 100 * s.download.done / s.download.total);
+    $("bar").style.width = pct + "%";
+    $("title").textContent = `${TITLES[s.phase]} · ${pct.toFixed(0)} %`;
+  }
+  const r = s.request;
+  const ask = s.phase === "request" || (s.phase === "approval" && r && r.status === "refused");
+  $("request").classList.toggle("hide", !ask);
+  $("backup").classList.toggle("hide", s.backed_up);
+  const total = s.free == null ? null : (BigInt(s.free) + BigInt(s.locked || 0)).toString();
+  $("total").textContent = ict(total);
+  $("free").textContent = ict(s.free);
+  $("locked").textContent = ict(s.locked);
+  $("today").textContent = s.today ? ict(s.today.earned) : "–";
+  $("tasks").textContent = s.today ? s.today.tasks : "–";
+  if (s.chat) {
+    $("chats").textContent = s.chat.today;
+    if (document.activeElement !== $("chaton")) $("chaton").checked = s.chat.enabled;
+    $("chatstate").textContent = s.chat.message ? "· " + s.chat.message : "";
+  }
+  $("explorer").href = s.explorer;
+  const h = s.hardware;
+  if (h) {
+    $("cpu").textContent = h.cpu;
+    $("ram").textContent = h.ram_gb.toFixed(0) + " GB";
+    $("gpu").textContent = h.gpu || (h.vram_gb ? h.vram_gb.toFixed(0) + " GB" : "None used");
+  }
+  const m = (t) => t == null ? "–" : `${s.models[t].model} (tier ${t})`;
+  $("running").textContent = m(s.running_tier);
+  $("speed").textContent = s.speed ? s.speed + " tokens/s" : "–";
+  $("canrun").textContent = m(s.max_tier);
+  $("tiernote").textContent = s.max_tier > (s.running_tier ?? 0)
+    ? (s.open_tiers.includes(s.max_tier)
+        ? "This computer can run a larger model. It switches once it has earned enough for the network fee to declare it."
+        : "This computer can run a larger model. It is used once the network opens that tier.")
+    : "";
+  $("pause").textContent = s.paused ? "Resume" : "Pause";
+  $("addr").textContent = s.address + (s.uid != null ? `\nuid ${s.uid} in SN0` : "");
+  $("log").textContent = s.log.slice().reverse().join("\n");
+}
+
+async function tick() {
+  try {
+    const r = await fetch("/api/status");
+    if (r.ok) render(await r.json());
+  } catch (e) { $("msg").textContent = "The node is not answering. It restarts by itself; this page reconnects."; }
+}
+setInterval(tick, 3000); tick();
+
+$("reqform").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  $("reqerr").textContent = "";
+  const r = await post("/api/request", {name: $("name").value, email: $("email").value, note: $("note").value, understood: $("understood").checked});
+  if (!r.ok) $("reqerr").textContent = (await r.json()).error || "Could not send the request.";
+  tick();
+});
+$("showphrase").addEventListener("click", async () => {
+  const r = await post("/api/backup/phrase");
+  const {phrase} = await r.json();
+  $("phrase").replaceChildren(...phrase.split(" ").map((w, i) => {
+    const s = document.createElement("span"), n = document.createElement("em");
+    n.textContent = i + 1; s.append(n, w); return s;
+  }));
+  $("phrase").classList.remove("hide");
+  $("showphrase").classList.add("hide");
+});
+$("stored").addEventListener("change", (e) => { $("backupdone").disabled = !e.target.checked; });
+$("backupdone").addEventListener("click", async () => { await post("/api/backup/done"); $("phrase").replaceChildren(); tick(); });
+$("pause").addEventListener("click", async () => { await post("/api/pause", {paused: !S.paused}); tick(); });
+$("chaton").addEventListener("change", async (e) => { await post("/api/chat", {enabled: e.target.checked}); tick(); });
+</script>
+</body>
+</html>
