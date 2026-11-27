@@ -276,6 +276,9 @@ EOF
 fi
 
 say "6/7 watchdog"
+if [ -z "$HC_URL" ]; then
+  echo "skipped: no --healthchecks URL given (the watchdog reports to Healthchecks; run again with --healthchecks <url> to add it)"
+else
 [ -x "$PY" ] || { sudo apt-get install -y -qq python3 python3-venv >/dev/null; python3 -m venv "$D/venv"; "$PY" -m pip install -q substrate-interface; }
 WD_ARGS="--url ws://127.0.0.1:$RPC_PORT"
 [ -n "$HC_URL" ] && WD_ARGS="$WD_ARGS --ping-url $HC_URL"
@@ -297,6 +300,7 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now incentium-watchdog-$NET >/dev/null
 echo "watchdog running${HC_URL:+, pinging $HC_URL}"
+fi
 
 say "7/7 what you sign in your own wallet"
 cat <<EOF
