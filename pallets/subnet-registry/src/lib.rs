@@ -21,9 +21,11 @@
 //! - Subnets may turn on penalties: validators holding half of the active stake can take a
 //!   miner's incentive for an epoch; repeated penalties ban the hotkey from the subnet.
 //! - Neurons (miners and validators) register with a burned fee.
-//! - Each neuron declares a work tier (spec Section 5). Tier weight G, spot-check tolerance,
-//!   reference model and model hash per tier are on chain and set by governance; a tier
-//!   can be closed (in the launch period only tier 0, the CPU tier, is open).
+//! - SN0 runs an open model list (spec Section 5, decided 27 Nov 2026; replaces the fixed
+//!   tiers). Anyone proposes a model with a deposit; it opens when at least three validators
+//!   have declared on chain that they hold it and governance (Parameters track) has approved
+//!   its value factor G and tolerance. Each miner declares the open model it runs; validators
+//!   check it against that model. During the launch period only Qwen3.5-2B is open.
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub use pallet::*;
@@ -90,6 +92,9 @@ pub trait SubnetStakeInfo<AccountId> {
     fn validator_stake(netuid: u16, who: &AccountId) -> u128 {
         Self::stake_of(netuid, who)
     }
+    /// Benchmarks only: give `who` SN0 stake (for model declarations).
+    #[cfg(feature = "runtime-benchmarks")]
+    fn set_sn0_stake(_who: &AccountId, _amount: u128) {}
 }
 
 impl<AccountId> SubnetStakeInfo<AccountId> for () {
@@ -135,10 +140,12 @@ pub mod pallet {
 
     pub type NetUid = u16;
     pub type Uid = u16;
-    pub type Tier = u8;
+    pub type ModelId = u8;
     pub const SN0: NetUid = 0;
-    /// Tiers 0..=3: 2B (CPU entry tier), 9B, 27B, 122B.
-    pub const MAX_TIER: Tier = 3;
+    /// Upper bound on entries in the model list, and on models one validator declares.
+    pub const MAX_MODELS: u32 = 32;
+    /// A model opens only when at least this many validators declare that they hold it.
+    pub const MIN_MODEL_HOLDERS: u32 = 3;
 
     const DAY: u32 = BLOCKS_PER_DAY as u32;
     /// Unlock criterion 1: day 180 after genesis.
@@ -172,40 +179,90 @@ pub mod pallet {
     pub const CAP_RAISE_SPACING: u32 = 180 * DAY;
     pub const CAP_LADDER_FROM: u32 = 775 * DAY;
 
-    const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
+    const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
-    /// Parameters of one work tier (spec Section 5).
+    /// Where a model stands in the list (spec Section 5).
+    #[derive(
+        Clone,
+        Copy,
+        Encode,
+        Decode,
+        DecodeWithMemTracking,
+        PartialEq,
+        Eq,
+        Debug,
+        TypeInfo,
+        MaxEncodedLen,
+    )]
+    pub enum ModelStatus {
+        /// Listed, not yet approved: miners cannot declare it.
+        Proposed,
+        /// Miners may declare it and are paid for it.
+        Open,
+        /// Being replaced: miners that declared it are still paid, no new declarations.
+        Retiring,
+        /// Not paid and not declarable.
+        Closed,
+    }
+
+    /// One entry in the open model list (spec Section 5).
     #[derive(
         Clone, Encode, Decode, DecodeWithMemTracking, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen,
     )]
-    pub struct TierInfo {
-        /// Tier weight G in ppm (1.0 = 1,000,000).
-        pub weight_ppm: u32,
+    pub struct ModelInfo<AccountId> {
+        /// Model name, e.g. `Qwen3.5-2B`.
+        pub name: BoundedVec<u8, ConstU32<64>>,
+        /// SHA-256 of the weights file; all zero only for entries listed before hashes were
+        /// pinned. A model cannot open without one.
+        pub weights_hash: [u8; 32],
+        /// Inference engine and version, e.g. `llama.cpp b6000`.
+        pub engine: BoundedVec<u8, ConstU32<64>>,
+        /// Memory the model needs with its context (two slots of 4,096 tokens), in MB.
+        pub mem_mb: u32,
+        /// Value factor G in ppm (1.0 = 1,000,000).
+        pub g_ppm: u32,
         /// Maximum mean top-k log-probability distance in a spot check, in ppm.
         pub tolerance_ppm: u32,
-        /// Reference model name, e.g. `Qwen3.5-2B`.
-        pub model: BoundedVec<u8, ConstU32<64>>,
-        /// SHA-256 of the reference weights file; all zero until governance locks it.
-        pub model_hash: [u8; 32],
-        /// Whether neurons may declare this tier.
-        pub open: bool,
+        pub status: ModelStatus,
+        /// Who proposed it (`None` for the starting list).
+        pub proposer: Option<AccountId>,
+        /// Deposit held from the proposer until the model opens or is withdrawn.
+        pub deposit: u128,
     }
 
-    /// Tier table at genesis and at the upgrade that introduces tiers.
-    pub fn default_tiers() -> [(Tier, TierInfo); 4] {
-        let t = |w: u32, tol: u32, m: &[u8], open: bool| TierInfo {
-            weight_ppm: w,
+    /// The starting list (spec Section 5, G to be calibrated on testnet). Ids 0-3 are the
+    /// former tiers, so declarations made under the tier table keep their meaning.
+    pub fn default_models<AccountId>() -> [(ModelId, ModelInfo<AccountId>); 6] {
+        let m = |name: &[u8], mem_mb: u32, g: u32, tol: u32, status| ModelInfo {
+            name: BoundedVec::truncate_from(name.to_vec()),
+            weights_hash: [0; 32],
+            engine: BoundedVec::truncate_from(b"llama.cpp".to_vec()),
+            mem_mb,
+            g_ppm: g,
             tolerance_ppm: tol,
-            model: BoundedVec::truncate_from(m.to_vec()),
-            model_hash: [0; 32],
-            open,
+            status,
+            proposer: None,
+            deposit: 0,
         };
+        use ModelStatus::*;
         [
-            (0, t(150_000, 350_000, b"Qwen3.5-2B", true)),
-            (1, t(1_000_000, 350_000, b"Qwen3.5-9B", false)),
-            (2, t(3_000_000, 250_000, b"Qwen3.5-27B", false)),
-            (3, t(5_000_000, 400_000, b"Qwen3.5-122B", false)),
+            (0, m(b"Qwen3.5-2B", 1_800, 100_000, 350_000, Open)),
+            (1, m(b"Qwen3.5-9B", 6_700, 1_000_000, 350_000, Proposed)),
+            (2, m(b"Qwen3.5-27B", 18_000, 3_000_000, 250_000, Proposed)),
+            (3, m(b"Qwen3.5-122B", 72_000, 5_000_000, 400_000, Closed)),
+            (4, m(b"Qwen3.5-0.8B", 1_000, 50_000, 350_000, Proposed)),
+            (5, m(b"Qwen3.5-4B", 3_300, 200_000, 350_000, Proposed)),
         ]
+    }
+
+    /// Tier table of storage version 2, read once by the v2 -> v3 migration.
+    #[derive(Clone, Encode, Decode, PartialEq, Eq, Debug, TypeInfo, MaxEncodedLen)]
+    pub struct LegacyTierInfo {
+        pub weight_ppm: u32,
+        pub tolerance_ppm: u32,
+        pub model: BoundedVec<u8, ConstU32<64>>,
+        pub model_hash: [u8; 32],
+        pub open: bool,
     }
 
     #[derive(
@@ -428,6 +485,13 @@ pub mod pallet {
         /// Maximum neurons per subnet.
         #[pallet::constant]
         type MaxNeurons: Get<u16>;
+        /// Deposit to propose a model, returned when it opens or is withdrawn, burned if
+        /// governance closes it without opening it.
+        #[pallet::constant]
+        type ModelDeposit: Get<u128>;
+        /// SN0 stake a validator needs for its model declarations to count.
+        #[pallet::constant]
+        type ModelDeclarerStake: Get<u128>;
     }
 
     #[pallet::storage]
@@ -623,14 +687,40 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    /// Work tier parameters, keyed by tier.
+    /// Storage version 2 tier table; emptied by the v2 -> v3 migration.
     #[pallet::storage]
-    pub type Tiers<T> = StorageMap<_, Twox64Concat, Tier, TierInfo, OptionQuery>;
+    pub type Tiers<T> = StorageMap<_, Twox64Concat, ModelId, LegacyTierInfo, OptionQuery>;
 
-    /// Tier declared by each neuron. Neurons that never declared are tier 0.
+    /// The open model list (spec Section 5).
     #[pallet::storage]
-    pub type NeuronTier<T: Config> =
-        StorageDoubleMap<_, Twox64Concat, NetUid, Blake2_128Concat, T::AccountId, Tier, ValueQuery>;
+    pub type Models<T: Config> =
+        StorageMap<_, Twox64Concat, ModelId, ModelInfo<T::AccountId>, OptionQuery>;
+
+    /// Id the next proposed model gets.
+    #[pallet::storage]
+    pub type NextModelId<T> = StorageValue<_, ModelId, ValueQuery>;
+
+    /// Model declared by each neuron. Neurons that never declared run model 0 (Qwen3.5-2B).
+    #[pallet::storage]
+    pub type NeuronModel<T: Config> = StorageDoubleMap<
+        _,
+        Twox64Concat,
+        NetUid,
+        Blake2_128Concat,
+        T::AccountId,
+        ModelId,
+        ValueQuery,
+    >;
+
+    /// Models each SN0 validator declares that it holds and checks.
+    #[pallet::storage]
+    pub type ValidatorModels<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        BoundedVec<ModelId, ConstU32<MAX_MODELS>>,
+        ValueQuery,
+    >;
 
     /// Last block (exclusive) of the bootstrap period; 0 = no bootstrap.
     #[pallet::storage]
@@ -678,9 +768,7 @@ pub mod pallet {
             if let Some(op) = &self.bootstrap_operator {
                 BootstrapOperator::<T>::put(op.clone());
             }
-            for (tier, info) in default_tiers() {
-                Tiers::<T>::insert(tier, info);
-            }
+            Pallet::<T>::write_default_models();
         }
     }
 
@@ -702,42 +790,30 @@ pub mod pallet {
             T::DbWeight::get().reads_writes(16, 3)
         }
 
-        /// v0 -> v1: write the default tier table on chains started before tiers existed.
-        /// v1 -> v2: auction storage replaces the doubling-deposit storage (no subnet was
+        /// v0/v1 -> v2: auction storage replaces the doubling-deposit storage (no subnet was
         /// ever registered on mainnet, so there is nothing to move).
+        /// v2 -> v3: the tier table becomes the open model list (chains from before tiers
+        /// get the starting list).
         fn on_runtime_upgrade() -> Weight {
             let on_chain = StorageVersion::get::<Pallet<T>>();
-            if on_chain >= 2 {
+            if on_chain >= 3 {
                 return T::DbWeight::get().reads(1);
             }
             let mut w = T::DbWeight::get().reads(1);
-            if on_chain < 1 {
-                for (tier, info) in default_tiers() {
-                    if !Tiers::<T>::contains_key(tier) {
-                        Tiers::<T>::insert(tier, info);
-                    }
+            if on_chain < 2 {
+                let prefix =
+                    <Pallet<T> as polkadot_sdk::frame_support::traits::PalletInfoAccess>::name()
+                        .as_bytes();
+                for item in [&b"LastRegPrice"[..], &b"LastRegBlock"[..]] {
+                    let _ = polkadot_sdk::frame_support::storage::migration::clear_storage_prefix(
+                        prefix, item, b"", None, None,
+                    );
                 }
-                w = w.saturating_add(T::DbWeight::get().reads_writes(4, 4));
+                w = w.saturating_add(T::DbWeight::get().writes(2));
             }
-            let prefix =
-                <Pallet<T> as polkadot_sdk::frame_support::traits::PalletInfoAccess>::name()
-                    .as_bytes();
-            let _ = polkadot_sdk::frame_support::storage::migration::clear_storage_prefix(
-                prefix,
-                b"LastRegPrice",
-                b"",
-                None,
-                None,
-            );
-            let _ = polkadot_sdk::frame_support::storage::migration::clear_storage_prefix(
-                prefix,
-                b"LastRegBlock",
-                b"",
-                None,
-                None,
-            );
+            w = w.saturating_add(Self::migrate_tiers_to_models());
             STORAGE_VERSION.put::<Pallet<T>>();
-            w.saturating_add(T::DbWeight::get().writes(3))
+            w.saturating_add(T::DbWeight::get().writes(1))
         }
     }
 
@@ -780,15 +856,30 @@ pub mod pallet {
         BootstrapEnded {
             at: u32,
         },
-        /// A neuron declared its work tier.
-        TierDeclared {
+        /// A neuron declared the model it runs.
+        ModelDeclared {
             netuid: NetUid,
             hotkey: T::AccountId,
-            tier: Tier,
+            model: ModelId,
         },
-        /// Governance changed a tier's parameters.
-        TierUpdated {
-            tier: Tier,
+        /// Governance changed a model's G, tolerance or status.
+        ModelUpdated {
+            model: ModelId,
+            status: ModelStatus,
+        },
+        /// A model was proposed for the list.
+        ModelProposed {
+            model: ModelId,
+            proposer: T::AccountId,
+        },
+        /// The proposer withdrew a model that had not opened; the deposit was returned.
+        ModelWithdrawn {
+            model: ModelId,
+        },
+        /// A validator declared which models it holds and checks.
+        ValidatorModelsDeclared {
+            hotkey: T::AccountId,
+            models: Vec<ModelId>,
         },
         /// Governance attested the audited, immutable Base swap contract.
         SwapAttested {
@@ -887,12 +978,12 @@ pub mod pallet {
         /// During the bootstrap period only the bootstrap operator registers neurons.
         BootstrapRestricted,
         NotInBootstrap,
-        /// The tier does not exist.
-        UnknownTier,
-        /// The tier is closed for new declarations.
-        TierClosed,
-        /// The tier weight or tolerance is out of range.
-        BadTierParams,
+        /// The model is not in the list.
+        UnknownModel,
+        /// The model is not open for new declarations.
+        ModelNotOpen,
+        /// G, tolerance or memory is out of range.
+        BadModelParams,
         ModelNameTooLong,
         /// No auction is running (waiting for the spacing period or a free slot).
         NoAuction,
@@ -934,6 +1025,23 @@ pub mod pallet {
         TooManyReporters,
         /// The subnet is alive (or still immune): it cannot be removed as dead.
         NotDead,
+        /// The model list is full.
+        TooManyModels,
+        EngineTooLong,
+        /// A proposed model needs the hash of its weights file.
+        NoWeightsHash,
+        /// Only the proposer can withdraw a model, and only before it opens.
+        NotProposer,
+        /// That status change is not allowed (e.g. back to `Proposed`, or `Retiring` from a
+        /// model that is not open).
+        BadStatusChange,
+        /// Fewer than three validators with enough stake declare that they hold the model.
+        TooFewHolders,
+        /// The weights hash is already pinned.
+        HashAlreadySet,
+        /// Model declarations need SN0 registration and at least `ModelDeclarerStake`.
+        StakeTooLow,
+        DuplicateModel,
     }
 
     #[pallet::call]
@@ -1132,60 +1240,97 @@ pub mod pallet {
             Ok(())
         }
 
-        /// Declare the work tier the caller's neuron serves. The tier must be open. The
-        /// validators check the neuron against that tier's reference model.
+        /// Declare the model the caller's neuron runs. The model must be open. Validators
+        /// check the neuron against that model; a change counts from the next epoch.
         #[pallet::call_index(6)]
-        #[pallet::weight(<T as Config>::WeightInfo::declare_tier())]
-        pub fn declare_tier(origin: OriginFor<T>, netuid: NetUid, tier: Tier) -> DispatchResult {
+        #[pallet::weight(<T as Config>::WeightInfo::declare_model())]
+        pub fn declare_model(
+            origin: OriginFor<T>,
+            netuid: NetUid,
+            model: ModelId,
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             ensure!(
                 NeuronUid::<T>::contains_key(netuid, &who),
                 Error::<T>::NotRegistered
             );
-            let info = Tiers::<T>::get(tier).ok_or(Error::<T>::UnknownTier)?;
-            ensure!(info.open, Error::<T>::TierClosed);
-            NeuronTier::<T>::insert(netuid, &who, tier);
-            Self::deposit_event(Event::TierDeclared {
+            let info = Models::<T>::get(model).ok_or(Error::<T>::UnknownModel)?;
+            ensure!(info.status == ModelStatus::Open, Error::<T>::ModelNotOpen);
+            NeuronModel::<T>::insert(netuid, &who, model);
+            Self::deposit_event(Event::ModelDeclared {
                 netuid,
                 hotkey: who,
-                tier,
+                model,
             });
             Ok(())
         }
 
-        /// Set a tier's weight, tolerance, reference model, model hash and whether it is
-        /// open (governance). Neurons that already declared a tier that gets closed keep it.
+        /// Set a model's G, tolerance and status, and pin its weights hash if it has none
+        /// (governance, Parameters track). Opening needs a pinned hash and at least three
+        /// validators that declare the model; it returns the proposer's deposit. Closing a
+        /// model that never opened burns the deposit. Neurons that declared a model that
+        /// retires or closes keep the declaration until they declare another.
         #[pallet::call_index(7)]
-        #[pallet::weight(<T as Config>::WeightInfo::set_tier())]
-        pub fn set_tier(
+        #[pallet::weight(<T as Config>::WeightInfo::set_model())]
+        pub fn set_model(
             origin: OriginFor<T>,
-            tier: Tier,
-            weight_ppm: u32,
+            model: ModelId,
+            g_ppm: u32,
             tolerance_ppm: u32,
-            model: Vec<u8>,
-            model_hash: [u8; 32],
-            open: bool,
+            status: ModelStatus,
+            weights_hash: Option<[u8; 32]>,
         ) -> DispatchResult {
             ensure_root(origin)?;
-            ensure!(tier <= MAX_TIER, Error::<T>::UnknownTier);
-            // G up to 100, tolerance up to 10 nats.
-            ensure!(
-                weight_ppm > 0 && weight_ppm <= 100_000_000 && tolerance_ppm <= 10_000_000,
-                Error::<T>::BadTierParams
-            );
-            let model: BoundedVec<u8, ConstU32<64>> =
-                model.try_into().map_err(|_| Error::<T>::ModelNameTooLong)?;
-            Tiers::<T>::insert(
-                tier,
-                TierInfo {
-                    weight_ppm,
-                    tolerance_ppm,
-                    model,
-                    model_hash,
-                    open,
-                },
-            );
-            Self::deposit_event(Event::TierUpdated { tier });
+            Self::check_model_params(g_ppm, tolerance_ppm, 1)?;
+            let mut info = Models::<T>::get(model).ok_or(Error::<T>::UnknownModel)?;
+            if let Some(h) = weights_hash {
+                ensure!(info.weights_hash == [0; 32], Error::<T>::HashAlreadySet);
+                ensure!(h != [0; 32], Error::<T>::NoWeightsHash);
+                info.weights_hash = h;
+            }
+            use ModelStatus::*;
+            let ok = match (info.status, status) {
+                (a, b) if a == b => true,
+                (_, Proposed) => false,
+                (Open, Retiring) => true,
+                (_, Retiring) => false,
+                _ => true,
+            };
+            ensure!(ok, Error::<T>::BadStatusChange);
+            if status == Open && info.status != Open {
+                ensure!(info.weights_hash != [0; 32], Error::<T>::NoWeightsHash);
+                ensure!(
+                    Self::model_holders(model) >= MIN_MODEL_HOLDERS,
+                    Error::<T>::TooFewHolders
+                );
+            }
+            if info.deposit > 0 {
+                if let Some(proposer) = info.proposer.clone() {
+                    if status == Open {
+                        T::Currency::transfer(
+                            &Self::account_id(),
+                            &proposer,
+                            info.deposit,
+                            Preservation::Expendable,
+                        )?;
+                        info.deposit = 0;
+                    } else if status == Closed {
+                        T::Currency::burn_from(
+                            &Self::account_id(),
+                            info.deposit,
+                            Preservation::Expendable,
+                            Precision::Exact,
+                            Fortitude::Force,
+                        )?;
+                        info.deposit = 0;
+                    }
+                }
+            }
+            info.g_ppm = g_ppm;
+            info.tolerance_ppm = tolerance_ppm;
+            info.status = status;
+            Models::<T>::insert(model, info);
+            Self::deposit_event(Event::ModelUpdated { model, status });
             Ok(())
         }
 
@@ -1553,9 +1698,194 @@ pub mod pallet {
             }
             Ok(())
         }
+
+        /// Propose a model for the open list. `ModelDeposit` is held until the model opens
+        /// (returned), the proposer withdraws it (returned) or governance closes it without
+        /// opening it (burned). The model opens only through `set_model`.
+        #[pallet::call_index(21)]
+        #[pallet::weight(<T as Config>::WeightInfo::propose_model())]
+        pub fn propose_model(
+            origin: OriginFor<T>,
+            name: Vec<u8>,
+            weights_hash: [u8; 32],
+            engine: Vec<u8>,
+            mem_mb: u32,
+            g_ppm: u32,
+            tolerance_ppm: u32,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            Self::check_model_params(g_ppm, tolerance_ppm, mem_mb)?;
+            ensure!(weights_hash != [0; 32], Error::<T>::NoWeightsHash);
+            let name: BoundedVec<u8, ConstU32<64>> =
+                name.try_into().map_err(|_| Error::<T>::ModelNameTooLong)?;
+            let engine: BoundedVec<u8, ConstU32<64>> =
+                engine.try_into().map_err(|_| Error::<T>::EngineTooLong)?;
+            let id = NextModelId::<T>::get();
+            ensure!((id as u32) < MAX_MODELS, Error::<T>::TooManyModels);
+            let deposit = T::ModelDeposit::get();
+            T::Currency::transfer(&who, &Self::account_id(), deposit, Preservation::Preserve)?;
+            Models::<T>::insert(
+                id,
+                ModelInfo {
+                    name,
+                    weights_hash,
+                    engine,
+                    mem_mb,
+                    g_ppm,
+                    tolerance_ppm,
+                    status: ModelStatus::Proposed,
+                    proposer: Some(who.clone()),
+                    deposit,
+                },
+            );
+            NextModelId::<T>::put(id + 1);
+            Self::deposit_event(Event::ModelProposed {
+                model: id,
+                proposer: who,
+            });
+            Ok(())
+        }
+
+        /// Withdraw a model the caller proposed, before it opens. The deposit is returned and
+        /// the entry is closed.
+        #[pallet::call_index(22)]
+        #[pallet::weight(<T as Config>::WeightInfo::withdraw_model())]
+        pub fn withdraw_model(origin: OriginFor<T>, model: ModelId) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            let mut info = Models::<T>::get(model).ok_or(Error::<T>::UnknownModel)?;
+            ensure!(
+                info.status == ModelStatus::Proposed && info.proposer.as_ref() == Some(&who),
+                Error::<T>::NotProposer
+            );
+            if info.deposit > 0 {
+                T::Currency::transfer(
+                    &Self::account_id(),
+                    &who,
+                    info.deposit,
+                    Preservation::Expendable,
+                )?;
+            }
+            info.deposit = 0;
+            info.status = ModelStatus::Closed;
+            Models::<T>::insert(model, info);
+            Self::deposit_event(Event::ModelWithdrawn { model });
+            Ok(())
+        }
+
+        /// Declare the models this SN0 validator holds and checks (replaces the earlier
+        /// declaration; an empty list removes it). The validator must be registered on SN0
+        /// with at least `ModelDeclarerStake`; at check time its stake must still be there
+        /// for the declaration to count towards opening a model.
+        #[pallet::call_index(23)]
+        #[pallet::weight(<T as Config>::WeightInfo::declare_validator_models(models.len() as u32))]
+        pub fn declare_validator_models(
+            origin: OriginFor<T>,
+            models: Vec<ModelId>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            if models.is_empty() {
+                ValidatorModels::<T>::remove(&who);
+                Self::deposit_event(Event::ValidatorModelsDeclared {
+                    hotkey: who,
+                    models,
+                });
+                return Ok(());
+            }
+            ensure!(Self::can_declare_models(&who), Error::<T>::StakeTooLow);
+            ensure!(models.len() as u32 <= MAX_MODELS, Error::<T>::TooManyModels);
+            for (i, m) in models.iter().enumerate() {
+                let info = Models::<T>::get(m).ok_or(Error::<T>::UnknownModel)?;
+                ensure!(info.status != ModelStatus::Closed, Error::<T>::ModelNotOpen);
+                ensure!(!models[..i].contains(m), Error::<T>::DuplicateModel);
+            }
+            let bounded: BoundedVec<ModelId, ConstU32<MAX_MODELS>> =
+                models.clone().try_into().map_err(|_| Error::<T>::TooManyModels)?;
+            ValidatorModels::<T>::insert(&who, bounded);
+            Self::deposit_event(Event::ValidatorModelsDeclared {
+                hotkey: who,
+                models,
+            });
+            Ok(())
+        }
     }
 
     impl<T: Config> Pallet<T> {
+        /// G above 0 and at most 100, tolerance at most 10 nats, memory above 0.
+        fn check_model_params(g_ppm: u32, tolerance_ppm: u32, mem_mb: u32) -> DispatchResult {
+            ensure!(
+                g_ppm > 0 && g_ppm <= 100_000_000 && tolerance_ppm <= 10_000_000 && mem_mb > 0,
+                Error::<T>::BadModelParams
+            );
+            Ok(())
+        }
+
+        /// Registered on SN0 with at least `ModelDeclarerStake` of SN0 stake.
+        pub fn can_declare_models(who: &T::AccountId) -> bool {
+            NeuronUid::<T>::contains_key(SN0, who)
+                && T::StakeInfo::stake_of(SN0, who) >= T::ModelDeclarerStake::get()
+        }
+
+        /// Validators that declare `model` and still qualify to declare. Bounded by the
+        /// number of SN0 neurons, since only SN0 neurons can declare.
+        pub fn model_holders(model: ModelId) -> u32 {
+            ValidatorModels::<T>::iter()
+                .filter(|(who, ms)| ms.contains(&model) && Self::can_declare_models(who))
+                .count() as u32
+        }
+
+        /// Write the starting model list (genesis, or chains from before tiers).
+        fn write_default_models() {
+            for (id, info) in default_models::<T::AccountId>() {
+                if !Models::<T>::contains_key(id) {
+                    Models::<T>::insert(id, info);
+                }
+            }
+            let n = default_models::<T::AccountId>().len() as ModelId;
+            NextModelId::<T>::mutate(|id| *id = (*id).max(n));
+        }
+
+        /// v2 -> v3: the tier table becomes the model list (ids, G, tolerance, names and
+        /// pinned hashes kept; open tiers stay open), and each neuron's declared tier becomes
+        /// its declared model.
+        fn migrate_tiers_to_models() -> Weight {
+            let defaults = default_models::<T::AccountId>();
+            let mut n = 0u64;
+            for (id, t) in Tiers::<T>::drain() {
+                n += 1;
+                let base = defaults.iter().find(|(d, _)| *d == id).map(|(_, i)| i.clone());
+                // Open tiers stay open; closed ones take the starting list's status
+                // (Proposed, or Closed for 122B), never Open.
+                let status = match (t.open, base.as_ref().map(|b| b.status)) {
+                    (true, _) => ModelStatus::Open,
+                    (false, Some(ModelStatus::Closed)) => ModelStatus::Closed,
+                    _ => ModelStatus::Proposed,
+                };
+                Models::<T>::insert(
+                    id,
+                    ModelInfo {
+                        name: t.model,
+                        weights_hash: t.model_hash,
+                        engine: BoundedVec::truncate_from(b"llama.cpp".to_vec()),
+                        mem_mb: base.as_ref().map(|b| b.mem_mb).unwrap_or(1),
+                        g_ppm: t.weight_ppm,
+                        tolerance_ppm: t.tolerance_ppm,
+                        status,
+                        proposer: None,
+                        deposit: 0,
+                    },
+                );
+            }
+            Self::write_default_models();
+            let prefix =
+                <Pallet<T> as polkadot_sdk::frame_support::traits::PalletInfoAccess>::name()
+                    .as_bytes();
+            let old = polkadot_sdk::frame_support::storage::storage_prefix(prefix, b"NeuronTier");
+            let new = polkadot_sdk::frame_support::storage::storage_prefix(prefix, b"NeuronModel");
+            polkadot_sdk::frame_support::storage::migration::move_prefix(&old, &new);
+            // The tier table had 4 entries; neurons are bounded by the subnet slots.
+            T::DbWeight::get().reads_writes(n + 8 + 1024, 2 * n + 8 + 1024)
+        }
+
         /// True while the disclosed bootstrap period runs.
         pub fn in_bootstrap() -> bool {
             let now: u32 = polkadot_sdk::frame_system::Pallet::<T>::block_number().saturated_into();
@@ -1773,7 +2103,7 @@ pub mod pallet {
             let _ = Neurons::<T>::clear_prefix(netuid, u32::MAX, None);
             let _ = NeuronUid::<T>::clear_prefix(netuid, u32::MAX, None);
             let _ = Endpoints::<T>::clear_prefix(netuid, u32::MAX, None);
-            let _ = NeuronTier::<T>::clear_prefix(netuid, u32::MAX, None);
+            let _ = NeuronModel::<T>::clear_prefix(netuid, u32::MAX, None);
             NeuronCount::<T>::remove(netuid);
             SubnetCount::<T>::mutate(|c| *c = c.saturating_sub(1));
             FullSince::<T>::kill();

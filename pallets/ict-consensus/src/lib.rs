@@ -850,6 +850,10 @@ pub mod pallet {
         fn validator_stake(netuid: u16, who: &T::AccountId) -> u128 {
             Self::stake_on(netuid, who)
         }
+        #[cfg(feature = "runtime-benchmarks")]
+        fn set_sn0_stake(who: &T::AccountId, amount: u128) {
+            Stake::<T>::insert(who, amount);
+        }
         fn total(netuid: u16) -> u128 {
             if netuid == SN0 {
                 TotalStake::<T>::get()

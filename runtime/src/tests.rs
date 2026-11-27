@@ -68,10 +68,12 @@ fn presets_build_with_sn0_and_phase2_off() {
             assert!(pallet_subnet_registry::Subnets::<Runtime>::get(0).is_some());
             assert!(!pallet_subnet_registry::Phase2Enabled::<Runtime>::get());
             assert_eq!(free(K::Alice), 100_000 * UNIT);
-            // Tier table: only tier 0 (2B, CPU) open at launch.
-            let tiers = pallet_subnet_registry::Tiers::<Runtime>::iter().collect::<Vec<_>>();
-            assert_eq!(tiers.len(), 4);
-            assert!(tiers.iter().all(|(t, i)| i.open == (*t == 0)));
+            // Model list: only model 0 (Qwen3.5-2B, CPU) open at launch.
+            let models = pallet_subnet_registry::Models::<Runtime>::iter().collect::<Vec<_>>();
+            assert_eq!(models.len(), 6);
+            assert!(models.iter().all(|(id, m)| (m.status
+                == pallet_subnet_registry::ModelStatus::Open)
+                == (*id == 0)));
         });
     }
 }
@@ -827,4 +829,22 @@ fn a_sold_subnet_gets_an_alpha_pool_that_opens_after_ten_days() {
         );
         assert!(crate::SubnetPools::quote_stake(1, UNIT).is_some());
     });
+}
+
+#[test]
+fn parameters_track_may_set_models_but_not_attest_the_swap() {
+    use frame_support::traits::Contains;
+    let set_model = RuntimeCall::Registry(pallet_subnet_registry::Call::set_model {
+        model: 5,
+        g_ppm: 200_000,
+        tolerance_ppm: 350_000,
+        status: pallet_subnet_registry::ModelStatus::Open,
+        weights_hash: Some([7; 32]),
+    });
+    assert!(crate::governance::ParameterCalls::contains(&set_model));
+    let attest = RuntimeCall::Registry(pallet_subnet_registry::Call::attest_swap {
+        contract: [0; 20],
+        audit_hash: [0; 32],
+    });
+    assert!(!crate::governance::ParameterCalls::contains(&attest));
 }

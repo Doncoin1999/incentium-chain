@@ -136,7 +136,7 @@ impl<O: Into<Result<CustomOrigin, O>> + From<CustomOrigin>> frame_support::trait
 
 /// The calls the Parameters track may make, each within the bounds its own pallet enforces:
 /// emission shares (fund, block producers, endpoints), the endpoint register's deposit, minimum
-/// score and operator cap, subnet spacing, count and tiers, the block producers' count and staking
+/// score and operator cap, subnet spacing and count, SN0's model list (G, tolerance, status, pinned hash), the block producers' count and staking
 /// minimums, and Alpha's required return (start prices) and bonus share for new subnets.
 /// Everything else (runtime upgrades, the subnet emergency brake, the swap attestation, ending
 /// the genesis keys' reserve) stays on the Root track.
@@ -154,7 +154,7 @@ impl frame_support::traits::Contains<RuntimeCall> for ParameterCalls {
             )
                 | RuntimeCall::Endpoints(pallet_endpoints::Call::set_params { .. })
                 | RuntimeCall::Registry(
-                    Reg::set_min_spacing { .. } | Reg::set_max_subnets { .. } | Reg::set_tier { .. }
+                    Reg::set_min_spacing { .. } | Reg::set_max_subnets { .. } | Reg::set_model { .. }
                 )
                 | RuntimeCall::Staking(
                     St::set_validator_count { .. }
