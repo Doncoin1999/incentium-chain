@@ -50,6 +50,7 @@
   .tag { font-size: 13px; border: 1px solid var(--line); border-radius: 10px; padding: 1px 8px; color: var(--muted); white-space: nowrap; }
   .tag.dead { color: var(--bad); border-color: var(--bad); }
   ol.how { padding-left: 22px; color: var(--muted); } ol.how li { margin: 6px 0; }
+  .pool-link { margin-left: 8px; font-size: 13px; white-space: nowrap; }
 </style>
 <script src="/assets/rpc.js"></script>
 </head>
@@ -265,6 +266,7 @@
   </div>
 
   <h2>Subnets now</h2>
+  <p class="note">Every subnet after SN0 has its own Alpha token and pool. <a id="to-pools" href="/pools/">Buy or sell a subnet's Alpha in Subnet pools &rarr;</a></p>
   <div class="card scroll" id="subnets"><p class="note">Waiting for the chain…</p></div>
   <p class="note">Data from <code id="rpc-name">wss://rpc.incentium.org</code> through the runtime API <code>SubnetRegistryApi</code>. Any Incentium node gives the same answers. Add <code>?net=testnet</code> to the address to see the testnet.</p>
 </main>
@@ -569,7 +571,8 @@ const IC = (() => {
   function showSubnets(list) {
     const el = $("subnets");
     const rows = list.map((s) => {
-      const name = s.netuid === 0 ? "SN0 · Inference (protocol)" : `SN${s.netuid} · ${esc(s.name || "unnamed")}`;
+      const name = s.netuid === 0 ? "SN0 · Inference (protocol)"
+        : `SN${s.netuid} · ${esc(s.name || "unnamed")} <a class="pool-link" href="${poolHref}">pool &rarr;</a>`;
       const owner = s.netuid === 0 ? "Incentium governance" : s.owner ? `<span title="${IC.ss58(s.owner)}">${short(IC.ss58(s.owner))}</span> · ${s.control}` : s.control;
       const immune = s.netuid === 0 ? "" : s.immuneUntil > head ? `immune ${days(s.immuneUntil - head)} more days` : "";
       const tags = (s.dead ? '<span class="tag dead">dead: can be removed</span> ' : "") + (immune ? `<span class="tag">${immune}</span>` : "");
@@ -586,6 +589,8 @@ const IC = (() => {
 
   const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const short = (a) => a.slice(0, 6) + "…" + a.slice(-6);
+  const poolHref = "/pools/" + (testnet ? "?net=testnet" : "");
+  document.getElementById("to-pools").href = poolHref;
 
   function fallback() {
     // Before the runtime upgrade that adds SubnetRegistryApi: show what the block height tells.

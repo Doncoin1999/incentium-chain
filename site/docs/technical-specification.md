@@ -1,6 +1,6 @@
 # Incentium Technical Specification v0.2
 
-Nov 27, 2026 · **Ichiro Pakeshi Miyamoto**
+Nov 28, 2026 · **Eyesee Tee**
 
 ## 1. Scope and conventions
 
