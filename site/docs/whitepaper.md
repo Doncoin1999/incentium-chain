@@ -179,7 +179,7 @@ The first 90 days after genesis (18 November 2026) are a launch period designed 
 - Day 180 after genesis (about 17 May 2027).
 - At least 300 active SN0 miners as a 30-day average; an active miner is one paid in an epoch, neither caught by a failed spot check nor banned.
 - Governance runs by itself: the sudo key is gone and at least 3 referenda have been approved.
-- Trading is safe: governance has attested that the ICT⇄USDC swap contract on Base is audited and has no pause key.
+- Trading cannot be stopped: governance has confirmed which ICT⇄USDC swap contract on Base is the official one, and that it has no owner and no pause key.
 - Alpha is live: the Alpha module (Section 6.5) is part of the runtime, so every subnet sold gets its own token and pool from its first day.
 
 The progress towards each criterion is shown live at incentium.org/subnets.

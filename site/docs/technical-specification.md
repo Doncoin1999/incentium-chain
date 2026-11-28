@@ -116,7 +116,7 @@ Sells subnet slots by Dutch auction once registration has unlocked, registers mi
 | `MaxSubnets` | u16 | 8 until governance raises it; SN0 does not count |
 | `MinSpacing` | u32 | 60 days from a sale to the next auction; governance may lower it to 30 |
 | `MinerHistory`, `MinerDay` | 30 daily averages, running tally | Active SN0 miners for the unlock criterion |
-| `SwapAttested` | contract, audit hash | Governance's attestation of the audited, immutable Base swap contract |
+| `SwapAttested` | contract, report hash | Governance's confirmation of the official Base swap contract: no owner, no pause key. The hash may point to a review report, or be zero |
 | `Neurons` | map (netuid, uid) → hotkey | Registered miners and validators |
 
 **Unlock.** Registration unlocks by itself in the first daily check (every 7,200 blocks) where all of these hold; anyone may also call `try_unlock`:
@@ -124,7 +124,7 @@ Sells subnet slots by Dutch auction once registration has unlocked, registers mi
 1. Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).
 2. At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.
 3. Sudo removed and at least 3 approved referenda.
-4. `attest_swap` passed by referendum: the Base swap contract is audited and has no pause guardian.
+4. `attest_swap` passed by referendum: governance names the official Base swap contract and confirms it has no owner and no pause guardian, so nobody can change or stop it (decided 28 Nov 2026: an external audit is not a condition; the hash may point to a review or be zero).
 5. The Alpha module is installed (`alpha_installed`, true from the runtime that contains `subnet-pools`), so every subnet sold gets its Alpha and pool (Section 7).
 
 **Auction price.** The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.
@@ -749,7 +749,7 @@ None of the proposed changes touches protected parameters (maximum supply and ha
 
 **Incentium pallet.** On `expire_reservation` (unsigned, callable by anyone after the deadline) half the held deposit is released and half burned with `burn_held`, reducing total issuance; event `DepositHalfBurned`. Removed: `DepositArbiter`, `set_deposit_arbiter`, `return_deposit`, `pay_deposit_to_maker`, `DepositDisputeWindow`.
 
-**Rollout.** A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then attests the contract (`attest_swap`), unlock criterion 4.
+**Rollout.** A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then confirms the contract (`attest_swap`), unlock criterion 4; an external audit is advised before order caps rise, but is not a condition for it.
 
 ## 19. Network operators (*proposed* 27 Nov 2026)
 

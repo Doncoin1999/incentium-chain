@@ -243,7 +243,7 @@
     <div class="crit"><h3>Day 180 after genesis</h3><span class="val" id="c-day">–</span><div class="bar"><i id="b-day"></i></div><p id="p-day">Mainnet started on 18 November 2026, so day 180 is about 17 May 2027.</p></div>
     <div class="crit"><h3>300 active SN0 miners, 30-day average</h3><span class="val" id="c-miners">–</span><div class="bar"><i id="b-miners"></i></div><p id="p-miners">An active miner is one paid in an epoch: not caught by a failed spot check and not banned.</p></div>
     <div class="crit"><h3>Governance runs by itself</h3><span class="val" id="c-gov">–</span><div class="bar"><i id="b-gov"></i></div><p>The sudo key is gone and at least 3 referenda have been approved.</p></div>
-    <div class="crit"><h3>Trading is audited</h3><span class="val" id="c-swap">–</span><div class="bar"><i id="b-swap"></i></div><p>Governance has attested that the ICT⇄USDC swap contract on Base is audited and has no pause key.</p></div>
+    <div class="crit"><h3>Trading cannot be stopped</h3><span class="val" id="c-swap">–</span><div class="bar"><i id="b-swap"></i></div><p>Governance has confirmed on the chain which ICT⇄USDC swap contract on Base is the official one, and that it has no owner and no pause key: nobody can change it or stop it.</p></div>
     <div class="crit"><h3>Alpha is live</h3><span class="val" id="c-alpha">–</span><div class="bar"><i id="b-alpha"></i></div><p>The Alpha module is part of the runtime, so every subnet sold gets its own token and pool (<a href="/pools/">Subnet pools</a>).</p></div>
   </div>
 
@@ -519,14 +519,17 @@ const IC = (() => {
     const govOk = s.sudoRemoved && s.approvedReferenda >= s.minReferenda;
     val("c-gov", `sudo ${s.sudoRemoved ? "removed" : "present"} · ${Math.min(s.approvedReferenda, s.minReferenda)} of ${s.minReferenda} referenda`, govOk);
     bar("b-gov", ((s.sudoRemoved ? 1 : 0) + Math.min(s.approvedReferenda, s.minReferenda) / s.minReferenda) / 2);
-    val("c-swap", s.swapAttested ? "attested" : "not yet", s.swapAttested);
+    val("c-swap", s.swapAttested ? "confirmed" : "not yet", s.swapAttested);
     bar("b-swap", s.swapAttested ? 1 : 0);
     val("c-alpha", s.alphaInstalled ? "installed" : "not yet", s.alphaInstalled);
     bar("b-alpha", s.alphaInstalled ? 1 : 0);
     const met = [s.block >= s.minBlock, avg !== null && avg >= s.minMiners, govOk, s.swapAttested, s.alphaInstalled].filter(Boolean).length;
     $("status").innerHTML = s.unlocked
-      ? "Subnet registration is <b>open</b>."
+      ? (testnet && met < 5
+        ? "Subnet registration is <b>open</b> on the testnet: it was opened early, with the testnet's sudo key, to rehearse SN1. On mainnet it opens only when all five criteria below are green."
+        : "Subnet registration is <b>open</b>.")
       : `<b>${met} of 5</b> criteria met. SN1 opens by itself when all five are green.`;
+    if (testnet && s.block < s.minBlock) $("p-day").textContent += " (Counted from the testnet's own start.)";
   }
 
   async function showAuction(a, unlocked) {

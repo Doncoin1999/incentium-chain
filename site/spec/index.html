@@ -612,8 +612,8 @@
 </tr>
 <tr>
 <td><code>SwapAttested</code></td>
-<td>contract, audit hash</td>
-<td>Governance's attestation of the audited, immutable Base swap contract</td>
+<td>contract, report hash</td>
+<td>Governance's confirmation of the official Base swap contract: no owner, no pause key. The hash may point to a review report, or be zero</td>
 </tr>
 <tr>
 <td><code>Neurons</code></td>
@@ -627,7 +627,7 @@
 <li>Day 180 after genesis (block 1,296,000; mainnet: 17 May 2027).</li>
 <li>At least 300 active SN0 miners as a 30-day average. An active miner is one paid in an epoch: not penalised by a failed spot check and not banned.</li>
 <li>Sudo removed and at least 3 approved referenda.</li>
-<li><code>attest_swap</code> passed by referendum: the Base swap contract is audited and has no pause guardian.</li>
+<li><code>attest_swap</code> passed by referendum: governance names the official Base swap contract and confirms it has no owner and no pause guardian, so nobody can change or stop it (decided 28 Nov 2026: an external audit is not a condition; the hash may point to a review or be zero).</li>
 <li>The Alpha module is installed (<code>alpha_installed</code>, true from the runtime that contains <code>subnet-pools</code>), so every subnet sold gets its Alpha and pool (Section 7).</li>
 </ol>
 <p><strong>Auction price.</strong> The slot on sale is priced start × 0.75^(blocks since start / 7,200), smoothly per block, never below its floor. SN1 starts at 50,000 ICT; every later slot at 4 × the previous sale price. Floors by sale number: 1st 1,000 ICT, 2nd–4th 500, 5th–8th 300, 9th and later 200. The first buyer at the current price wins.</p>
@@ -1991,7 +1991,7 @@
 <p><strong>Why half is burned.</strong> The two chains cannot see each other, so an expiry cannot tell whether the taker never locked (blocking an order) or the maker never confirmed. Burning half makes blocking cost 1 % of the fill, and nobody, maker included, gains from a failed trade, so there is no reason to let one fail on purpose. An honest taker whose maker never confirmed also loses 1 %; the taker's own funds on the other chain are refunded as before. Every case can be classified afterwards from the two chains' public data.</p>
 <p><strong>Base contract.</strong> Constructor <code>(usdc, genesisTime)</code> only. A burned half stays in the contract for good (<code>burnedDeposits</code>); no call can move it, and it is not sent to a dead address, so a USDC blacklist of that address cannot block an expiry. A deposit refund that USDC refuses, for example to a blacklisted address, is recorded in <code>owed</code> and paid later by <code>claimOwed(address)</code>, which anyone may call; it never blocks a claim or an expiry. Removed from version 1: <code>withdrawFees</code>, <code>setPaused</code>, <code>returnDeposit</code>, <code>payDepositToMaker</code>.</p>
 <p><strong>Incentium pallet.</strong> On <code>expire_reservation</code> (unsigned, callable by anyone after the deadline) half the held deposit is released and half burned with <code>burn_held</code>, reducing total issuance; event <code>DepositHalfBurned</code>. Removed: <code>DepositArbiter</code>, <code>set_deposit_arbiter</code>, <code>return_deposit</code>, <code>pay_deposit_to_maker</code>, <code>DepositDisputeWindow</code>.</p>
-<p><strong>Rollout.</strong> A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then attests the contract (<code>attest_swap</code>), unlock criterion 4.</p>
+<p><strong>Rollout.</strong> A testnet runtime with the version 2 pallet and a contract on Base Sepolia; a full run including a maker who never confirms, a taker who never locks, and a node halt during an open reservation; an audit together with Alpha; then the Base mainnet contract, the pallet with mainnet runtime 12, and a last use of version 1's pause guardian to stop new orders there (claims and refunds keep working). Governance then confirms the contract (<code>attest_swap</code>), unlock criterion 4; an external audit is advised before order caps rise, but is not a condition for it.</p>
 <h2 id="19-network-operators-proposed-27-nov-2026">19. Network operators (<em>proposed</em> 27 Nov 2026)<a class="anchor" href="#19-network-operators-proposed-27-nov-2026" aria-label="Link to this section">#</a></h2>
 <p>Incentium has two layers of participants: miners (Section 5) and network operators. A network operator runs a full node and takes one or more of four roles. The roles stay separate on chain because their stakes, rewards and penalties differ; one installer sets up a server for any combination.</p>
 <div class="tbl"><table>
