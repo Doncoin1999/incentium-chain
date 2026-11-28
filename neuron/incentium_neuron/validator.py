@@ -140,8 +140,13 @@ class Validator:
             s.answered += 1
             s.tokens += min(int(t.result["tokens"]), t.max_tokens)
             if rng.random() < self.spot_check_share:
+                try:
+                    ref = self.reference.complete(t.prompt, t.max_tokens, t.seed)
+                except Exception as e:  # the reference model is slow or down: no check, no verdict
+                    self.log.append(f"epoch {epoch} uid {t.uid}: reference model did not answer ({e!r}); "
+                                    f"spot check skipped")
+                    continue
                 s.checks += 1
-                ref = self.reference.complete(t.prompt, t.max_tokens, t.seed)
                 if passes_spot_check(s.tier, t.result["top_logprobs"], ref.top_logprobs, tol):
                     s.checks_passed += 1
                 else:
@@ -374,7 +379,10 @@ def main():
         e = chain.current_epoch()
         if e != last:
             n = len(v.log)
-            v.step()
+            try:
+                v.step()
+            except Exception as ex:  # one bad epoch (a node restart, a slow reference) must not stop the validator
+                v.log.append(f"epoch {e}: step failed: {ex!r}")
             print("\n".join(v.log[n:]), flush=True)
             last = chain.current_epoch()  # a step can outlast an epoch; wait for the next one
         time.sleep(12)
