@@ -285,7 +285,16 @@
     <div class="card wide">
       <h3>Run a server</h3>
       <ol>
-        <li>A Linux server (Ubuntu or Debian): 4 cores, 8 GB memory, 200 GB disk, port 30333 open.</li>
+        <li>A Linux server (Ubuntu or Debian, x86_64) with port 30333 open, 1 Gbit/s and 4 GB swap. Memory runs out before the processor does, so size it for the roles you combine:
+          <table>
+            <tr><th>Role</th><th>Cores</th><th>Memory</th><th>Disk</th></tr>
+            <tr><td>Block producer</td><td>4</td><td>8 GB</td><td>200 GB SSD</td></tr>
+            <tr><td>SN0 validator, with its own node</td><td>4&ndash;8</td><td>16 GB</td><td>200 GB SSD</td></tr>
+            <tr><td>Public RPC node</td><td>4&ndash;8</td><td>8&ndash;16 GB</td><td>200 GB SSD</td></tr>
+            <tr><td>Archive node</td><td>4&ndash;8</td><td>16 GB</td><td>500 GB NVMe, growing</td></tr>
+            <tr><td>All roles on one server</td><td>8</td><td>32 GB</td><td>500 GB&ndash;1 TB NVMe</td></tr>
+          </table>
+          The SN0 validator's reference model (Qwen3.5-2B) needs about 2 GB on its own; larger models need 8 GB more or a graphics card. An archive node keeps all history, so its disk keeps growing.</li>
         <li>Run the installer with the roles you want, one or several. It builds the node from the open source code, runs it and prints what you then sign in your own wallet; your stash key never touches the server:
           <pre class="cmd"><code id="install-cmd">curl -sO https://git.incentium.org/incentium/incentium-chain/raw/branch/main/scripts/install-operator.sh
 bash install-operator.sh mainnet --producer YOUR_STASH_ADDRESS</code></pre></li>
